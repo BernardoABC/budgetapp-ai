@@ -67,11 +67,15 @@ func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Reques
 	if p < 1 {
 		p = 1
 	}
+	pp := perPage
+	if pp < 1 || pp > 500 {
+		pp = 100
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"transactions": resp,
 		"total":        total,
 		"page":         p,
-		"per_page":     perPage,
+		"per_page":     pp,
 	})
 }
 
