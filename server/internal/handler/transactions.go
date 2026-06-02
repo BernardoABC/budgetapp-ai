@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -77,7 +78,7 @@ func (h *TransactionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	t, err := h.repo.Get(r.Context(), id)
 	if err != nil {
-		if isNotFound(err) {
+		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Transaction not found")
 			return
 		}
@@ -117,7 +118,7 @@ func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	t, err := h.repo.Update(r.Context(), id, req)
 	if err != nil {
-		if isNotFound(err) {
+		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Transaction not found")
 			return
 		}
@@ -130,7 +131,7 @@ func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *TransactionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.repo.Delete(r.Context(), id); err != nil {
-		if isNotFound(err) {
+		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Transaction not found")
 			return
 		}

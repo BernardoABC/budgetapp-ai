@@ -2,8 +2,10 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"budgetapp/internal/model"
@@ -45,6 +47,9 @@ func (r *AccountRepo) Get(ctx context.Context, id string) (model.Account, error)
 	`, id).Scan(&a.ID, &a.Name, &a.Type, &a.Currency, &a.Balance,
 		&a.OnBudget, &a.Closed, &a.Note, &a.SortOrder)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return a, ErrNotFound
+		}
 		return a, fmt.Errorf("get account %s: %w", id, err)
 	}
 	return a, nil
@@ -100,6 +105,9 @@ func (r *AccountRepo) Update(ctx context.Context, id string, req model.UpdateAcc
 	).Scan(&a.ID, &a.Name, &a.Type, &a.Currency, &a.Balance,
 		&a.OnBudget, &a.Closed, &a.Note, &a.SortOrder)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return a, ErrNotFound
+		}
 		return a, fmt.Errorf("update account %s: %w", id, err)
 	}
 	return a, nil
@@ -111,7 +119,7 @@ func (r *AccountRepo) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("delete account %s: %w", id, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("account %s not found", id)
+		return ErrNotFound
 	}
 	return nil
 }
@@ -126,6 +134,9 @@ func (r *AccountRepo) ToggleClosed(ctx context.Context, id string) (model.Accoun
 	`, id).Scan(&a.ID, &a.Name, &a.Type, &a.Currency, &a.Balance,
 		&a.OnBudget, &a.Closed, &a.Note, &a.SortOrder)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return a, ErrNotFound
+		}
 		return a, fmt.Errorf("toggle closed %s: %w", id, err)
 	}
 	return a, nil

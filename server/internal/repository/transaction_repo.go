@@ -2,8 +2,10 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"budgetapp/internal/model"
@@ -72,6 +74,9 @@ func (r *TransactionRepo) Get(ctx context.Context, id string) (model.Transaction
 	`, id).Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
 		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return t, ErrNotFound
+		}
 		return t, fmt.Errorf("get transaction %s: %w", id, err)
 	}
 	return t, nil
@@ -139,6 +144,9 @@ func (r *TransactionRepo) Update(ctx context.Context, id string, req model.Updat
 	if err := tx.QueryRow(ctx,
 		`SELECT amount, account_id::text FROM transactions WHERE id = $1`, id,
 	).Scan(&oldAmount, &accountID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.Transaction{}, ErrNotFound
+		}
 		return model.Transaction{}, fmt.Errorf("get old transaction: %w", err)
 	}
 
@@ -192,6 +200,9 @@ func (r *TransactionRepo) Delete(ctx context.Context, id string) error {
 	if err := tx.QueryRow(ctx,
 		`SELECT amount, account_id::text FROM transactions WHERE id = $1`, id,
 	).Scan(&amount, &accountID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
 		return fmt.Errorf("get transaction for delete: %w", err)
 	}
 

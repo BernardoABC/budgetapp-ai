@@ -5,7 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -76,8 +75,3 @@ func (rw *responseWriter) WriteHeader(s int) {
 	rw.ResponseWriter.WriteHeader(s)
 }
 
-// ─── Error helpers ────────────────────────────────────────────────────────────
-
-func isNotFound(err error) bool {
-	return err != nil && (strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "no rows"))
-}

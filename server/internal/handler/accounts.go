@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"budgetapp/internal/model"
@@ -47,7 +48,7 @@ func (h *AccountHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	a, err := h.repo.Get(r.Context(), id)
 	if err != nil {
-		if isNotFound(err) {
+		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Account not found")
 			return
 		}
@@ -87,7 +88,7 @@ func (h *AccountHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	a, err := h.repo.Update(r.Context(), id, req)
 	if err != nil {
-		if isNotFound(err) {
+		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Account not found")
 			return
 		}
@@ -100,7 +101,7 @@ func (h *AccountHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *AccountHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.repo.Delete(r.Context(), id); err != nil {
-		if isNotFound(err) {
+		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Account not found")
 			return
 		}
@@ -114,7 +115,7 @@ func (h *AccountHandler) ToggleClosed(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	a, err := h.repo.ToggleClosed(r.Context(), id)
 	if err != nil {
-		if isNotFound(err) {
+		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Account not found")
 			return
 		}
