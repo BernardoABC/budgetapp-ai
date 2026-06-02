@@ -1,0 +1,10 @@
+Numero de Clientes, Nombre, Producto, Moneda, Saldo Inicial, Saldo en Libros, Retenidos y Diferidos, Saldo Disponible, Fecha, STBGAV, STBUNC
+1234567, TEST USER, CR99010200001234567890, CRC, 100000.00, 95000.00, 0.00, 95000.00, 31/03/2026, 0.00, 0.00
+
+Detalle de Estado Bancario
+Fecha de Transaccion, Referencia, Codigo, Descripcion, Debito, Credito, Balance
+01/04/2026, 100001, CP, AUTOMERCADO ESCAZU, 5000.00, 0.00, 95000.00
+02/04/2026, 100002, PP, SALARIO ABRIL, 0.00, 50000.00, 145000.00
+
+Resumen de Estado Bancario
+Total, 1, 5000.00, 1, 50000.00
