@@ -16,15 +16,9 @@ func NewTransactionHandler(repo *repository.TransactionRepo) *TransactionHandler
 	return &TransactionHandler{repo: repo}
 }
 
-// toResponse converts DB centimos → colones and maps to the frontend Transaction shape.
+// toResponse maps a transaction to the API shape: a single signed amount in the
+// account's native minor units, plus its currency. The frontend formats it.
 func (h *TransactionHandler) toResponse(t model.Transaction) map[string]any {
-	var outflow, inflow int64
-	displayAmt := t.Amount / 100
-	if t.Amount < 0 {
-		outflow = -displayAmt
-	} else {
-		inflow = displayAmt
-	}
 	var category any = nil
 	if t.CategoryName != "" {
 		category = t.CategoryName
@@ -41,8 +35,8 @@ func (h *TransactionHandler) toResponse(t model.Transaction) map[string]any {
 		"category":    category,
 		"category_id": categoryID,
 		"memo":        t.Memo,
-		"outflow":     outflow,
-		"inflow":      inflow,
+		"amount":      t.Amount,
+		"currency":    t.Currency,
 		"cleared":     t.Cleared,
 	}
 }

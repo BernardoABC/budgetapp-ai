@@ -78,9 +78,9 @@ func (r *TransactionRepo) Get(ctx context.Context, id string) (model.Transaction
 }
 
 // Create inserts the transaction and updates the account balance atomically.
-// req.Amount is in colones (display units); stored as centimos (×100).
+// req.Amount is already in the account's native minor units.
 func (r *TransactionRepo) Create(ctx context.Context, accountID string, req model.CreateTransactionReq) (model.Transaction, error) {
-	amountCentimos := req.Amount * 100
+	amount := req.Amount
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -101,7 +101,7 @@ func (r *TransactionRepo) Create(ctx context.Context, accountID string, req mode
 		          COALESCE(category_id::text,''), '',
 		          date::text, amount, currency,
 		          COALESCE(payee,''), COALESCE(memo,''), cleared
-	`, accountID, catIDParam, req.Date, amountCentimos, req.Payee, req.Memo, req.Cleared,
+	`, accountID, catIDParam, req.Date, amount, req.Payee, req.Memo, req.Cleared,
 	).Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
 		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared)
 	if err != nil {
@@ -110,7 +110,7 @@ func (r *TransactionRepo) Create(ctx context.Context, accountID string, req mode
 
 	if _, err := tx.Exec(ctx,
 		`UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2`,
-		amountCentimos, accountID,
+		amount, accountID,
 	); err != nil {
 		return t, fmt.Errorf("update balance: %w", err)
 	}
@@ -124,9 +124,9 @@ func (r *TransactionRepo) Create(ctx context.Context, accountID string, req mode
 }
 
 // Update replaces a transaction and adjusts the account balance for the diff.
-// req.Amount is in colones; stored as centimos.
+// req.Amount is already in the account's native minor units.
 func (r *TransactionRepo) Update(ctx context.Context, id string, req model.UpdateTransactionReq) (model.Transaction, error) {
-	newAmountCentimos := req.Amount * 100
+	newAmount := req.Amount
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -156,14 +156,14 @@ func (r *TransactionRepo) Update(ctx context.Context, id string, req model.Updat
 		          COALESCE(category_id::text,''), '',
 		          date::text, amount, currency,
 		          COALESCE(payee,''), COALESCE(memo,''), cleared
-	`, catIDParam, req.Date, newAmountCentimos, req.Payee, req.Memo, req.Cleared, id,
+	`, catIDParam, req.Date, newAmount, req.Payee, req.Memo, req.Cleared, id,
 	).Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
 		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared)
 	if err != nil {
 		return t, fmt.Errorf("update transaction: %w", err)
 	}
 
-	diff := newAmountCentimos - oldAmount
+	diff := newAmount - oldAmount
 	if diff != 0 {
 		if _, err := tx.Exec(ctx,
 			`UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2`,
