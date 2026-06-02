@@ -55,19 +55,37 @@ func (r *AccountRepo) Create(ctx context.Context, req model.CreateAccountReq) (m
 	if currency == "" {
 		currency = "CRC"
 	}
+	balanceCentimos := req.Balance * 100
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return model.Account{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
 	var a model.Account
-	err := r.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO accounts (name, type, currency, balance, on_budget, note, sort_order)
 		VALUES ($1, $2, $3, $4, $5, NULLIF($6,''), $7)
 		RETURNING id::text, name, type, currency, balance, on_budget, closed,
 		          COALESCE(note,''), sort_order
-	`, req.Name, req.Type, currency, req.Balance*100, req.OnBudget, req.Note, req.SortOrder,
+	`, req.Name, req.Type, currency, balanceCentimos, req.OnBudget, req.Note, req.SortOrder,
 	).Scan(&a.ID, &a.Name, &a.Type, &a.Currency, &a.Balance,
 		&a.OnBudget, &a.Closed, &a.Note, &a.SortOrder)
 	if err != nil {
 		return a, fmt.Errorf("create account: %w", err)
 	}
-	return a, nil
+
+	if balanceCentimos != 0 {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO transactions (account_id, date, amount, currency, payee, memo, cleared)
+			VALUES ($1, CURRENT_DATE, $2, $3, 'Starting Balance', '', true)
+		`, a.ID, balanceCentimos, currency); err != nil {
+			return a, fmt.Errorf("insert starting balance: %w", err)
+		}
+	}
+
+	return a, tx.Commit(ctx)
 }
 
 func (r *AccountRepo) Update(ctx context.Context, id string, req model.UpdateAccountReq) (model.Account, error) {
