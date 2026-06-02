@@ -16,7 +16,7 @@ type CreateAccountReq struct {
 	Name      string `json:"name"`
 	Type      string `json:"type"`
 	Currency  string `json:"currency"`
-	Balance   int64  `json:"balance"` // received as colones, ×100 before storage
+	Balance   int64  `json:"balance"` // minor units of the account currency (CRC centimos / USD cents)
 	OnBudget  bool   `json:"on_budget"`
 	Note      string `json:"note"`
 	SortOrder int    `json:"sort_order"`

@@ -15,14 +15,14 @@ func NewAccountHandler(repo *repository.AccountRepo) *AccountHandler {
 	return &AccountHandler{repo: repo}
 }
 
-// toResponse converts DB centimos → colones for the frontend.
+// toResponse converts DB model to API response.
 func (h *AccountHandler) toResponse(a model.Account) map[string]any {
 	return map[string]any{
 		"id":         a.ID,
 		"name":       a.Name,
 		"type":       a.Type,
 		"currency":   a.Currency,
-		"balance":    a.Balance / 100,
+		"balance":    a.Balance,
 		"on_budget":  a.OnBudget,
 		"closed":     a.Closed,
 		"note":       a.Note,
