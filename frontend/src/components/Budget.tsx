@@ -5,6 +5,7 @@ import { AppData } from '../data';
 import { MoveMoneyModal, CategoryInspector } from './BudgetModals';
 import type { CategoryGroup, Target } from '../data';
 import type { CatState, MonthState } from '../engine';
+import { createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory } from '../api';
 
 const MONTHS = AppData.months;
 const FALLBACK_COLORS = ['#5b9dff', '#3ddc97', '#f6c45a', '#c084fc', '#ff7a85', '#38d6e8', '#fb923c', '#a78bfa'];
@@ -194,9 +195,11 @@ interface Props {
   budgetData: Record<string, Record<string, { assigned: number; activity: number }>>;
   fmt: (n: number) => string;
   density: string;
+  categoryIdByName: Record<string, string>;
+  onCategoriesChanged: () => void;
 }
 
-export function Budget({ categoryGroups, budgetData, fmt, density }: Props) {
+export function Budget({ categoryGroups, budgetData, fmt, density, categoryIdByName, onCategoriesChanged }: Props) {
   const [monthIdx, setMonthIdx] = useState(1);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [localBudget, setLocalBudget] = useState(budgetData);
@@ -245,17 +248,17 @@ export function Budget({ categoryGroups, budgetData, fmt, density }: Props) {
   const toggleGroup = (gid: string) => setCollapsed(c => ({ ...c, [gid]: !c[gid] }));
 
   const renameCat = (gid: string, oldName: string, newName: string) => {
-    setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.map(c => c === oldName ? newName : c) } : g));
-    setLocalBudget(lb => {
-      const nb: typeof lb = {};
-      for (const m of MONTHS) {
-        const md = { ...(lb[m] ?? {}) };
-        if (md[oldName]) { md[newName] = md[oldName]; delete md[oldName]; }
-        nb[m] = md;
-      }
-      return nb;
-    });
-    setTargets(t => { if (!t[oldName]) return t; const nt = { ...t }; nt[newName] = nt[oldName]; delete nt[oldName]; return nt; });
+    setGroups(gs => gs.map(g =>
+      g.id === gid
+        ? { ...g, categories: g.categories.map(c => c === oldName ? newName : c) }
+        : g
+    ));
+    const catId = categoryIdByName[oldName];
+    if (catId) {
+      updateCategory(catId, { name: newName, hidden: false, sort_order: 0 })
+        .then(() => onCategoriesChanged())
+        .catch(err => console.error('rename category failed:', err));
+    }
   };
   const reorderCat = (gid: string, idx: number, dir: number) => setGroups(gs => gs.map(g => {
     if (g.id !== gid) return g;
@@ -265,12 +268,46 @@ export function Budget({ categoryGroups, budgetData, fmt, density }: Props) {
     return { ...g, categories: arr };
   }));
   const hideCat = (name: string) => setHidden(h => { const n = new Set(h); n.has(name) ? n.delete(name) : n.add(name); return n; });
-  const deleteCat = (gid: string, name: string) => setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
-  const addCat = (gid: string, name: string) => setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: [...g.categories, name] } : g));
+  const deleteCat = (gid: string, name: string) => {
+    const catId = categoryIdByName[name];
+    setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
+    if (catId) {
+      deleteCategory(catId)
+        .then(() => onCategoriesChanged())
+        .catch(err => {
+          console.error('delete category failed:', err);
+          onCategoriesChanged();
+        });
+    }
+  };
+  const addCat = (gid: string, name: string) => {
+    setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: [...g.categories, name] } : g));
+    createCategory({ group_id: gid, name, sort_order: 0 })
+      .then(() => onCategoriesChanged())
+      .catch(err => {
+        console.error('create category failed:', err);
+        setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
+      });
+  };
   const renameGroup = (gid: string, name: string) => setGroups(gs => gs.map(g => g.id === gid ? { ...g, name } : g));
   const moveGroup = (idx: number, dir: number) => setGroups(gs => { const arr = [...gs]; const j = idx + dir; if (j < 0 || j >= arr.length) return gs; [arr[idx], arr[j]] = [arr[j], arr[idx]]; return arr; });
-  const deleteGroup = (gid: string) => setGroups(gs => gs.filter(g => g.id !== gid));
-  const addGroup = () => setGroups(gs => [...gs, { id: 'g' + Date.now(), name: 'New Group', categories: [] }]);
+  const deleteGroup = (gid: string) => {
+    setGroups(gs => gs.filter(g => g.id !== gid));
+    deleteCategoryGroup(gid)
+      .then(() => onCategoriesChanged())
+      .catch(err => {
+        console.error('delete group failed:', err);
+        onCategoriesChanged();
+      });
+  };
+  const addGroup = () => {
+    createCategoryGroup({ name: 'New Group', sort_order: groups.length })
+      .then(g => {
+        setGroups(gs => [...gs, { id: g.id, name: g.name, categories: [] }]);
+        onCategoriesChanged();
+      })
+      .catch(err => console.error('create group failed:', err));
+  };
   const setTarget = (cat: string, target: Target | null) => setTargets(t => { const nt = { ...t }; if (target) nt[cat] = target; else delete nt[cat]; return nt; });
 
   const allCats = groups.flatMap((g, gi) => g.categories.map(cat => ({
