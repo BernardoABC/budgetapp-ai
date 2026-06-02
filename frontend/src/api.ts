@@ -24,17 +24,22 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 // ─── Accounts ─────────────────────────────────────────────────────────────────
 
 export async function fetchAccounts(): Promise<{ budget: Account[]; tracking: Account[] }> {
-  const list: Account[] = await apiFetch('/accounts');
+  const list: Array<Account & { balance: number }> = await apiFetch('/accounts');
+  const toMajor = (a: Account): Account => ({ ...a, balance: a.balance / 100 });
   return {
-    budget:   list.filter(a => a.on_budget && !a.closed),
-    tracking: list.filter(a => !a.on_budget && !a.closed),
+    budget:   list.filter(a => a.on_budget && !a.closed).map(toMajor),
+    tracking: list.filter(a => !a.on_budget && !a.closed).map(toMajor),
   };
 }
 
 export async function createAccount(body: {
   name: string; type: string; currency: string; balance: number; on_budget: boolean; note?: string;
 }): Promise<Account> {
-  return apiFetch('/accounts', { method: 'POST', body: JSON.stringify(body) });
+  const acc: Account = await apiFetch('/accounts', {
+    method: 'POST',
+    body: JSON.stringify({ ...body, balance: Math.round(body.balance * 100) }),
+  });
+  return { ...acc, balance: acc.balance / 100 };
 }
 
 export async function updateAccount(id: string, body: Partial<Account>): Promise<Account> {
@@ -56,10 +61,19 @@ export async function fetchAccountTransactions(
   page = 1,
   perPage = 200,
 ): Promise<Transaction[]> {
-  const data: { transactions: Transaction[] } = await apiFetch(
+  type ApiTxn = Omit<Transaction, 'outflow' | 'inflow'> & { amount: number; currency: string };
+  const data: { transactions: ApiTxn[] } = await apiFetch(
     `/accounts/${accountId}/transactions?page=${page}&per_page=${perPage}`,
   );
-  return data.transactions ?? [];
+  return (data.transactions ?? []).map(t => {
+    const major = t.amount / 100;
+    return {
+      id: t.id, date: t.date, payee: t.payee, category: t.category,
+      memo: t.memo, cleared: t.cleared, account: t.account,
+      outflow: major < 0 ? -major : 0,
+      inflow: major > 0 ? major : 0,
+    } as Transaction;
+  });
 }
 
 export async function createTransaction(
@@ -68,7 +82,7 @@ export async function createTransaction(
 ): Promise<Transaction> {
   return apiFetch(`/accounts/${accountId}/transactions`, {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, amount: Math.round(body.amount * 100) }),
   });
 }
 
@@ -76,7 +90,8 @@ export async function updateTransaction(
   id: string,
   body: { date?: string; payee?: string; category_id?: string; amount?: number; memo?: string; cleared?: boolean },
 ): Promise<Transaction> {
-  return apiFetch(`/transactions/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+  const payload = body.amount === undefined ? body : { ...body, amount: Math.round(body.amount * 100) };
+  return apiFetch(`/transactions/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
 }
 
 export async function deleteTransaction(id: string): Promise<void> {

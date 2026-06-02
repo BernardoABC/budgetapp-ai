@@ -1,7 +1,7 @@
 export interface Account {
   id: string;
   name: string;
-  balance: number;        // display colones (÷100 of DB centimos)
+  balance: number;        // major units (api.ts converts ÷100 from minor units at the boundary)
   type?: string;
   currency?: string;
   on_budget?: boolean;
