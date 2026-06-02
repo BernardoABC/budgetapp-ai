@@ -255,7 +255,9 @@ export function Budget({ categoryGroups, budgetData, fmt, density, categoryIdByN
     ));
     const catId = categoryIdByName[oldName];
     if (catId) {
-      updateCategory(catId, { name: newName, hidden: false, sort_order: 0 })
+      const grp = groups.find(g => g.id === gid);
+      const sortOrder = grp ? grp.categories.indexOf(oldName) : 0;
+      updateCategory(catId, { name: newName, hidden: false, sort_order: sortOrder })
         .then(() => onCategoriesChanged())
         .catch(err => console.error('rename category failed:', err));
     }
