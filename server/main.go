@@ -14,6 +14,7 @@ import (
 	"budgetapp/internal/database/migrations"
 	"budgetapp/internal/handler"
 	"budgetapp/internal/repository"
+	"budgetapp/internal/service"
 )
 
 func main() {
@@ -39,11 +40,15 @@ func main() {
 	accountRepo := repository.NewAccountRepo(pool)
 	txnRepo := repository.NewTransactionRepo(pool)
 	catRepo := repository.NewCategoryRepo(pool)
+	ruleRepo := repository.NewPayeeRuleRepo(pool)
+	importRepo := repository.NewImportRepo(pool)
 
 	// Handlers
 	accounts := handler.NewAccountHandler(accountRepo)
 	txns := handler.NewTransactionHandler(txnRepo)
 	cats := handler.NewCategoryHandler(catRepo)
+	importSvc := service.NewImportService(pool, accountRepo, ruleRepo, importRepo)
+	imports := handler.NewImportHandler(importSvc, importRepo)
 
 	mux := http.NewServeMux()
 
@@ -75,6 +80,11 @@ func main() {
 	mux.HandleFunc("POST /api/categories", cats.CreateCategory)
 	mux.HandleFunc("PUT /api/categories/{id}", cats.UpdateCategory)
 	mux.HandleFunc("DELETE /api/categories/{id}", cats.DeleteCategory)
+
+	// Imports
+	mux.HandleFunc("POST /api/imports/preview", imports.Preview)
+	mux.HandleFunc("POST /api/imports/confirm", imports.Confirm)
+	mux.HandleFunc("GET /api/imports", imports.History)
 
 	corsMiddleware := handler.CORS(cfg.CORSOrigin)
 	srv := &http.Server{
