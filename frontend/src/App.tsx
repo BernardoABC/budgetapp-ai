@@ -2,7 +2,8 @@ import { useState, useCallback, useEffect } from 'react';
 import { T, ACCENTS, applyAccent } from './theme';
 import type { AccentKey } from './theme';
 import { AppData } from './data';
-import { fetchAccounts, fetchCategoryGroups } from './api';
+import { fetchAccounts, fetchCategoryGroupsRaw } from './api';
+import { AccountFormModal } from './components/AccountFormModal';
 import type { Account, CategoryGroup } from './data';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -79,16 +80,44 @@ function App() {
     tracking: AppData.accounts.tracking,
   });
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>(AppData.categoryGroups);
+  const [categoryIdByName, setCategoryIdByName] = useState<Record<string, string>>({});
+  const [showAddAccount, setShowAddAccount] = useState(false);
+
+  const reloadCategories = useCallback(() => {
+    fetchCategoryGroupsRaw()
+      .then(rawGroups => {
+        const idMap: Record<string, string> = {};
+        rawGroups.forEach(g => g.categories.forEach(c => { idMap[c.name] = c.id; }));
+        setCategoryIdByName(idMap);
+        setCategoryGroups(rawGroups.map(g => ({
+          id: g.id,
+          name: g.name,
+          categories: g.categories.map(c => c.name),
+        })));
+      })
+      .catch(err => console.warn('Failed to load categories:', err.message));
+  }, []);
+
+  const reloadAccounts = useCallback(() => {
+    fetchAccounts()
+      .then(setAccounts)
+      .catch(err => console.warn('Failed to load accounts:', err.message));
+  }, []);
 
   useEffect(() => {
-    Promise.all([fetchAccounts(), fetchCategoryGroups()])
-      .then(([accs, cats]) => {
+    Promise.all([fetchAccounts(), fetchCategoryGroupsRaw()])
+      .then(([accs, rawGroups]) => {
         setAccounts(accs);
-        setCategoryGroups(cats);
+        const idMap: Record<string, string> = {};
+        rawGroups.forEach(g => g.categories.forEach(c => { idMap[c.name] = c.id; }));
+        setCategoryIdByName(idMap);
+        setCategoryGroups(rawGroups.map(g => ({
+          id: g.id,
+          name: g.name,
+          categories: g.categories.map(c => c.name),
+        })));
       })
-      .catch(err => {
-        console.warn('API unavailable, using static data:', err.message);
-      });
+      .catch(err => console.warn('API unavailable, using static data:', err.message));
   }, []);
 
   // Still static
@@ -121,11 +150,11 @@ function App() {
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: T.bg, backgroundImage: T.bgGrad, position: 'relative' }}>
-      <Layout currentPage={page} currentAccountId={accountId} onNavigate={navigate} currency={currency} onCurrencyChange={handleCurrencyChange} accounts={accounts} exchangeRate={exchangeRate} exchangeRateDate={exchangeRateDate} fmt={fmtBound}>
+      <Layout currentPage={page} currentAccountId={accountId} onNavigate={navigate} currency={currency} onCurrencyChange={handleCurrencyChange} accounts={accounts} exchangeRate={exchangeRate} exchangeRateDate={exchangeRateDate} fmt={fmtBound} onAddAccount={() => setShowAddAccount(true)}>
         <div key={page + accountId} style={{ animation: 'fadeUp 0.32s cubic-bezier(0.22, 1, 0.36, 1)' }}>
           {page === 'dashboard' && <Dashboard transactions={transactions} budget={budget} categoryGroups={categoryGroups} fmt={fmtBound} onNavigate={navigate} />}
-          {page === 'budget' && <Budget categoryGroups={categoryGroups} budgetData={budget} fmt={fmtBound} density={tweaks.density} />}
-          {page === 'accounts' && <Accounts accounts={accounts} accountId={accountId} categoryGroups={categoryGroups} fmt={fmtBound} density={tweaks.density} />}
+          {page === 'budget' && <Budget categoryGroups={categoryGroups} budgetData={budget} fmt={fmtBound} density={tweaks.density} categoryIdByName={categoryIdByName} onCategoriesChanged={reloadCategories} />}
+          {page === 'accounts' && <Accounts accounts={accounts} accountId={accountId} categoryGroups={categoryGroups} fmt={fmtBound} density={tweaks.density} categoryIdByName={categoryIdByName} onAccountsChanged={reloadAccounts} />}
           {page === 'import' && <ImportWizard accounts={accounts} categoryGroups={categoryGroups} onNavigate={navigate} />}
           {page === 'reports' && <Reports monthlySpending={monthlySpending} fmt={fmtBound} />}
         </div>
@@ -136,6 +165,20 @@ function App() {
       </button>
 
       {tweaksOpen && <TweaksPanel tweaks={tweaks} updateTweak={updateTweak} onClose={() => setTweaksOpen(false)} />}
+
+      {showAddAccount && (
+        <AccountFormModal
+          onClose={() => setShowAddAccount(false)}
+          onCreated={acc => {
+            setAccounts(prev => ({
+              ...prev,
+              budget:   acc.on_budget ? [...prev.budget, acc]   : prev.budget,
+              tracking: acc.on_budget ? prev.tracking : [...prev.tracking, acc],
+            }));
+            setShowAddAccount(false);
+          }}
+        />
+      )}
     </div>
   );
 }
