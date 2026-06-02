@@ -113,15 +113,32 @@ Done before any import code lands, so import is not built on the old boundary.
 - Write paths: accept `amount` (and account `balance`) as minor units; **remove
   the `* 100`** in `account_repo.Create` and `transaction_repo.Create/Update`.
 
-**Frontend:**
-- `src/api.ts` / formatter: format from minor units using the transaction/account
-  `currency` (`CRC` → `₡`, no decimals shown by default; `USD` → `$`, 2 decimals).
-- Update the Accounts view components that currently assume colones major units
-  and the outflow/inflow shape.
+**Frontend — anti-corruption adapter in `src/api.ts` only.** The existing
+components are deeply coupled to whole-major-unit numbers and the
+`outflow`/`inflow` transaction shape (`Accounts.tsx`, `Dashboard`,
+`AccountsModals`, and the static mock data in `data.ts`). Rewriting all of that
+is a large change unrelated to import, so Step 0 isolates the conversion to the
+API boundary:
 
-**Acceptance:** an existing CRC account and a new USD account both display
-correct balances; a `$15.50` transaction round-trips without losing the 50
-cents.
+- `fetchAccounts`: divide API `balance` (minor units) by 100 → major-unit float.
+- `fetchAccountTransactions`: map API `{ amount (signed minor units), currency }`
+  → the existing `{ outflow, inflow }` major-unit shape
+  (`amount < 0 → outflow = -amount/100`, else `inflow = amount/100`).
+- `createAccount` / `createTransaction` / `updateTransaction`: multiply
+  major-unit inputs by 100 before POST/PUT.
+
+JavaScript division is float, so this boundary has **no truncation** (the bug
+was Go integer division). Components, mock data, and `fmt()` are untouched.
+
+**Deferred to the currency-toggle deliverable (roadmap 2.5):** migrating the
+frontend to hold minor units internally and making `fmt()` currency-aware
+(`USD → $`, 2 decimals). Until then a USD account's balance renders with a `₡`
+symbol but the correct magnitude — a known cosmetic wart, not a data bug.
+
+**Acceptance:** the existing CRC accounts/transactions display unchanged after
+the backend switches to minor units; the Go `balance / 100` truncation is gone;
+a `$15.50` value round-trips through the API losslessly (verified at the API
+boundary, independent of the deferred frontend symbol fix).
 
 ---
 
