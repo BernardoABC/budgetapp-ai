@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { fetchAccountTransactions } from '../api';
+import { updateTransaction, deleteTransaction, createTransaction, fetchAccountTransactions } from '../api';
 import { T, GROUP_COLORS } from '../theme';
 import { AppData } from '../data';
 import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
@@ -89,9 +89,11 @@ interface Props {
   categoryGroups: CategoryGroup[];
   fmt: (n: number) => string;
   density: string;
+  categoryIdByName: Record<string, string>;
+  onAccountsChanged: () => void;
 }
 
-export function Accounts({ accounts, accountId, categoryGroups, fmt, density }: Props) {
+export function Accounts({ accounts, accountId, categoryGroups, fmt, density, categoryIdByName, onAccountsChanged }: Props) {
   const allAccounts = [...accounts.budget, ...accounts.tracking];
   const account = allAccounts.find(a => a.id === accountId) ?? allAccounts[0];
   const categories = categoryGroups.flatMap(g => g.categories);
@@ -100,6 +102,17 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density }: 
 
   const [txns, setTxns] = useState<Transaction[]>([]);
   const [loadingTxns, setLoadingTxns] = useState(false);
+  const [showAddTxn, setShowAddTxn] = useState(false);
+  const [addForm, setAddForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    payee: '',
+    category: '',
+    outflow: '',
+    inflow: '',
+    memo: '',
+    cleared: false,
+  });
+  const [addSaving, setAddSaving] = useState(false);
 
   useEffect(() => {
     setLoadingTxns(true);
@@ -140,7 +153,51 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density }: 
 
   const toggleSelect = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const handleSort = (col: string) => { if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(col); setSortDir('asc'); } };
-  const handleSave = (updated: Transaction) => setTxns(ts => ts.map(t => t.id === updated.id ? updated : t));
+  const handleSave = (updated: Transaction) => {
+    setTxns(ts => ts.map(t => t.id === updated.id ? updated : t));
+    const amount = updated.inflow > 0 ? updated.inflow : -updated.outflow;
+    const category_id = updated.category ? (categoryIdByName[updated.category] ?? undefined) : undefined;
+    updateTransaction(updated.id, {
+      date: updated.date,
+      payee: updated.payee,
+      category_id,
+      amount,
+      memo: updated.memo,
+      cleared: updated.cleared,
+    })
+      .then(() => onAccountsChanged())
+      .catch(err => {
+        console.error('save transaction failed:', err);
+        fetchAccountTransactions(accountId).then(setTxns);
+      });
+  };
+
+  const handleAddTxn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddSaving(true);
+    const amount = parseFloat(addForm.inflow) > 0
+      ? parseFloat(addForm.inflow)
+      : -(parseFloat(addForm.outflow) || 0);
+    const category_id = addForm.category ? (categoryIdByName[addForm.category] ?? undefined) : undefined;
+    try {
+      const newTxn = await createTransaction(accountId, {
+        date: addForm.date,
+        payee: addForm.payee,
+        category_id,
+        amount,
+        memo: addForm.memo,
+        cleared: addForm.cleared,
+      });
+      setTxns(ts => [newTxn, ...ts]);
+      setShowAddTxn(false);
+      setAddForm({ date: new Date().toISOString().slice(0, 10), payee: '', category: '', outflow: '', inflow: '', memo: '', cleared: false });
+      onAccountsChanged();
+    } catch (err) {
+      console.error('create transaction failed:', err);
+    } finally {
+      setAddSaving(false);
+    }
+  };
 
   const filtered = useMemo(() => txns
     .filter(t => t.account === account.id)
@@ -214,6 +271,10 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density }: 
         <div style={st.stat}><span style={{ ...st.statNum, color: T.pos }}>+{fmt(totals.inf)}</span><span style={st.statLbl}>inflow</span></div>
       </div>
 
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button onClick={() => setShowAddTxn(true)} style={st.headerBtnAccent}>+ New Transaction</button>
+      </div>
+
       <div style={st.filterBar}>
         <div style={st.searchWrap}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }}><circle cx="11" cy="11" r="7" stroke={T.textDim} strokeWidth="1.8"/><path d="m20 20-3.5-3.5" stroke={T.textDim} strokeWidth="1.8" strokeLinecap="round"/></svg>
@@ -227,7 +288,24 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density }: 
         <span style={{ color: T.textFaint, fontSize: 12 }}>→</span>
         <input type="date" value={filter.to} onChange={e => setFilter(f => ({ ...f, to: e.target.value }))} style={st.filterInput} />
         {hasFilter && <button onClick={() => setFilter({ payee: '', category: '', from: '', to: '' })} style={st.clearBtn}>Clear</button>}
-        {selected.size > 0 && <button style={{ ...st.clearBtn, color: T.neg, borderColor: T.negDim, background: T.negDim, marginLeft: 'auto' }}>Delete {selected.size}</button>}
+        {selected.size > 0 && (
+          <button
+            onClick={() => {
+              const ids = [...selected];
+              setTxns(ts => ts.filter(t => !selected.has(t.id)));
+              setSelected(new Set());
+              Promise.all(ids.map(id => deleteTransaction(id)))
+                .then(() => onAccountsChanged())
+                .catch(err => {
+                  console.error('delete failed:', err);
+                  fetchAccountTransactions(accountId).then(setTxns);
+                });
+            }}
+            style={{ ...st.clearBtn, color: T.neg, borderColor: T.negDim, background: T.negDim, marginLeft: 'auto' }}
+          >
+            Delete {selected.size}
+          </button>
+        )}
       </div>
 
       {loadingTxns && (
@@ -259,6 +337,73 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density }: 
       {modal === 'reconcile' && <ReconcileModal account={account} clearedBalance={account.balance} fmt={fmt} onClose={() => setModal(null)} onReconcile={reconcile} />}
       {modal === 'rules' && <RulesManager rules={rules} categories={categories} onClose={() => setModal(null)} onAdd={r => setRules(rs => [...rs, r])} onDelete={id => setRules(rs => rs.filter(x => x.id !== id))} />}
       {modal && typeof modal === 'object' && 'split' in modal && <SplitModal txn={modal.split} categories={categories} fmt={fmt} onClose={() => setModal(null)} onSave={saveSplit} />}
+      {showAddTxn && (
+        <div style={stModal.overlay} onClick={e => e.target === e.currentTarget && setShowAddTxn(false)}>
+          <div style={stModal.panel}>
+            <div style={stModal.header}>
+              <span style={stModal.title}>New Transaction</span>
+              <button onClick={() => setShowAddTxn(false)} style={stModal.closeBtn}>✕</button>
+            </div>
+            <form onSubmit={handleAddTxn} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={stModal.field}>
+                  <label style={stModal.label}>Date</label>
+                  <input type="date" value={addForm.date}
+                    onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))}
+                    style={stModal.input} />
+                </div>
+                <div style={stModal.field}>
+                  <label style={stModal.label}>Category</label>
+                  <select value={addForm.category}
+                    onChange={e => setAddForm(f => ({ ...f, category: e.target.value }))}
+                    style={stModal.select}>
+                    <option value="">— Uncategorized —</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={stModal.field}>
+                <label style={stModal.label}>Payee</label>
+                <input autoFocus value={addForm.payee}
+                  onChange={e => setAddForm(f => ({ ...f, payee: e.target.value }))}
+                  placeholder="Payee name" style={stModal.input} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={stModal.field}>
+                  <label style={stModal.label}>Outflow</label>
+                  <input type="number" value={addForm.outflow}
+                    onChange={e => setAddForm(f => ({ ...f, outflow: e.target.value, inflow: '' }))}
+                    placeholder="0" style={stModal.input} />
+                </div>
+                <div style={stModal.field}>
+                  <label style={stModal.label}>Inflow</label>
+                  <input type="number" value={addForm.inflow}
+                    onChange={e => setAddForm(f => ({ ...f, inflow: e.target.value, outflow: '' }))}
+                    placeholder="0" style={stModal.input} />
+                </div>
+              </div>
+              <div style={stModal.field}>
+                <label style={stModal.label}>Memo</label>
+                <input value={addForm.memo}
+                  onChange={e => setAddForm(f => ({ ...f, memo: e.target.value }))}
+                  placeholder="Optional note" style={stModal.input} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" id="addCleared" checked={addForm.cleared}
+                  onChange={e => setAddForm(f => ({ ...f, cleared: e.target.checked }))}
+                  style={{ accentColor: 'var(--accent)', width: 14, height: 14, cursor: 'pointer' }} />
+                <label htmlFor="addCleared" style={{ fontSize: 13, color: T.textMid, cursor: 'pointer' }}>Cleared</label>
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4 }}>
+                <button type="button" onClick={() => setShowAddTxn(false)} style={stModal.cancelBtn}>Cancel</button>
+                <button type="submit" disabled={addSaving} style={stModal.submitBtn}>
+                  {addSaving ? 'Saving…' : 'Add Transaction'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -299,4 +444,18 @@ const st = {
   inlineSelect:    { padding: '5px 8px', fontSize: 12, border: `1px solid var(--accent)`, borderRadius: 6, background: T.surface2, color: T.text },
   saveBtn:         { padding: '5px 11px', fontSize: 12, fontWeight: 700, background: 'var(--accent)', color: '#06140d', border: 'none', borderRadius: 6, cursor: 'pointer' },
   cancelBtn:       { padding: '5px 9px', fontSize: 12, background: 'none', color: T.textDim, border: `1px solid ${T.border}`, borderRadius: 6, cursor: 'pointer' },
+};
+
+const stModal = {
+  overlay:   { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, backdropFilter: 'blur(4px)' },
+  panel:     { background: T.surface2, border: `1px solid ${T.borderHi}`, borderRadius: T.radius, padding: 28, width: 460, boxShadow: '0 24px 60px rgba(0,0,0,0.85)' },
+  header:    { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
+  title:     { fontSize: 15, fontWeight: 700, color: T.text, letterSpacing: '-0.02em' },
+  closeBtn:  { background: 'none', border: 'none', color: T.textDim, cursor: 'pointer', fontSize: 14, padding: 4 },
+  field:     { display: 'flex', flexDirection: 'column' as const, gap: 5 },
+  label:     { fontSize: 10.5, fontWeight: 700, color: T.textDim, letterSpacing: '0.08em', textTransform: 'uppercase' as const },
+  input:     { padding: '8px 11px', fontSize: 13, border: `1px solid ${T.border}`, borderRadius: 7, background: T.surface, color: T.text, outline: 'none' },
+  select:    { padding: '8px 11px', fontSize: 13, border: `1px solid ${T.border}`, borderRadius: 7, background: T.surface, color: T.text, cursor: 'pointer' },
+  cancelBtn: { padding: '8px 15px', fontSize: 12.5, fontWeight: 600, background: 'none', border: `1px solid ${T.border}`, borderRadius: 7, color: T.textMid, cursor: 'pointer' },
+  submitBtn: { padding: '8px 20px', fontSize: 12.5, fontWeight: 700, background: 'var(--accent)', border: 'none', borderRadius: 7, color: '#06140d', cursor: 'pointer' },
 };
