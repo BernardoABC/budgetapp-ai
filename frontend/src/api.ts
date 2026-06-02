@@ -3,6 +3,7 @@ import type {
   Transaction,
   CategoryGroup,
   CategoryGroupAPI,
+  CategoryItemAPI,
 } from './data';
 
 const BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080') + '/api';
@@ -92,4 +93,36 @@ export async function fetchCategoryGroups(): Promise<CategoryGroup[]> {
     name: g.name,
     categories: g.categories.map(c => c.name),
   }));
+}
+
+export async function fetchCategoryGroupsRaw(): Promise<CategoryGroupAPI[]> {
+  return apiFetch('/category-groups');
+}
+
+// ─── Category group CRUD ───────────────────────────────────────────────────────
+
+export async function createCategoryGroup(body: { name: string; sort_order?: number }): Promise<CategoryGroupAPI> {
+  return apiFetch('/category-groups', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function updateCategoryGroup(id: string, body: { name: string; sort_order?: number; hidden?: boolean }): Promise<CategoryGroupAPI> {
+  return apiFetch(`/category-groups/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+}
+
+export async function deleteCategoryGroup(id: string): Promise<void> {
+  return apiFetch(`/category-groups/${id}`, { method: 'DELETE' });
+}
+
+// ─── Category CRUD ─────────────────────────────────────────────────────────────
+
+export async function createCategory(body: { group_id: string; name: string; sort_order?: number }): Promise<CategoryItemAPI> {
+  return apiFetch('/categories', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function updateCategory(id: string, body: { name: string; hidden?: boolean; sort_order?: number }): Promise<CategoryItemAPI> {
+  return apiFetch(`/categories/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  return apiFetch(`/categories/${id}`, { method: 'DELETE' });
 }
