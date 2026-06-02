@@ -149,8 +149,8 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density }: 
     .filter(t => !filter.from || t.date >= filter.from)
     .filter(t => !filter.to || t.date <= filter.to)
     .sort((a, b) => {
-      const av = (a as Record<string, unknown>)[sortCol] as string | number ?? '';
-      const bv = (b as Record<string, unknown>)[sortCol] as string | number ?? '';
+      const av = (a as unknown as Record<string, unknown>)[sortCol] as string | number ?? '';
+      const bv = (b as unknown as Record<string, unknown>)[sortCol] as string | number ?? '';
       const aStr = typeof av === 'string' ? av.toLowerCase() : av;
       const bStr = typeof bv === 'string' ? bv.toLowerCase() : bv;
       return sortDir === 'asc' ? (aStr > bStr ? 1 : -1) : (aStr < bStr ? 1 : -1);

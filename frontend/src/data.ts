@@ -35,6 +35,7 @@ export interface Transaction {
 }
 
 export interface MonthlySpendingRow {
+  [key: string]: string | number;  // allows dynamic key access in Reports.tsx
   month: string;
   housing: number;
   food: number;
