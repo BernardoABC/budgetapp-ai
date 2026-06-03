@@ -57,6 +57,8 @@ func (s *ExchangeRateService) EnsureRates(ctx context.Context, dates []string) (
 						if err := s.repo.Upsert(ctx, d, rate, "open_er_api"); err != nil {
 							slog.Warn("upsert fallback rate", "err", err)
 						}
+					} else {
+						slog.Warn("open.er-api fallback failed for date", "date", d, "err", ferr)
 					}
 				}
 			}
@@ -129,13 +131,15 @@ func (s *ExchangeRateService) Upsert(ctx context.Context, date string, rate floa
 	return s.repo.Upsert(ctx, date, rate, source)
 }
 
+var fallbackHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
 // fetchOpenERRate calls open.er-api.com (no key required) for the current USD→CRC rate.
 func fetchOpenERRate(ctx context.Context) (float64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://open.er-api.com/v6/latest/USD", nil)
 	if err != nil {
 		return 0, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := fallbackHTTPClient.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("open.er-api request: %w", err)
 	}
@@ -146,6 +150,9 @@ func fetchOpenERRate(ctx context.Context) (float64, error) {
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return 0, fmt.Errorf("open.er-api decode: %w", err)
+	}
+	if body.Result != "success" {
+		return 0, fmt.Errorf("open.er-api: result=%s", body.Result)
 	}
 	rate, ok := body.Rates["CRC"]
 	if !ok || rate == 0 {
