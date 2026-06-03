@@ -44,11 +44,14 @@ func main() {
 	ruleRepo    := repository.NewPayeeRuleRepo(pool)
 	importRepo  := repository.NewImportRepo(pool)
 	rateRepo    := repository.NewExchangeRateRepo(pool)
+	budgetRepo  := repository.NewBudgetRepo(pool)
+	targetRepo  := repository.NewTargetRepo(pool)
 
 	// Services
 	bccrClient := bccr.NewClient(cfg.BCCRAPIToken)
 	rateSvc    := service.NewExchangeRateService(rateRepo, bccrClient)
 	importSvc  := service.NewImportService(pool, accountRepo, ruleRepo, importRepo, rateSvc)
+	budgetSvc  := service.NewBudgetService(budgetRepo, targetRepo, catRepo)
 
 	// Fetch today's rate on startup (non-blocking)
 	go func() {
@@ -79,6 +82,7 @@ func main() {
 	cats     := handler.NewCategoryHandler(catRepo)
 	imports  := handler.NewImportHandler(importSvc, importRepo)
 	rates    := handler.NewExchangeRateHandler(rateSvc)
+	budgets  := handler.NewBudgetHandler(budgetSvc)
 
 	mux := http.NewServeMux()
 
@@ -120,6 +124,16 @@ func main() {
 	mux.HandleFunc("GET /api/exchange-rates/current", rates.Current)
 	mux.HandleFunc("GET /api/exchange-rates", rates.ListByRange)
 	mux.HandleFunc("PUT /api/exchange-rates/{date}", rates.Upsert)
+
+	// Budgets
+	mux.HandleFunc("GET /api/budgets/{month}", budgets.GetMonth)
+	mux.HandleFunc("PUT /api/budgets/{month}/categories/{categoryId}", budgets.SetAssigned)
+	mux.HandleFunc("POST /api/budgets/{month}/copy-previous", budgets.CopyPrevious)
+	mux.HandleFunc("POST /api/budgets/{month}/move", budgets.Move)
+
+	// Targets
+	mux.HandleFunc("PUT /api/categories/{id}/target", budgets.UpsertTarget)
+	mux.HandleFunc("DELETE /api/categories/{id}/target", budgets.DeleteTarget)
 
 	corsMiddleware := handler.CORS(cfg.CORSOrigin)
 	srv := &http.Server{
