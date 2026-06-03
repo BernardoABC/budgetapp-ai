@@ -222,27 +222,25 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, onNav
         </div>
       </div>
 
-      {tab === 'import' && (
-        <>
-          <div style={{ padding: '28px 24px 0', maxWidth: 760, margin: '0 auto' }}>
-            <StepIndicator step={step} />
-            <div style={{ marginTop: 28 }}>
-              {step === 0 && <Step1 accounts={accounts} onNext={info => { setUploadInfo(info); setStep(1); }} />}
-              {step === 1 && <Step2 parsed={parsed} onChangeParsed={handleChangeParsed} categoryGroups={categoryGroups} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
-              {step === 2 && <Step3 parsed={parsed} uploadInfo={uploadInfo ?? { file: { name: 'estado_cuenta_abril.csv' } }} onBack={() => setStep(1)} onConfirm={() => setDone(true)} />}
-            </div>
+      <div style={{ display: tab === 'import' ? undefined : 'none' }}>
+        <div style={{ padding: '28px 24px 0', maxWidth: 760, margin: '0 auto' }}>
+          <StepIndicator step={step} />
+          <div style={{ marginTop: 28 }}>
+            {step === 0 && <Step1 accounts={accounts} onNext={info => { setUploadInfo(info); setStep(1); }} />}
+            {step === 1 && <Step2 parsed={parsed} onChangeParsed={handleChangeParsed} categoryGroups={categoryGroups} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
+            {step === 2 && <Step3 parsed={parsed} uploadInfo={uploadInfo ?? { file: { name: 'estado_cuenta_abril.csv' } }} onBack={() => setStep(1)} onConfirm={() => setDone(true)} />}
           </div>
-          <ImportHistory />
-        </>
-      )}
+        </div>
+        <ImportHistory />
+      </div>
 
-      {tab === 'rules' && (
+      <div style={{ display: tab === 'rules' ? undefined : 'none' }}>
         <RulesManager
           categoryIdByName={categoryIdByName}
           idToName={idToName}
           allCategoryNames={allCategoryNames}
         />
-      )}
+      </div>
     </>
   );
 }
@@ -318,14 +316,14 @@ function RulesManager({ categoryIdByName, idToName, allCategoryNames }: {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ pattern: '', categoryId: '' });
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     setLoadError(null);
     fetchPayeeRules()
       .then(r => { setRules(r); setLoading(false); })
       .catch(err => { setLoadError(err.message); setLoading(false); });
-  };
-  useEffect(() => { load(); }, []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const startAdd = () => { setAdding(true); setForm({ pattern: '', categoryId: categoryIdByName[allCategoryNames[0]] ?? '' }); };
   const startEdit = (r: ApiPayeeRule) => { setEditingId(r.id); setForm({ pattern: r.pattern, categoryId: r.category_id }); };
