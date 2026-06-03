@@ -137,7 +137,6 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 			COALESCE(SUM(CASE WHEN t.cleared THEN t.amount ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN NOT t.cleared THEN t.amount ELSE 0 END), 0)
 		FROM transactions t
-		LEFT JOIN categories c ON c.id = t.category_id
 		WHERE `+where, args...,
 	).Scan(&summary.TotalInflow, &summary.TotalOutflow, &summary.ClearedBalance, &summary.UnclearedBalance); err != nil {
 		return nil, 0, summary, fmt.Errorf("summary transactions: %w", err)

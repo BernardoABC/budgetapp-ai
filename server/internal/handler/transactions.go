@@ -43,6 +43,17 @@ func (h *TransactionHandler) toResponse(t model.Transaction) map[string]any {
 	}
 }
 
+func parseAmountParam(s string) *int64 {
+	if s == "" {
+		return nil
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return nil
+	}
+	return &v
+}
+
 func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Request) {
 	accountID := r.PathValue("id")
 	q := r.URL.Query()
@@ -57,6 +68,8 @@ func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Reques
 		Sort:       q.Get("sort"),
 		Page:       page,
 		PerPage:    perPage,
+		MinAmount:  parseAmountParam(q.Get("min_amount")),
+		MaxAmount:  parseAmountParam(q.Get("max_amount")),
 	}
 	if c := q.Get("cleared"); c == "true" {
 		v := true
@@ -85,12 +98,16 @@ func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Reques
 	if pp < 1 || pp > 200 {
 		pp = 50
 	}
+	totalPages := int((total + int64(pp) - 1) / int64(pp))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"transactions": resp,
-		"total":        total,
-		"page":         p,
-		"per_page":     pp,
-		"summary":      summary,
+		"pagination": map[string]any{
+			"page":        p,
+			"per_page":    pp,
+			"total":       total,
+			"total_pages": totalPages,
+		},
+		"summary": summary,
 	})
 }
 
