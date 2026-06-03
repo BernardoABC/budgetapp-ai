@@ -60,9 +60,10 @@ func (r *BudgetRepo) UpsertAssigned(ctx context.Context, categoryID, month strin
 	return nil
 }
 
-// BulkUpsertAssigned upserts multiple budget rows in one call.
-// Uses INSERT ... ON CONFLICT DO NOTHING — skips rows that already exist.
-func (r *BudgetRepo) BulkUpsertAssigned(ctx context.Context, entries []BudgetAssignedEntry) error {
+// BulkInsertAssignedIfAbsent inserts budget rows only for categories that have no row yet.
+// Existing rows (including those with assigned = 0) are left untouched.
+// Use UpsertAssigned when you need to overwrite an existing value.
+func (r *BudgetRepo) BulkInsertAssignedIfAbsent(ctx context.Context, entries []BudgetAssignedEntry) error {
 	for _, e := range entries {
 		_, err := r.pool.Exec(ctx, `
 			INSERT INTO budgets (category_id, month, assigned)
@@ -113,25 +114,29 @@ func (r *BudgetRepo) GetAllActivityUpToMonth(ctx context.Context, month string) 
 // GetOnBudgetBalance returns the sum of balances of all open on-budget accounts.
 func (r *BudgetRepo) GetOnBudgetBalance(ctx context.Context) (int64, error) {
 	var total int64
-	err := r.pool.QueryRow(ctx,
+	if err := r.pool.QueryRow(ctx,
 		`SELECT COALESCE(SUM(balance), 0) FROM accounts WHERE on_budget = true AND closed = false`,
-	).Scan(&total)
-	return total, err
+	).Scan(&total); err != nil {
+		return 0, fmt.Errorf("get on-budget balance: %w", err)
+	}
+	return total, nil
 }
 
 // GetOutflow30Days returns the sum of absolute values of negative transactions
 // on on-budget accounts within the past 30 days.
 func (r *BudgetRepo) GetOutflow30Days(ctx context.Context) (int64, error) {
 	var total int64
-	err := r.pool.QueryRow(ctx, `
+	if err := r.pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(ABS(t.amount)), 0)
 		FROM transactions t
 		JOIN accounts a ON a.id = t.account_id
 		WHERE a.on_budget = true
 		  AND t.amount < 0
 		  AND t.date >= CURRENT_DATE - INTERVAL '30 days'
-	`).Scan(&total)
-	return total, err
+	`).Scan(&total); err != nil {
+		return 0, fmt.Errorf("get outflow 30 days: %w", err)
+	}
+	return total, nil
 }
 
 // AtomicMove adjusts assigned for two categories in the same month atomically.

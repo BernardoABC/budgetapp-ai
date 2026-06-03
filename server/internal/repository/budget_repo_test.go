@@ -51,7 +51,7 @@ func TestBudgetRepo_GetAllActivityUpToMonth(t *testing.T) {
 	}
 }
 
-func TestBudgetRepo_BulkUpsertAssigned(t *testing.T) {
+func TestBudgetRepo_BulkInsertAssignedIfAbsent(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	catID1 := testutil.SeedCategory(t, pool)
 	catID2 := testutil.SeedCategory(t, pool)
@@ -62,7 +62,7 @@ func TestBudgetRepo_BulkUpsertAssigned(t *testing.T) {
 		{CategoryID: catID1, Month: "2026-04-01", Assigned: 50000},
 		{CategoryID: catID2, Month: "2026-04-01", Assigned: 80000},
 	}
-	if err := repo.BulkUpsertAssigned(ctx, entries); err != nil {
+	if err := repo.BulkInsertAssignedIfAbsent(ctx, entries); err != nil {
 		t.Fatal(err)
 	}
 
