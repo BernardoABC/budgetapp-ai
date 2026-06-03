@@ -149,7 +149,7 @@ function App() {
           {page === 'dashboard' && <Dashboard categoryGroups={categoryGroups} fmt={fmtBound} onNavigate={navigate} />}
           {page === 'budget' && <Budget categoryGroups={categoryGroups} fmt={fmtBound} currency={currency} density={tweaks.density} categoryIdByName={categoryIdByName} onCategoriesChanged={reloadCategories} />}
           {page === 'accounts' && <Accounts accounts={accounts} accountId={accountId} categoryGroups={categoryGroups} fmt={fmtBound} density={tweaks.density} categoryIdByName={categoryIdByName} onAccountsChanged={reloadAccounts} />}
-          {page === 'import' && <ImportWizard accounts={accounts} categoryGroups={categoryGroups} onNavigate={navigate} />}
+          {page === 'import' && <ImportWizard accounts={accounts} categoryGroups={categoryGroups} categoryIdByName={categoryIdByName} onNavigate={navigate} />}
           {page === 'reports' && <Reports fmt={fmtBound} />}
         </div>
       </Layout>

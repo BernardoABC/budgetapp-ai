@@ -177,10 +177,12 @@ function Step3({ parsed, uploadInfo, onBack, onConfirm }: {
 interface Props {
   accounts: typeof AppData.accounts;
   categoryGroups: CategoryGroup[];
+  categoryIdByName: Record<string, string>;
   onNavigate: (page: string) => void;
 }
 
-export function ImportWizard({ accounts, categoryGroups, onNavigate }: Props) {
+export function ImportWizard({ accounts, categoryGroups, categoryIdByName, onNavigate }: Props) {
+  void categoryIdByName; // will be used in Tasks 5 & 6
   const [step, setStep] = useState(0);
   const [uploadInfo, setUploadInfo] = useState<{ file: { name: string }; accountId: string } | null>(null);
   const [parsed, setParsed] = useState<ParsedRow[]>(SAMPLE_PARSED);
