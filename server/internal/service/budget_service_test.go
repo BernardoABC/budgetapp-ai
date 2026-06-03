@@ -1,0 +1,146 @@
+package service_test
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"budgetapp/internal/repository"
+	"budgetapp/internal/service"
+	"budgetapp/internal/testutil"
+)
+
+func newBudgetService(t *testing.T) (*service.BudgetService, interface{ Close() }) {
+	t.Helper()
+	pool := testutil.NewTestPool(t)
+	budgetRepo := repository.NewBudgetRepo(pool)
+	targetRepo := repository.NewTargetRepo(pool)
+	catRepo := repository.NewCategoryRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo)
+	return svc, pool
+}
+
+func TestBudgetService_GetMonth_Empty(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	budgetRepo := repository.NewBudgetRepo(pool)
+	targetRepo := repository.NewTargetRepo(pool)
+	catRepo := repository.NewCategoryRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo)
+
+	ctx := context.Background()
+	result, err := svc.GetMonth(ctx, "2026-04")
+	if err != nil {
+		t.Fatalf("GetMonth returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("GetMonth returned nil")
+	}
+	if result.Month != "2026-04" {
+		t.Errorf("expected Month=2026-04, got %q", result.Month)
+	}
+}
+
+func TestBudgetService_GetMonth_Rollover(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	budgetRepo := repository.NewBudgetRepo(pool)
+	targetRepo := repository.NewTargetRepo(pool)
+	catRepo := repository.NewCategoryRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo)
+
+	ctx := context.Background()
+
+	// Seed a category.
+	accID := testutil.SeedOnBudgetAccount(t, pool)
+	catID := testutil.SeedCategory(t, pool)
+
+	// March: assigned=100000, transaction=-60000 (activity).
+	if err := budgetRepo.UpsertAssigned(ctx, catID, "2026-03-01", 100000); err != nil {
+		t.Fatalf("UpsertAssigned march: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM budgets WHERE category_id = $1::uuid`, catID)
+	})
+
+	testutil.SeedTransaction(t, pool, accID, catID, "2026-03-15", -60000)
+
+	// April: assigned=50000.
+	if err := budgetRepo.UpsertAssigned(ctx, catID, "2026-04-01", 50000); err != nil {
+		t.Fatalf("UpsertAssigned april: %v", err)
+	}
+
+	result, err := svc.GetMonth(ctx, "2026-04")
+	if err != nil {
+		t.Fatalf("GetMonth: %v", err)
+	}
+
+	// Find the seeded category in the result.
+	var found *struct {
+		CarryIn  int64
+		Assigned int64
+		Available int64
+	}
+	for _, g := range result.CategoryGroups {
+		for _, c := range g.Categories {
+			if c.ID == catID {
+				found = &struct {
+					CarryIn  int64
+					Assigned int64
+					Available int64
+				}{c.CarryIn, c.Assigned, c.Available}
+				break
+			}
+		}
+	}
+
+	if found == nil {
+		t.Fatalf("category %s not found in GetMonth result", catID)
+	}
+
+	if found.CarryIn != 40000 {
+		t.Errorf("expected CarryIn=40000, got %d", found.CarryIn)
+	}
+	if found.Assigned != 50000 {
+		t.Errorf("expected Assigned=50000, got %d", found.Assigned)
+	}
+	if found.Available != 90000 {
+		t.Errorf("expected Available=90000, got %d", found.Available)
+	}
+}
+
+func TestBudgetService_AgeOfMoney(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	budgetRepo := repository.NewBudgetRepo(pool)
+	targetRepo := repository.NewTargetRepo(pool)
+	catRepo := repository.NewCategoryRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo)
+
+	ctx := context.Background()
+
+	// Seed an on-budget account.
+	accID := testutil.SeedOnBudgetAccount(t, pool)
+
+	// Set account balance to 900000 via direct SQL UPDATE.
+	_, err := pool.Exec(ctx, `UPDATE accounts SET balance = 900000 WHERE id = $1::uuid`, accID)
+	if err != nil {
+		t.Fatalf("update account balance: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(ctx, `UPDATE accounts SET balance = 0 WHERE id = $1::uuid`, accID)
+	})
+
+	// Add a transaction for today with amount -30000 (no category needed for AoM).
+	today := time.Now().UTC().Format("2006-01-02")
+	testutil.SeedTransactionNoCategory(t, pool, accID, today, -30000)
+
+	// GetMonth for current month.
+	currentMonth := fmt.Sprintf("%d-%02d", time.Now().UTC().Year(), time.Now().UTC().Month())
+	result, err := svc.GetMonth(ctx, currentMonth)
+	if err != nil {
+		t.Fatalf("GetMonth: %v", err)
+	}
+
+	if result.AgeOfMoney == nil {
+		t.Error("expected AgeOfMoney to be non-nil")
+	}
+}

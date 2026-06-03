@@ -20,6 +20,10 @@ func NewTestPool(t *testing.T) *pgxpool.Pool {
 	if err != nil {
 		t.Skipf("no test DB available: %v", err)
 	}
+	if err := pool.Ping(context.Background()); err != nil {
+		pool.Close()
+		t.Skipf("no test DB available: %v", err)
+	}
 	t.Cleanup(func() { pool.Close() })
 	return pool
 }
