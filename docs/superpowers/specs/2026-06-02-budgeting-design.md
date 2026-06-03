@@ -212,7 +212,7 @@ Request: `{ "assigned": 120000 }`
 Response: `{ "assigned": 120000 }`
 
 ### POST /api/budgets/:month/copy-previous
-Copies all assigned values from the previous calendar month into the current month. Skips categories that already have an explicit assignment this month.
+Copies all assigned values from the previous calendar month into the current month. Uses `INSERT ... ON CONFLICT DO NOTHING` — only categories with no `budgets` row for this month get copied; existing rows (including those with `assigned = 0`) are left untouched.
 
 Response: `204 No Content`
 
