@@ -273,7 +273,7 @@ interface SpendingApiMonth {
   groups: { name: string; total: number }[];
 }
 
-const groupKey = (g: string) => g.toLowerCase().split(' ')[0];
+export const groupKey = (g: string) => g.toLowerCase().split(' ')[0];
 
 export async function fetchSpendingReport(from: string, to: string): Promise<MonthlySpendingRow[]> {
   const data = await apiFetch<SpendingApiMonth[]>(

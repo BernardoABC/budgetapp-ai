@@ -80,8 +80,9 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
 
   const netWorth = 1780300 + 3320000;
 
+  const currentYM = new Date().toISOString().slice(0, 7);
   const thisMonthSpending = useMemo(() =>
-    transactions.filter(t => t.date.startsWith('2026-04') && t.outflow > 0).reduce((s, t) => s + t.outflow, 0),
+    transactions.filter(t => t.date.startsWith(currentYM) && t.outflow > 0).reduce((s, t) => s + t.outflow, 0),
     [transactions]);
 
   const readyToAssign = 145000;

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { T } from '../theme';
 import { categorize } from '../engine';
 import { AppData } from '../data';
@@ -279,8 +279,6 @@ const stHistory = {
   td:     { padding: '10px 18px', fontSize: 13, color: T.textMid, borderBottom: `1px solid ${T.borderSoft}`, transition: 'background 0.1s' },
   badge:  { display: 'inline-block', padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700, textTransform: 'capitalize' as const },
 };
-
-import React from 'react';
 
 const st = {
   stepRow:     { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0 },

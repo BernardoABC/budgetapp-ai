@@ -2,9 +2,7 @@ import { useState, useEffect } from 'react';
 import { T, GROUP_COLORS } from '../theme';
 import { AppData } from '../data';
 import type { MonthlySpendingRow } from '../data';
-import { fetchSpendingReport } from '../api';
-
-const groupKey = (g: string) => g.toLowerCase().split(' ')[0];
+import { fetchSpendingReport, groupKey } from '../api';
 
 function LineChart({ data }: { data: MonthlySpendingRow[] }) {
   const W = 660, H = 240, PL = 64, PR = 16, PT = 16, PB = 34;
@@ -16,6 +14,8 @@ function LineChart({ data }: { data: MonthlySpendingRow[] }) {
   const toY = (v: number) => PT + iH - (v / maxVal) * iH;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map(t => Math.round(maxVal * t / 50000) * 50000);
   const [hover, setHover] = useState<string | null>(null);
+
+  if (data.length < 2) return <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}><text x={W/2} y={H/2} textAnchor="middle" fontSize="13" fill={T.textDim} fontFamily={T.sans}>No data</text></svg>;
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
@@ -156,6 +156,9 @@ function AreaLineChart({ data, valueOf, color, fmt, suffix }: {
   const toX = (i: number) => PL + (i / (data.length - 1)) * iW;
   const toY = (v: number) => PT + iH - ((v - min) / (max - min)) * iH;
   const [hover, setHover] = useState<number | null>(null);
+
+  if (data.length < 2) return <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}><text x={W/2} y={H/2} textAnchor="middle" fontSize="13" fill={T.textDim} fontFamily={T.sans}>No data</text></svg>;
+
   const line = vals.map((v, i) => `${toX(i)},${toY(v)}`).join(' ');
   const area = `${PL},${toY(min)} ` + line + ` ${toX(data.length - 1)},${toY(min)}`;
   const ticks = [0, 0.5, 1].map(t => min + (max - min) * t);
