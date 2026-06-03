@@ -13,14 +13,12 @@ import (
 	"budgetapp/internal/repository"
 )
 
-// ImportService orchestrates the parse → categorize → preview and the confirm/commit
-// flows. Parsing and categorization live in the pure importer package; this service
-// adds the database.
 type ImportService struct {
 	pool        *pgxpool.Pool
 	accountRepo *repository.AccountRepo
 	ruleRepo    *repository.PayeeRuleRepo
 	importRepo  *repository.ImportRepo
+	rateSvc     *ExchangeRateService
 }
 
 func NewImportService(
@@ -28,12 +26,18 @@ func NewImportService(
 	accountRepo *repository.AccountRepo,
 	ruleRepo *repository.PayeeRuleRepo,
 	importRepo *repository.ImportRepo,
+	rateSvc *ExchangeRateService,
 ) *ImportService {
-	return &ImportService{pool: pool, accountRepo: accountRepo, ruleRepo: ruleRepo, importRepo: importRepo}
+	return &ImportService{
+		pool:        pool,
+		accountRepo: accountRepo,
+		ruleRepo:    ruleRepo,
+		importRepo:  importRepo,
+		rateSvc:     rateSvc,
+	}
 }
 
-// Preview parses the uploaded file, categorizes each row, flags duplicates and
-// transfers, and returns the preview. It performs no writes.
+// Preview is unchanged — no rate fetching at preview time.
 func (s *ImportService) Preview(ctx context.Context, accountID, filename string, file io.Reader) (model.PreviewResponse, error) {
 	account, err := s.accountRepo.Get(ctx, accountID)
 	if err != nil {
@@ -120,8 +124,6 @@ func (s *ImportService) Preview(ctx context.Context, accountID, filename string,
 	}, nil
 }
 
-// findDuplicate returns the id of an existing transaction that matches on account,
-// date, amount, and (normalized description or reference), or nil.
 func (s *ImportService) findDuplicate(ctx context.Context, accountID, date string, amount int64, norm, reference string) (*string, error) {
 	cands, err := s.importRepo.DupCandidates(ctx, accountID, date, amount)
 	if err != nil {
@@ -138,8 +140,7 @@ func (s *ImportService) findDuplicate(ctx context.Context, accountID, date strin
 	return nil, nil
 }
 
-// Confirm commits the reviewed transactions, the import record, account balance,
-// and learned payee rules in a single database transaction.
+// Confirm commits reviewed transactions, stamping exchange_rate on each one.
 func (s *ImportService) Confirm(ctx context.Context, req model.ConfirmReq) (model.ConfirmResponse, error) {
 	account, err := s.accountRepo.Get(ctx, req.AccountID)
 	if err != nil {
@@ -151,6 +152,16 @@ func (s *ImportService) Confirm(ctx context.Context, req model.ConfirmReq) (mode
 		if t.Include {
 			included = append(included, t)
 		}
+	}
+
+	// Collect unique dates and fetch/ensure their rates before opening the DB transaction.
+	dates := make([]string, 0, len(included))
+	for _, t := range included {
+		dates = append(dates, t.Date)
+	}
+	rateMap, err := s.rateSvc.EnsureRates(ctx, dates)
+	if err != nil {
+		return model.ConfirmResponse{}, fmt.Errorf("ensure rates: %w", err)
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -173,9 +184,15 @@ func (s *ImportService) Confirm(ctx context.Context, req model.ConfirmReq) (mode
 			payee = *t.PayeeOverride
 		}
 
+		var rate *float64
+		if r, ok := rateMap[t.Date]; ok {
+			r := r
+			rate = &r
+		}
+
 		if err := s.importRepo.InsertImportedTxn(
 			ctx, tx, req.AccountID, importID, t.Date, t.Amount,
-			account.Currency, payee, t.Reference, t.CategoryID, t.Memo,
+			account.Currency, payee, t.Reference, t.CategoryID, t.Memo, rate,
 		); err != nil {
 			return model.ConfirmResponse{}, err
 		}
