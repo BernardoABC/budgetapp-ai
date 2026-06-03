@@ -11,6 +11,7 @@ import { Budget } from './components/Budget';
 import { Accounts } from './components/Accounts';
 import { ImportWizard } from './components/Import';
 import { Reports } from './components/Reports';
+import { ToastProvider } from './components/Toast';
 
 
 const TWEAK_DEFAULTS = { accent: 'mint' as AccentKey, density: 'comfortable' };
@@ -141,6 +142,7 @@ function App() {
   const fmtBound = useCallback((amount: number) => fmt(amount, currency, exchangeRate), [currency, exchangeRate]);
 
   return (
+    <ToastProvider>
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: T.bg, backgroundImage: T.bgGrad, position: 'relative' }}>
       <Layout currentPage={page} currentAccountId={accountId} onNavigate={navigate} currency={currency} onCurrencyChange={handleCurrencyChange} accounts={accounts} exchangeRate={exchangeRate} exchangeRateDate={exchangeRateDate} fmt={fmtBound} onAddAccount={() => setShowAddAccount(true)}>
         <div key={page + accountId} style={{ animation: 'fadeUp 0.32s cubic-bezier(0.22, 1, 0.36, 1)' }}>
@@ -172,6 +174,7 @@ function App() {
         />
       )}
     </div>
+    </ToastProvider>
   );
 }
 
