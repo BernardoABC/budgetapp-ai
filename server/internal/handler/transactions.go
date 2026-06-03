@@ -177,3 +177,34 @@ func (h *TransactionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+type batchReq struct {
+	TransactionIDs []string `json:"transaction_ids"`
+	Action         string   `json:"action"`
+	CategoryID     string   `json:"category_id"`
+}
+
+func (h *TransactionHandler) Batch(w http.ResponseWriter, r *http.Request) {
+	var req batchReq
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+	if len(req.TransactionIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "transaction_ids is required")
+		return
+	}
+	switch req.Action {
+	case "categorize", "clear", "unclear", "delete":
+	default:
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown action")
+		return
+	}
+
+	affected, err := h.repo.BatchUpdate(r.Context(), req.TransactionIDs, req.Action, req.CategoryID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"affected": affected})
+}
