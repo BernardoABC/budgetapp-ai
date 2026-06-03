@@ -1,0 +1,38 @@
+<h2>Where should Payee Rules management live?</h2>
+<p class="subtitle">Payee rules auto-categorize transactions during import. Where should you manage them?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Tab inside Import page</h3>
+      <p>Import page gets two tabs: "Import" and "Rules". Rules management is co-located with the feature it powers.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Contextually logical</li><li>No new nav item</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Rules buried inside Import flow</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Standalone "Rules" page in sidebar nav</h3>
+      <p>A dedicated nav entry between Import and Reports. Full page for rule management.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Easy to find</li><li>Room to grow</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Adds a nav item for a niche feature</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Modal / drawer from Import page</h3>
+      <p>A "Manage Rules" button on the Import page opens a full-screen modal with the rules table.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>No nav change needed</li><li>Accessible without leaving Import</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Slightly hidden</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
