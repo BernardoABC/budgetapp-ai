@@ -6,6 +6,7 @@ import type { CategoryGroup, Target } from '../data';
 import type { CatState, MonthState } from '../engine';
 import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate } from '../api';
 import type { ExchangeRate } from '../api';
+import { useToast } from './Toast';
 
 const FALLBACK_COLORS = ['#5b9dff', '#3ddc97', '#f6c45a', '#c084fc', '#ff7a85', '#38d6e8', '#fb923c', '#a78bfa'];
 
@@ -223,6 +224,8 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   const serverAssignedTotalRef = useRef<number>(0);
   const [aom, setAom] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+  const toast = useToast();
   const [fetchCounter, setFetchCounter] = useState(0);
   const [monthRate, setMonthRate] = useState<ExchangeRate | null>(null);
 
@@ -266,8 +269,9 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       setAom(data.age_of_money);
       setLocalBudget({ [currentDisplayMonth]: newBudgetMonth });
       setTargets(newTargets);
+      setBudgetError(null);
     }).catch(err => {
-      console.error('fetchBudget failed', err);
+      setBudgetError(err.message);
     }).finally(() => setLoading(false));
   }, [currentYM, categoryIdByName, fetchCounter]);
 
@@ -318,7 +322,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     }));
     const catId = categoryIdByName[cat];
     if (catId) {
-      apiSetAssigned(currentYM, catId, value).catch(err => console.error('setAssigned failed', err));
+      apiSetAssigned(currentYM, catId, value).catch(err => toast.error(err.message));
     }
   }, [currentDisplayMonth, currentYM, categoryIdByName]);
 
@@ -334,7 +338,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     if (strategy === 'lastMonth') {
       copyPreviousBudget(currentYM)
         .then(() => setFetchCounter(c => c + 1))
-        .catch(err => console.error('copyPrevious failed', err));
+        .catch(err => toast.error(err.message));
       return;
     }
     mergeAssigned(engineQuickAssign(strategy, dataT, state, null));
@@ -351,7 +355,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     const toId   = categoryIdByName[toCat];
     if (fromId && toId) {
       moveBudgetMoney(currentYM, fromId, toId, amount).catch(err => {
-        console.error('moveBudgetMoney failed, reverting', err);
+        toast.error(err.message);
         setLocalBudget(prev => {
           const m = { ...(prev[currentDisplayMonth] ?? {}) };
           m[fromCat] = { ...(m[fromCat] ?? {}), assigned: ((m[fromCat] ?? {}).assigned ?? 0) + amount };
@@ -376,7 +380,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       const sortOrder = grp ? grp.categories.indexOf(oldName) : 0;
       updateCategory(catId, { name: newName, hidden: false, sort_order: sortOrder })
         .then(() => onCategoriesChanged())
-        .catch(err => console.error('rename category failed:', err));
+        .catch(err => toast.error(err.message));
     }
   };
   const reorderCat = (gid: string, idx: number, dir: number) => setGroups(gs => gs.map(g => {
@@ -394,7 +398,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       deleteCategory(catId)
         .then(() => onCategoriesChanged())
         .catch(err => {
-          console.error('delete category failed:', err);
+          toast.error(err.message);
           onCategoriesChanged();
         });
     }
@@ -404,7 +408,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     createCategory({ group_id: gid, name, sort_order: 0 })
       .then(() => onCategoriesChanged())
       .catch(err => {
-        console.error('create category failed:', err);
+        toast.error(err.message);
         setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
       });
   };
@@ -415,7 +419,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     deleteCategoryGroup(gid)
       .then(() => onCategoriesChanged())
       .catch(err => {
-        console.error('delete group failed:', err);
+        toast.error(err.message);
         onCategoriesChanged();
       });
   };
@@ -425,14 +429,14 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         setGroups(gs => [...gs, { id: g.id, name: g.name, categories: [] }]);
         onCategoriesChanged();
       })
-      .catch(err => console.error('create group failed:', err));
+      .catch(err => toast.error(err.message));
   };
   const setTarget = (cat: string, target: Target | null) => {
     setTargets(t => { const nt = { ...t }; if (target) nt[cat] = target; else delete nt[cat]; return nt; });
     const catId = categoryIdByName[cat];
     if (!catId) return;
     if (target === null) {
-      deleteCategoryTarget(catId).catch(err => console.error('deleteTarget failed', err));
+      deleteCategoryTarget(catId).catch(err => toast.error(err.message));
     } else {
       let deadline: string | null = null;
       if (target.type === 'savings' && target.by) {
@@ -442,7 +446,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         }
       }
       upsertCategoryTarget(catId, { type: target.type, amount: target.amount, deadline })
-        .catch(err => console.error('upsertTarget failed', err));
+        .catch(err => toast.error(err.message));
     }
   };
 
@@ -455,6 +459,12 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
 
   return (
     <div>
+      {budgetError && (
+        <div style={{ margin: '12px 16px 0', padding: '12px 16px', background: 'rgba(255,80,80,0.08)', border: `1px solid rgba(255,80,80,0.2)`, borderRadius: 8, color: T.neg, fontSize: 13, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ flex: 1 }}>Failed to load budget: {budgetError}</span>
+          <button onClick={() => setFetchCounter(c => c + 1)} style={{ background: 'none', border: 'none', color: T.neg, cursor: 'pointer', fontWeight: 700, fontSize: 13, textDecoration: 'underline' }}>Retry</button>
+        </div>
+      )}
       <div style={st.topBar}>
         <div style={st.monthNav}>
           <button onClick={() => setCurrentYM(ym => prevYM(ym))} style={st.monthBtn}>‹</button>
