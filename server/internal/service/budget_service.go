@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"sort"
 	"time"
 
 	"budgetapp/internal/model"
@@ -112,12 +110,12 @@ func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.Budg
 	// Get balance and outflow for RTA and AoM.
 	balance, err := s.budgetRepo.GetOnBudgetBalance(ctx)
 	if err != nil {
-		slog.Warn("could not get on-budget balance", "err", err)
+		return nil, fmt.Errorf("get on-budget balance: %w", err)
 	}
 
 	outflow30d, err := s.budgetRepo.GetOutflow30Days(ctx)
 	if err != nil {
-		slog.Warn("could not get outflow 30 days", "err", err)
+		return nil, fmt.Errorf("get outflow 30 days: %w", err)
 	}
 
 	// Build response.
@@ -287,8 +285,11 @@ func prevMonthStr(ym string) string {
 	return t.Format("2006-01")
 }
 
-// monthRange returns a sorted slice of "YYYY-MM-01" strings from start to end inclusive.
-// start and end are "YYYY-MM-01" strings.
+// monthRange returns a slice of "YYYY-MM-01" strings from start to end inclusive.
+// Both start and end must be "YYYY-MM-01" strings. The result is in ascending order.
+// The target month is included so the rollover loop can capture carryInForTarget in
+// a single pass — carry[catID] at the start of the target iteration is the accumulated
+// carry from all prior months (zero-initialised when start == end, i.e. no history).
 func monthRange(start, end string) []string {
 	var months []string
 	cur := start
@@ -299,7 +300,6 @@ func monthRange(start, end string) []string {
 		t := time.Date(year, time.Month(month)+1, 1, 0, 0, 0, 0, time.UTC)
 		cur = t.Format("2006-01-02")
 	}
-	sort.Strings(months)
 	return months
 }
 
@@ -312,9 +312,3 @@ func monthsUntil(from, to string) int {
 	return (ty-fy)*12 + (tm - fm)
 }
 
-func max(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
-}

@@ -11,16 +11,6 @@ import (
 	"budgetapp/internal/testutil"
 )
 
-func newBudgetService(t *testing.T) (*service.BudgetService, interface{ Close() }) {
-	t.Helper()
-	pool := testutil.NewTestPool(t)
-	budgetRepo := repository.NewBudgetRepo(pool)
-	targetRepo := repository.NewTargetRepo(pool)
-	catRepo := repository.NewCategoryRepo(pool)
-	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo)
-	return svc, pool
-}
-
 func TestBudgetService_GetMonth_Empty(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	budgetRepo := repository.NewBudgetRepo(pool)
@@ -76,18 +66,20 @@ func TestBudgetService_GetMonth_Rollover(t *testing.T) {
 
 	// Find the seeded category in the result.
 	var found *struct {
-		CarryIn  int64
-		Assigned int64
+		CarryIn   int64
+		Assigned  int64
+		Activity  int64
 		Available int64
 	}
 	for _, g := range result.CategoryGroups {
 		for _, c := range g.Categories {
 			if c.ID == catID {
 				found = &struct {
-					CarryIn  int64
-					Assigned int64
+					CarryIn   int64
+					Assigned  int64
+					Activity  int64
 					Available int64
-				}{c.CarryIn, c.Assigned, c.Available}
+				}{c.CarryIn, c.Assigned, c.Activity, c.Available}
 				break
 			}
 		}
@@ -97,12 +89,18 @@ func TestBudgetService_GetMonth_Rollover(t *testing.T) {
 		t.Fatalf("category %s not found in GetMonth result", catID)
 	}
 
+	// March: 100000 assigned + (-60000) activity = 40000 available → carries into April
 	if found.CarryIn != 40000 {
 		t.Errorf("expected CarryIn=40000, got %d", found.CarryIn)
 	}
 	if found.Assigned != 50000 {
 		t.Errorf("expected Assigned=50000, got %d", found.Assigned)
 	}
+	// April has no transactions → Activity=0
+	if found.Activity != 0 {
+		t.Errorf("expected Activity=0, got %d", found.Activity)
+	}
+	// Available = 40000 carry + 50000 assigned + 0 activity
 	if found.Available != 90000 {
 		t.Errorf("expected Available=90000, got %d", found.Available)
 	}
@@ -142,5 +140,10 @@ func TestBudgetService_AgeOfMoney(t *testing.T) {
 
 	if result.AgeOfMoney == nil {
 		t.Error("expected AgeOfMoney to be non-nil")
+	} else {
+		// AoM = 900000 * 30 / 30000 = 900 days
+		if *result.AgeOfMoney != 900 {
+			t.Errorf("expected AgeOfMoney=900, got %d", *result.AgeOfMoney)
+		}
 	}
 }
