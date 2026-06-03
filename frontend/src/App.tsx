@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { T, ACCENTS, applyAccent } from './theme';
 import type { AccentKey } from './theme';
 import { AppData } from './data';
-import { fetchAccounts, fetchCategoryGroupsRaw } from './api';
+import { fetchAccounts, fetchCategoryGroupsRaw, fetchCurrentRate } from './api';
 import { AccountFormModal } from './components/AccountFormModal';
 import type { Account, CategoryGroup } from './data';
 import { Layout } from './components/Layout';
@@ -13,7 +13,7 @@ import { ImportWizard } from './components/Import';
 import { Reports } from './components/Reports';
 
 
-const TWEAK_DEFAULTS = { accent: 'mint' as AccentKey, density: 'comfortable', defaultCurrency: 'USD' };
+const TWEAK_DEFAULTS = { accent: 'mint' as AccentKey, density: 'comfortable' };
 
 applyAccent(TWEAK_DEFAULTS.accent);
 
@@ -26,7 +26,7 @@ function fmt(amount: number, currency: string, rate: number): string {
   return (amount < 0 ? '-' : '') + '₡' + abs.toLocaleString('en-US');
 }
 
-interface Tweaks { accent: AccentKey; density: string; defaultCurrency: string; }
+interface Tweaks { accent: AccentKey; density: string; }
 
 function TweaksPanel({ tweaks, updateTweak, onClose }: { tweaks: Tweaks; updateTweak: (k: keyof Tweaks, v: string) => void; onClose: () => void }) {
   return (
@@ -42,16 +42,6 @@ function TweaksPanel({ tweaks, updateTweak, onClose }: { tweaks: Tweaks; updateT
             {(Object.entries(ACCENTS) as [AccentKey, typeof ACCENTS[AccentKey]][]).map(([k, a]) => (
               <button key={k} onClick={() => updateTweak('accent', k)} title={k}
                 style={{ width: 26, height: 26, borderRadius: '50%', background: a.c, border: 'none', cursor: 'pointer', boxShadow: tweaks.accent === k ? `0 0 0 2px ${T.surface2}, 0 0 0 4px ${a.c}, 0 0 12px ${a.glow}` : 'none', transition: 'box-shadow 0.15s' }} />
-            ))}
-          </div>
-        </div>
-        <div>
-          <div style={twk.label}>Default Currency</div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {['CRC', 'USD'].map(c => (
-              <button key={c} onClick={() => updateTweak('defaultCurrency', c)} style={{ ...twk.pill, ...(tweaks.defaultCurrency === c ? twk.pillOn : {}) }}>
-                {c === 'CRC' ? '₡ CRC' : '$ USD'}
-              </button>
             ))}
           </div>
         </div>
@@ -72,7 +62,7 @@ function TweaksPanel({ tweaks, updateTweak, onClose }: { tweaks: Tweaks; updateT
 
 function App() {
   const saved = (() => { try { return JSON.parse(localStorage.getItem('budgetapp-nav') ?? '{}'); } catch { return {}; } })();
-  const [currency, setCurrency] = useState<string>(saved.currency ?? TWEAK_DEFAULTS.defaultCurrency);
+  const [currency, setCurrency] = useState<string>(saved.currency ?? 'USD');
   const [page, setPage] = useState<string>(saved.page ?? 'dashboard');
   // Live data — fetched from API
   const [accounts, setAccounts] = useState<{ budget: Account[]; tracking: Account[] }>({
@@ -82,6 +72,8 @@ function App() {
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>(AppData.categoryGroups);
   const [categoryIdByName, setCategoryIdByName] = useState<Record<string, string>>({});
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [exchangeRate, setExchangeRate] = useState<number>(AppData.exchangeRate);
+  const [exchangeRateDate, setExchangeRateDate] = useState<string>(AppData.exchangeRateDate);
 
   const reloadCategories = useCallback(() => {
     fetchCategoryGroupsRaw()
@@ -105,9 +97,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    Promise.all([fetchAccounts(), fetchCategoryGroupsRaw()])
-      .then(([accs, rawGroups]) => {
+    Promise.all([fetchAccounts(), fetchCategoryGroupsRaw(), fetchCurrentRate()])
+      .then(([accs, rawGroups, rate]) => {
         setAccounts(accs);
+        setExchangeRate(rate.usd_to_crc);
+        setExchangeRateDate(rate.date);
         const idMap: Record<string, string> = {};
         rawGroups.forEach(g => g.categories.forEach(c => { idMap[c.name] = c.id; }));
         setCategoryIdByName(idMap);
@@ -121,7 +115,7 @@ function App() {
   }, []);
 
   // Still static
-  const { budget, monthlySpending, exchangeRate, exchangeRateDate } = AppData;
+  const { budget, monthlySpending } = AppData;
   const transactions = AppData.transactions;
 
   const [accountId, setAccountId] = useState<string>(saved.accountId ?? AppData.accounts.budget[0].id);
@@ -142,7 +136,6 @@ function App() {
   const updateTweak = (key: keyof Tweaks, val: string) => {
     const next = { ...tweaks, [key]: val };
     setTweaks(next);
-    if (key === 'defaultCurrency') handleCurrencyChange(val);
     if (key === 'accent') applyAccent(val as AccentKey);
   };
 
