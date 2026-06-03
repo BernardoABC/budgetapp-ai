@@ -1,21 +1,34 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { T, GROUP_COLORS } from '../theme';
 import { compute, quickAssign as engineQuickAssign, targetLabel } from '../engine';
-import { AppData } from '../data';
 import { MoveMoneyModal, CategoryInspector } from './BudgetModals';
 import type { CategoryGroup, Target } from '../data';
 import type { CatState, MonthState } from '../engine';
-import { createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory } from '../api';
+import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory } from '../api';
 
-const MONTHS = AppData.months;
 const FALLBACK_COLORS = ['#5b9dff', '#3ddc97', '#f6c45a', '#c084fc', '#ff7a85', '#38d6e8', '#fb923c', '#a78bfa'];
+
+function toDisplayMonth(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+function prevYM(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+function nextYM(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+function futureMonthDisplays(fromYM: string, count = 24): string[] {
+  const result: string[] = [];
+  let cur = fromYM;
+  for (let i = 0; i < count; i++) { result.push(toDisplayMonth(cur)); cur = nextYM(cur); }
+  return result;
+}
 
 function colorFor(groupName: string, idx: number): string {
   return GROUP_COLORS[groupName] ?? FALLBACK_COLORS[idx % FALLBACK_COLORS.length];
-}
-function monthAbbr(m: string): string {
-  const [mo, yr] = m.split(' ');
-  return mo.slice(0, 3) + ' ' + yr.slice(2);
 }
 
 function InlineRename({ value, onCommit, style }: { value: string; onCommit: (v: string) => void; style?: React.CSSProperties }) {
@@ -192,58 +205,143 @@ function GroupBlock(props: GroupBlockProps) {
 
 interface Props {
   categoryGroups: CategoryGroup[];
-  budgetData: Record<string, Record<string, { assigned: number; activity: number }>>;
   fmt: (n: number) => string;
   density: string;
   categoryIdByName: Record<string, string>;
   onCategoriesChanged: () => void;
 }
 
-export function Budget({ categoryGroups, budgetData, fmt, density, categoryIdByName, onCategoriesChanged }: Props) {
-  const [monthIdx, setMonthIdx] = useState(1);
+export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCategoriesChanged }: Props) {
+  const [currentYM, setCurrentYM] = useState(() => new Date().toISOString().slice(0, 7));
+  const currentDisplayMonth = toDisplayMonth(currentYM);
+  const [localBudget, setLocalBudget] = useState<Record<string, Record<string, { assigned: number; activity: number }>>>({});
+  const [targets, setTargets] = useState<Record<string, Target>>({});
+  const carryInRef = useRef<Record<string, number>>({});
+  const serverRtaRef = useRef<number>(0);
+  const serverAssignedTotalRef = useRef<number>(0);
+  const [aom, setAom] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchCounter, setFetchCounter] = useState(0);
+
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [localBudget, setLocalBudget] = useState(budgetData);
   const [groups, setGroups] = useState(() => categoryGroups.map(g => ({ ...g, categories: [...g.categories] })));
-  const [targets, setTargets] = useState<Record<string, Target>>(() => ({ ...AppData.targets }));
   const [hidden, setHidden] = useState(new Set<string>());
   const [showHidden, setShowHidden] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [moveCat, setMoveCat] = useState<string | null>(null);
   const [inspectorCat, setInspectorCat] = useState<string | null>(null);
 
-  const month = MONTHS[monthIdx];
+  useEffect(() => {
+    setLoading(true);
+    const nameById: Record<string, string> = Object.fromEntries(
+      Object.entries(categoryIdByName).map(([name, id]) => [id, name])
+    );
+    fetchBudget(currentYM).then(data => {
+      const newCarryIn: Record<string, number> = {};
+      const newBudgetMonth: Record<string, { assigned: number; activity: number }> = {};
+      const newTargets: Record<string, Target> = {};
+
+      for (const g of data.category_groups) {
+        for (const c of g.categories) {
+          const name = nameById[c.id] ?? c.name;
+          newCarryIn[name] = c.carry_in;
+          newBudgetMonth[name] = { assigned: c.assigned, activity: c.activity };
+          if (c.target) {
+            let by: string | undefined;
+            if (c.target.deadline) {
+              const [y, m] = c.target.deadline.split('-').map(Number);
+              by = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            }
+            newTargets[name] = { type: c.target.type as Target['type'], amount: c.target.amount, ...(by ? { by } : {}) };
+          }
+        }
+      }
+
+      carryInRef.current = newCarryIn;
+      serverRtaRef.current = data.ready_to_assign;
+      serverAssignedTotalRef.current = Object.values(newBudgetMonth).reduce((s, e) => s + e.assigned, 0);
+      setAom(data.age_of_money);
+      setLocalBudget({ [currentDisplayMonth]: newBudgetMonth });
+      setTargets(newTargets);
+    }).catch(err => {
+      console.error('fetchBudget failed', err);
+    }).finally(() => setLoading(false));
+  }, [currentYM, categoryIdByName, fetchCounter]);
+
+  const month = currentDisplayMonth;
   const rowPad = density === 'compact' ? '6px' : '11px';
 
-  const dataT = useMemo(() => ({ ...AppData, targets, categoryGroups: groups }), [targets, groups]);
-  const state = useMemo(() => compute(dataT, localBudget, month, groups), [dataT, localBudget, month, groups]);
-  const prevState = useMemo<MonthState | null>(() => monthIdx > 0 ? compute(dataT, localBudget, MONTHS[monthIdx - 1], groups) : null, [dataT, localBudget, monthIdx, groups]);
+  const dataT = useMemo(() => ({
+    months: [currentDisplayMonth],
+    budget: {},
+    openingCarryover: carryInRef.current,
+    targets,
+    categoryGroups: groups,
+  }), [currentDisplayMonth, targets, groups]);
 
-  const rta = state.rta;
-  const aom = (AppData.ageOfMoney.find(a => a.month === monthAbbr(month)) ?? AppData.ageOfMoney[AppData.ageOfMoney.length - 1]).days;
+  const state = useMemo(
+    () => compute(dataT, localBudget, currentDisplayMonth, groups),
+    [dataT, localBudget, currentDisplayMonth, groups]
+  );
+
+  const rta = useMemo(() => {
+    const localTotal = Object.values(state.cats).reduce((s, c) => s + c.assigned, 0);
+    return serverRtaRef.current - (localTotal - serverAssignedTotalRef.current);
+  }, [state.cats]);
 
   const handleSaveAssigned = useCallback((cat: string, value: number) => {
-    setLocalBudget(prev => ({ ...prev, [month]: { ...prev[month], [cat]: { ...(prev[month]?.[cat] ?? {}), assigned: value } } }));
-  }, [month]);
+    setLocalBudget(prev => ({
+      ...prev,
+      [currentDisplayMonth]: {
+        ...prev[currentDisplayMonth],
+        [cat]: { ...(prev[currentDisplayMonth]?.[cat] ?? {}), assigned: value },
+      },
+    }));
+    const catId = categoryIdByName[cat];
+    if (catId) {
+      apiSetAssigned(currentYM, catId, value).catch(err => console.error('setAssigned failed', err));
+    }
+  }, [currentDisplayMonth, currentYM, categoryIdByName]);
 
   const mergeAssigned = (updates: Record<string, number>) => {
     setLocalBudget(prev => {
-      const m = { ...(prev[month] ?? {}) };
+      const m = { ...(prev[currentDisplayMonth] ?? {}) };
       Object.entries(updates).forEach(([cat, val]) => { m[cat] = { ...(m[cat] ?? {}), assigned: val }; });
-      return { ...prev, [month]: m };
+      return { ...prev, [currentDisplayMonth]: m };
     });
   };
 
-  const doQuickAssign = (strategy: 'underfunded' | 'reset' | 'lastMonth') =>
-    mergeAssigned(engineQuickAssign(strategy, dataT, state, prevState));
+  const doQuickAssign = (strategy: 'underfunded' | 'reset' | 'lastMonth') => {
+    if (strategy === 'lastMonth') {
+      copyPreviousBudget(currentYM)
+        .then(() => setFetchCounter(c => c + 1))
+        .catch(err => console.error('copyPrevious failed', err));
+      return;
+    }
+    mergeAssigned(engineQuickAssign(strategy, dataT, state, null));
+  };
 
   const handleMove = useCallback((fromCat: string, toCat: string, amount: number) => {
     setLocalBudget(prev => {
-      const m = { ...(prev[month] ?? {}) };
+      const m = { ...(prev[currentDisplayMonth] ?? {}) };
       m[fromCat] = { ...(m[fromCat] ?? {}), assigned: ((m[fromCat] ?? {}).assigned ?? 0) - amount };
-      m[toCat] = { ...(m[toCat] ?? {}), assigned: ((m[toCat] ?? {}).assigned ?? 0) + amount };
-      return { ...prev, [month]: m };
+      m[toCat]   = { ...(m[toCat]   ?? {}), assigned: ((m[toCat]   ?? {}).assigned ?? 0) + amount };
+      return { ...prev, [currentDisplayMonth]: m };
     });
-  }, [month]);
+    const fromId = categoryIdByName[fromCat];
+    const toId   = categoryIdByName[toCat];
+    if (fromId && toId) {
+      moveBudgetMoney(currentYM, fromId, toId, amount).catch(err => {
+        console.error('moveBudgetMoney failed, reverting', err);
+        setLocalBudget(prev => {
+          const m = { ...(prev[currentDisplayMonth] ?? {}) };
+          m[fromCat] = { ...(m[fromCat] ?? {}), assigned: ((m[fromCat] ?? {}).assigned ?? 0) + amount };
+          m[toCat]   = { ...(m[toCat]   ?? {}), assigned: ((m[toCat]   ?? {}).assigned ?? 0) - amount };
+          return { ...prev, [currentDisplayMonth]: m };
+        });
+      });
+    }
+  }, [currentDisplayMonth, currentYM, categoryIdByName]);
 
   const toggleGroup = (gid: string) => setCollapsed(c => ({ ...c, [gid]: !c[gid] }));
 
@@ -310,7 +408,24 @@ export function Budget({ categoryGroups, budgetData, fmt, density, categoryIdByN
       })
       .catch(err => console.error('create group failed:', err));
   };
-  const setTarget = (cat: string, target: Target | null) => setTargets(t => { const nt = { ...t }; if (target) nt[cat] = target; else delete nt[cat]; return nt; });
+  const setTarget = (cat: string, target: Target | null) => {
+    setTargets(t => { const nt = { ...t }; if (target) nt[cat] = target; else delete nt[cat]; return nt; });
+    const catId = categoryIdByName[cat];
+    if (!catId) return;
+    if (target === null) {
+      deleteCategoryTarget(catId).catch(err => console.error('deleteTarget failed', err));
+    } else {
+      let deadline: string | null = null;
+      if (target.type === 'savings' && target.by) {
+        const d = new Date(target.by + ' 1');
+        if (!isNaN(d.getTime())) {
+          deadline = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+        }
+      }
+      upsertCategoryTarget(catId, { type: target.type, amount: target.amount, deadline })
+        .catch(err => console.error('upsertTarget failed', err));
+    }
+  };
 
   const allCats = groups.flatMap((g, gi) => g.categories.map(cat => ({
     color: colorFor(g.name, gi),
@@ -321,9 +436,9 @@ export function Budget({ categoryGroups, budgetData, fmt, density, categoryIdByN
     <div>
       <div style={st.topBar}>
         <div style={st.monthNav}>
-          <button onClick={() => setMonthIdx(i => Math.max(0, i - 1))} disabled={monthIdx === 0} style={{ ...st.monthBtn, opacity: monthIdx === 0 ? 0.3 : 1 }}>‹</button>
+          <button onClick={() => setCurrentYM(ym => prevYM(ym))} style={st.monthBtn}>‹</button>
           <div style={st.monthCenter}><span style={st.curMonth}>{month}</span></div>
-          <button onClick={() => setMonthIdx(i => Math.min(MONTHS.length - 1, i + 1))} disabled={monthIdx === MONTHS.length - 1} style={{ ...st.monthBtn, opacity: monthIdx === MONTHS.length - 1 ? 0.3 : 1 }}>›</button>
+          <button onClick={() => setCurrentYM(ym => nextYM(ym))} style={st.monthBtn}>›</button>
         </div>
 
         <div style={st.rtaCard}>
@@ -339,7 +454,9 @@ export function Budget({ categoryGroups, budgetData, fmt, density, categoryIdByN
           <div style={st.rtaDivider} />
           <div>
             <div style={st.rtaLabel}>Age of Money</div>
-            <div style={st.rtaSub}>{aom} <span style={{ fontSize: 11, color: T.textDim }}>days</span></div>
+            <div style={st.rtaSub}>
+              {aom != null ? <>{aom} <span style={{ fontSize: 11, color: T.textDim }}>days</span></> : <span style={{ color: T.textDim }}>—</span>}
+            </div>
           </div>
         </div>
 
@@ -348,44 +465,48 @@ export function Budget({ categoryGroups, budgetData, fmt, density, categoryIdByN
             style={{ ...st.primaryBtn, opacity: state.totalUnderfunded > 0 ? 1 : 0.45 }}>
             Auto-assign {state.totalUnderfunded > 0 ? fmt(state.totalUnderfunded) : ''}
           </button>
-          <button onClick={() => doQuickAssign('lastMonth')} disabled={monthIdx === 0} style={{ ...st.actionBtn, opacity: monthIdx === 0 ? 0.45 : 1 }}>Last month</button>
+          <button onClick={() => doQuickAssign('lastMonth')} style={st.actionBtn}>Last month</button>
           <button onClick={() => doQuickAssign('reset')} style={{ ...st.actionBtn, color: T.neg, borderColor: T.negDim }}>Reset</button>
           <button onClick={() => setEditMode(e => !e)} style={{ ...st.actionBtn, ...(editMode ? st.actionOn : {}) }}>{editMode ? 'Done' : 'Edit'}</button>
         </div>
       </div>
 
-      <div style={{ padding: '20px 28px', maxWidth: 1180, margin: '0 auto' }}>
-        {editMode && (
-          <div style={st.editBar}>
-            <span style={{ fontSize: 12.5, color: T.textMid, fontWeight: 600 }}>Editing categories — rename, reorder, hide or delete.</span>
-            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-              <label style={st.checkLabel}><input type="checkbox" checked={showHidden} onChange={e => setShowHidden(e.target.checked)} style={{ accentColor: 'var(--accent)' }} /> Show hidden</label>
-              <button onClick={addGroup} style={st.miniBtnOn}>+ Add group</button>
+      {loading ? (
+        <div style={{ padding: 40, textAlign: 'center' as const, color: T.textDim }}>Loading budget…</div>
+      ) : (
+        <div style={{ padding: '20px 28px', maxWidth: 1180, margin: '0 auto' }}>
+          {editMode && (
+            <div style={st.editBar}>
+              <span style={{ fontSize: 12.5, color: T.textMid, fontWeight: 600 }}>Editing categories — rename, reorder, hide or delete.</span>
+              <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+                <label style={st.checkLabel}><input type="checkbox" checked={showHidden} onChange={e => setShowHidden(e.target.checked)} style={{ accentColor: 'var(--accent)' }} /> Show hidden</label>
+                <button onClick={addGroup} style={st.miniBtnOn}>+ Add group</button>
+              </div>
             </div>
+          )}
+          <div style={st.tableWrap}>
+            <table style={st.table}>
+              <thead>
+                <tr>
+                  <th style={{ ...st.th, textAlign: 'left', width: '46%' }}>Category</th>
+                  <th style={{ ...st.th, textAlign: 'right' }}>Assigned</th>
+                  <th style={{ ...st.th, textAlign: 'right' }}>Activity</th>
+                  <th style={{ ...st.th, textAlign: 'right' }}>Available</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((g, gi) => (
+                  <GroupBlock key={g.id} group={g} gidx={gi} color={colorFor(g.name, gi)} catState={state.cats}
+                    collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmt} onSaveAssigned={handleSaveAssigned}
+                    onOpenMove={setMoveCat} onOpenInspector={setInspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
+                    onRenameCat={renameCat} onMoveCat={reorderCat} onHideCat={hideCat} onDeleteCat={deleteCat} onAddCat={addCat}
+                    onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} />
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
-        <div style={st.tableWrap}>
-          <table style={st.table}>
-            <thead>
-              <tr>
-                <th style={{ ...st.th, textAlign: 'left', width: '46%' }}>Category</th>
-                <th style={{ ...st.th, textAlign: 'right' }}>Assigned</th>
-                <th style={{ ...st.th, textAlign: 'right' }}>Activity</th>
-                <th style={{ ...st.th, textAlign: 'right' }}>Available</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groups.map((g, gi) => (
-                <GroupBlock key={g.id} group={g} gidx={gi} color={colorFor(g.name, gi)} catState={state.cats}
-                  collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmt} onSaveAssigned={handleSaveAssigned}
-                  onOpenMove={setMoveCat} onOpenInspector={setInspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
-                  onRenameCat={renameCat} onMoveCat={reorderCat} onHideCat={hideCat} onDeleteCat={deleteCat} onAddCat={addCat}
-                  onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} />
-              ))}
-            </tbody>
-          </table>
         </div>
-      </div>
+      )}
 
       {moveCat && (
         <MoveMoneyModal cat={moveCat} cats={allCats} fmt={fmt} onClose={() => setMoveCat(null)} onMove={handleMove} />
@@ -395,7 +516,7 @@ export function Budget({ categoryGroups, budgetData, fmt, density, categoryIdByN
         const grpIdx = groups.findIndex(g => g.categories.includes(inspectorCat));
         return (
           <CategoryInspector cat={inspectorCat} color={colorFor(grpName, grpIdx)} c={state.cats[inspectorCat]}
-            months={MONTHS} monthIdx={monthIdx} fmt={fmt} onClose={() => setInspectorCat(null)}
+            months={futureMonthDisplays(currentYM)} monthIdx={0} fmt={fmt} onClose={() => setInspectorCat(null)}
             onSetTarget={setTarget} onMoveMoney={cat => setMoveCat(cat)} onHide={hideCat}
             onDelete={cat => { const g = groups.find(x => x.categories.includes(cat)); if (g) deleteCat(g.id, cat); }} />
         );
