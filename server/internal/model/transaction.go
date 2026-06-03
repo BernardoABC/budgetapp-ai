@@ -11,6 +11,7 @@ type Transaction struct {
 	Payee        string
 	Memo         string
 	Cleared      bool
+	ExchangeRate *float64 // nil if not stamped
 }
 
 type CreateTransactionReq struct {
