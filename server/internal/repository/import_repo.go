@@ -59,17 +59,17 @@ func (r *ImportRepo) CreateImport(ctx context.Context, tx pgx.Tx, accountID, fil
 }
 
 // InsertImportedTxn inserts one imported transaction within the confirm transaction.
-// categoryID is nil for uncategorized; exchange_rate is left NULL (deferred).
+// exchangeRate is nil when no rate could be determined.
 func (r *ImportRepo) InsertImportedTxn(
 	ctx context.Context, tx pgx.Tx,
 	accountID, importID, date string, amount int64, currency, payee, reference string,
-	categoryID *string, memo *string,
+	categoryID *string, memo *string, exchangeRate *float64,
 ) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO transactions
-			(account_id, category_id, date, amount, currency, payee, check_number, memo, import_id, cleared)
-		VALUES ($1, $2, $3, $4, $5, NULLIF($6,''), NULLIF($7,''), $8, $9, false)
-	`, accountID, categoryID, date, amount, currency, payee, reference, memo, importID)
+			(account_id, category_id, date, amount, currency, payee, check_number, memo, import_id, cleared, exchange_rate)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6,''), NULLIF($7,''), $8, $9, false, $10)
+	`, accountID, categoryID, date, amount, currency, payee, reference, memo, importID, exchangeRate)
 	if err != nil {
 		return fmt.Errorf("insert imported txn: %w", err)
 	}
