@@ -184,6 +184,10 @@ export async function fetchCurrentRate(): Promise<ExchangeRate> {
   return apiFetch<ExchangeRate>('/exchange-rates/current');
 }
 
+export async function fetchNearestRate(date: string): Promise<ExchangeRate> {
+  return apiFetch<ExchangeRate>(`/exchange-rates/nearest?date=${encodeURIComponent(date)}`);
+}
+
 export async function fetchRates(from: string, to: string): Promise<ExchangeRate[]> {
   const params = new URLSearchParams({ from, to });
   const data = await apiFetch<{ rates: ExchangeRate[] }>(`/exchange-rates?${params}`);
