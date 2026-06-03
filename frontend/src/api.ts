@@ -152,6 +152,34 @@ export interface ExchangeRate {
   source: string;
 }
 
+export interface BudgetCategoryAPI {
+  id: string;
+  name: string;
+  assigned: number;
+  activity: number;
+  carry_in: number;
+  available: number;
+  underfunded: number;
+  target: { type: string; amount: number; deadline: string | null } | null;
+}
+
+export interface BudgetGroupAPI {
+  id: string;
+  name: string;
+  assigned: number;
+  activity: number;
+  available: number;
+  categories: BudgetCategoryAPI[];
+}
+
+export interface BudgetMonthAPI {
+  month: string;
+  ready_to_assign: number;
+  age_of_money: number | null;
+  total_underfunded: number;
+  category_groups: BudgetGroupAPI[];
+}
+
 export async function fetchCurrentRate(): Promise<ExchangeRate> {
   return apiFetch<ExchangeRate>('/exchange-rates/current');
 }
@@ -167,4 +195,68 @@ export async function upsertRate(date: string, usd_to_crc: number): Promise<Exch
     method: 'PUT',
     body: JSON.stringify({ usd_to_crc }),
   });
+}
+
+// ─── Budget ───────────────────────────────────────────────────────────────────
+
+export async function fetchBudget(month: string): Promise<BudgetMonthAPI> {
+  const data = await apiFetch<any>(`/budgets/${month}`);
+  // Convert centimos → major units throughout
+  const fromMinor = (n: number) => n / 100;
+  data.ready_to_assign = fromMinor(data.ready_to_assign);
+  data.total_underfunded = fromMinor(data.total_underfunded);
+  for (const g of data.category_groups) {
+    g.assigned  = fromMinor(g.assigned);
+    g.activity  = fromMinor(g.activity);
+    g.available = fromMinor(g.available);
+    for (const c of g.categories) {
+      c.assigned    = fromMinor(c.assigned);
+      c.activity    = fromMinor(c.activity);
+      c.carry_in    = fromMinor(c.carry_in);
+      c.available   = fromMinor(c.available);
+      c.underfunded = fromMinor(c.underfunded);
+      if (c.target) c.target.amount = fromMinor(c.target.amount);
+    }
+  }
+  return data as BudgetMonthAPI;
+}
+
+export async function setAssigned(month: string, categoryId: string, amount: number): Promise<void> {
+  await apiFetch(`/budgets/${month}/categories/${categoryId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ assigned: Math.round(amount * 100) }),
+  });
+}
+
+export async function copyPreviousBudget(month: string): Promise<void> {
+  await apiFetch(`/budgets/${month}/copy-previous`, { method: 'POST' });
+}
+
+export async function moveBudgetMoney(month: string, fromId: string, toId: string, amount: number): Promise<void> {
+  await apiFetch(`/budgets/${month}/move`, {
+    method: 'POST',
+    body: JSON.stringify({
+      from_category_id: fromId,
+      to_category_id: toId,
+      amount: Math.round(amount * 100),
+    }),
+  });
+}
+
+export async function upsertCategoryTarget(
+  categoryId: string,
+  target: { type: string; amount: number; deadline: string | null }
+): Promise<void> {
+  await apiFetch(`/categories/${categoryId}/target`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      type: target.type,
+      amount: Math.round(target.amount * 100),
+      deadline: target.deadline,
+    }),
+  });
+}
+
+export async function deleteCategoryTarget(categoryId: string): Promise<void> {
+  await apiFetch(`/categories/${categoryId}/target`, { method: 'DELETE' });
 }
