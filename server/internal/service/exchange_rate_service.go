@@ -121,6 +121,11 @@ func (s *ExchangeRateService) GetCurrent(ctx context.Context) (*model.ExchangeRa
 	return s.repo.GetNearest(ctx, today)
 }
 
+// GetNearest returns the most recent rate on or before the given date (YYYY-MM-DD).
+func (s *ExchangeRateService) GetNearest(ctx context.Context, date string) (*model.ExchangeRate, error) {
+	return s.repo.GetNearest(ctx, date)
+}
+
 // ListByRange returns rates for the given date range (YYYY-MM-DD).
 func (s *ExchangeRateService) ListByRange(ctx context.Context, from, to string) ([]model.ExchangeRate, error) {
 	return s.repo.ListByRange(ctx, from, to)
