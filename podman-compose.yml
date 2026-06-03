@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:18.3-alpine
+    environment:
+      POSTGRES_DB: budgetapp
+      POSTGRES_USER: budgetapp
+      POSTGRES_PASSWORD: budgetapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U budgetapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Containerfile
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://budgetapp:budgetapp@postgres:5432/budgetapp?sslmode=disable
+      PORT: 8080
+      BCCR_API_URL: https://gee.bccr.fi.cr/Indicadores/Suscripciones/WS/wsindicadoreseconomicos.asmx
+      CORS_ORIGIN: http://localhost:80
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./server:/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Containerfile
+    ports:
+      - "5173:80"
+    environment:
+      VITE_API_URL: http://localhost:8080
+    depends_on:
+      - server
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  pgdata:

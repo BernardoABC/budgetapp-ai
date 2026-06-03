@@ -1,0 +1,23 @@
+Número de Clientes, Nombre, Producto, Moneda, Saldo Inicial, Saldo en Libros, Retenidos y Diferidos, Saldo Disponible, Fecha, STBGAV, STBUNC, Mensaje1, Mensaje2, Mensaje3, Mensaje4, Mensaje5, Mensaje6 
+2386574, BERNARDO AMILCAR BONILLA CANALES, CR88010200009342364982, USD, 53926.20, 49163.36, 0.00, 49163.36, 31/03/2026, 50477.06, 0.00, , , , , ,  
+
+Detalle de Estado Bancario
+Fecha de Transacción, Referencia de Transacción, Código de Transacción, Descripción de Transacción, Débito de Transacción, Crédito de Transacción, Balance de Transacción 
+01/04/2026, 406471624, TF, TEF A : 952432326             , 367.00, 0.00, 53559.20 
+02/04/2026, 406822282, TF, TEF A : 905322608             , 1500.00, 0.00, 52059.20 
+03/04/2026, 406401607, TF, TEF A : 958410987             , 500.00, 0.00, 51559.20 
+06/04/2026, 406410859, TF, TEF A : 958410987             , 500.00, 0.00, 51059.20 
+06/04/2026, 406450464, TF, TEF A : 958410987             , 500.00, 0.00, 50559.20 
+06/04/2026, 983508858, TF, INVERSION A: Inversión en Fond, 500.00, 0.00, 50059.20 
+07/04/2026, 406477119, TF, TEF A : 958410987             , 500.00, 0.00, 49559.20 
+08/04/2026, 406401719, TF, TEF A : 952432326             , 742.00, 0.00, 48817.20 
+10/04/2026, 406481430, TF, TEF A : 952432326             , 500.00, 0.00, 48317.20 
+10/04/2026, 11320525, PP, Invoice Telescoped 23-03 al 03, 0.00, 1846.16, 50163.36 
+11/04/2026, 406445354, TF, TEF A : 958410987             , 500.00, 0.00, 49663.36 
+13/04/2026, 406408326, TF, TEF A : 958410987             , 500.00, 0.00, 49163.36 
+
+Resumen de Estado Bancario
+Código Transacción Totales , Cantidad Débitos Totales, Montos Débitos Totales, Cantidad Créditos Totales, Montos Créditos Totales 
+TF, 11, 6609.00, 0, 0.00 
+PP, 0, 0.00, 1, 1846.16 
+Total, 11, 6609.00, 1, 1846.16 
