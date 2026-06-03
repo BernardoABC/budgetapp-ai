@@ -65,7 +65,7 @@ func (s *ExchangeRateService) EnsureRates(ctx context.Context, dates []string) (
 		} else {
 			for date, rate := range fetched {
 				if err := s.repo.Upsert(ctx, date, rate, "BCCR"); err != nil {
-					slog.Warn("upsert BCCR rate", "date", date, "err", err)
+					return nil, fmt.Errorf("store BCCR rate for %s: %w", date, err)
 				}
 			}
 		}

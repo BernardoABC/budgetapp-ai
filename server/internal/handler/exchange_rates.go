@@ -4,6 +4,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"budgetapp/internal/repository"
 	"budgetapp/internal/service"
@@ -41,6 +42,10 @@ func (h *ExchangeRateHandler) ListByRange(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "query params 'from' and 'to' (YYYY-MM-DD) are required")
 		return
 	}
+	if from > to {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "'from' must be on or before 'to'")
+		return
+	}
 	rates, err := h.svc.ListByRange(r.Context(), from, to)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
@@ -61,6 +66,10 @@ func (h *ExchangeRateHandler) Upsert(w http.ResponseWriter, r *http.Request) {
 	date := r.PathValue("date")
 	if date == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "date path param required")
+		return
+	}
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "date must be YYYY-MM-DD")
 		return
 	}
 	var body struct {
