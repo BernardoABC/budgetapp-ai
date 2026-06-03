@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { T, GROUP_COLORS } from '../theme';
 import type { Transaction, CategoryGroup } from '../data';
 import { fetchRecentTransactions } from '../api';
@@ -71,12 +71,18 @@ function SpendingBar({ label, color, spent, budget, fmt }: { label: string; colo
 
 export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loadingTxns, setLoadingTxns] = useState(true);
+  const [txnError, setTxnError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadTxns = useCallback(() => {
+    setLoadingTxns(true);
+    setTxnError(null);
     fetchRecentTransactions(20)
-      .then(setTransactions)
-      .catch(err => console.warn('Failed to load recent transactions:', err.message));
+      .then(data => { setTransactions(data); setLoadingTxns(false); })
+      .catch(err => { setTxnError(err.message); setLoadingTxns(false); });
   }, []);
+
+  useEffect(() => { loadTxns(); }, [loadTxns]);
 
   const netWorth = 1780300 + 3320000;
 
@@ -140,37 +146,46 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
           <span>Recent Transactions</span>
           <button onClick={() => onNavigate('accounts', 'bac')} style={st.linkBtn}>View all →</button>
         </div>
-        <table style={st.table}>
-          <thead>
-            <tr>
-              {['Date', 'Payee', 'Category', 'Amount'].map(h => (
-                <th key={h} style={{ ...st.th, textAlign: h === 'Amount' ? 'right' : 'left' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {recent.map(t => {
-              const grp = categoryGroups.find(g => g.categories.includes(t.category ?? ''));
-              const catColor = grp ? GROUP_COLORS[grp.name] : T.textMid;
-              return (
-                <tr key={t.id} style={st.tr}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <td style={{ ...st.td, fontFamily: T.mono, fontSize: 12, color: T.textDim }}>{t.date.slice(5).replace('-', '/')}</td>
-                  <td style={{ ...st.td, fontWeight: 600 }}>{t.payee}</td>
-                  <td style={st.td}>
-                    {t.category
-                      ? <span style={{ ...st.catTag, color: catColor }}><span style={{ width: 6, height: 6, borderRadius: 2, background: 'currentColor', opacity: 0.9 }} />{t.category}</span>
-                      : <span style={{ color: T.textFaint, fontSize: 12 }}>—</span>}
-                  </td>
-                  <td style={{ ...st.td, textAlign: 'right', fontFamily: T.mono, fontSize: 13, fontWeight: 500 }}>
-                    {t.inflow > 0 ? <span style={{ color: T.pos }}>+{fmt(t.inflow)}</span> : <span style={{ color: T.textMid }}>−{fmt(t.outflow)}</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        {txnError ? (
+          <div style={{ padding: '20px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 13, color: T.neg, flex: 1 }}>{txnError}</span>
+            <button onClick={loadTxns} style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 7, padding: '5px 12px', fontSize: 12, color: T.textMid, cursor: 'pointer' }}>Retry</button>
+          </div>
+        ) : loadingTxns ? (
+          <div style={{ padding: '24px 18px', color: T.textDim, fontSize: 13 }}>Loading…</div>
+        ) : (
+          <table style={st.table}>
+            <thead>
+              <tr>
+                {['Date', 'Payee', 'Category', 'Amount'].map(h => (
+                  <th key={h} style={{ ...st.th, textAlign: h === 'Amount' ? 'right' : 'left' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {recent.map(t => {
+                const grp = categoryGroups.find(g => g.categories.includes(t.category ?? ''));
+                const catColor = grp ? GROUP_COLORS[grp.name] : T.textMid;
+                return (
+                  <tr key={t.id} style={st.tr}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <td style={{ ...st.td, fontFamily: T.mono, fontSize: 12, color: T.textDim }}>{t.date.slice(5).replace('-', '/')}</td>
+                    <td style={{ ...st.td, fontWeight: 600 }}>{t.payee}</td>
+                    <td style={st.td}>
+                      {t.category
+                        ? <span style={{ ...st.catTag, color: catColor }}><span style={{ width: 6, height: 6, borderRadius: 2, background: 'currentColor', opacity: 0.9 }} />{t.category}</span>
+                        : <span style={{ color: T.textFaint, fontSize: 12 }}>—</span>}
+                    </td>
+                    <td style={{ ...st.td, textAlign: 'right', fontFamily: T.mono, fontSize: 13, fontWeight: 500 }}>
+                      {t.inflow > 0 ? <span style={{ color: T.pos }}>+{fmt(t.inflow)}</span> : <span style={{ color: T.textMid }}>−{fmt(t.outflow)}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
