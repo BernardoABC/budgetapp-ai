@@ -4,7 +4,6 @@ import type { Transaction, CategoryGroup } from '../data';
 
 interface Props {
   transactions: Transaction[];
-  budget: Record<string, Record<string, { assigned: number; activity: number }>>;
   categoryGroups: CategoryGroup[];
   fmt: (n: number) => string;
   onNavigate: (page: string, accountId?: string) => void;
@@ -70,8 +69,7 @@ function SpendingBar({ label, color, spent, budget, fmt }: { label: string; colo
   );
 }
 
-export function Dashboard({ transactions, budget, categoryGroups, fmt, onNavigate }: Props) {
-  const monthBudget = budget['April 2026'] ?? {};
+export function Dashboard({ transactions, categoryGroups, fmt, onNavigate }: Props) {
   const netWorth = 1780300 + 3320000;
 
   const thisMonthSpending = useMemo(() =>
@@ -80,17 +78,9 @@ export function Dashboard({ transactions, budget, categoryGroups, fmt, onNavigat
 
   const readyToAssign = 145000;
 
-  const groupSpend = useMemo(() =>
-    categoryGroups.map(g => {
-      const spent = g.categories.reduce((s, c) => s + Math.abs((monthBudget[c] ?? {}).activity ?? 0), 0);
-      const assigned = g.categories.reduce((s, c) => s + ((monthBudget[c] ?? {}).assigned ?? 0), 0);
-      return { name: g.name, spent, assigned, color: GROUP_COLORS[g.name] };
-    }).filter(g => g.assigned > 0),
-    [categoryGroups, monthBudget]);
+  const groupSpend: Array<{ name: string; spent: number; assigned: number; color?: string }> = [];
 
-  const overspent = useMemo(() =>
-    Object.entries(monthBudget).map(([cat, { assigned, activity }]) => ({ cat, available: assigned + activity })).filter(({ available }) => available < 0),
-    [monthBudget]);
+  const overspent: Array<{ cat: string; available: number }> = [];
 
   const recent = transactions.slice(0, 7);
 

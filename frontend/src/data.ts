@@ -19,6 +19,7 @@ export interface CategoryGroup {
 export interface BudgetEntry {
   assigned: number;
   activity: number;
+  carry_in?: number;
 }
 
 export interface Transaction {
@@ -109,72 +110,6 @@ export const AppData = {
     { id: 'savings',       name: 'Savings',        categories: ['Emergency Fund', 'Investment'] },
   ] as CategoryGroup[],
 
-  budget: {
-    'March 2026': {
-      'Rent':           { assigned: 450000, activity: -450000 },
-      'Electricity':    { assigned: 35000,  activity: -31200  },
-      'Water':          { assigned: 12000,  activity: -11000  },
-      'Internet':       { assigned: 25000,  activity: -25000  },
-      'Groceries':      { assigned: 120000, activity: -118000 },
-      'Restaurants':    { assigned: 40000,  activity: -42000  },
-      'Coffee':         { assigned: 15000,  activity: -14000  },
-      'Gas':            { assigned: 60000,  activity: -58000  },
-      'Uber':           { assigned: 20000,  activity: -15000  },
-      'Car Insurance':  { assigned: 45000,  activity: -45000  },
-      'Parking':        { assigned: 10000,  activity: -8000   },
-      'Streaming':      { assigned: 15000,  activity: -15000  },
-      'Going Out':      { assigned: 30000,  activity: -28000  },
-      'Books':          { assigned: 10000,  activity: -9500   },
-      'Gym':            { assigned: 25000,  activity: -25000  },
-      'Doctor':         { assigned: 20000,  activity: -20000  },
-      'Pharmacy':       { assigned: 10000,  activity: -6000   },
-      'Emergency Fund': { assigned: 100000, activity: 0       },
-      'Investment':     { assigned: 150000, activity: 0       },
-    },
-    'April 2026': {
-      'Rent':           { assigned: 450000, activity: -450000 },
-      'Electricity':    { assigned: 35000,  activity: -28500  },
-      'Water':          { assigned: 12000,  activity: -9800   },
-      'Internet':       { assigned: 25000,  activity: -25000  },
-      'Groceries':      { assigned: 120000, activity: -145000 },
-      'Restaurants':    { assigned: 40000,  activity: -38000  },
-      'Coffee':         { assigned: 15000,  activity: -18500  },
-      'Gas':            { assigned: 60000,  activity: -52000  },
-      'Uber':           { assigned: 20000,  activity: -8000   },
-      'Car Insurance':  { assigned: 45000,  activity: -45000  },
-      'Parking':        { assigned: 10000,  activity: -6000   },
-      'Streaming':      { assigned: 15000,  activity: -15000  },
-      'Going Out':      { assigned: 30000,  activity: -22000  },
-      'Books':          { assigned: 10000,  activity: 0       },
-      'Gym':            { assigned: 25000,  activity: -25000  },
-      'Doctor':         { assigned: 20000,  activity: 0       },
-      'Pharmacy':       { assigned: 10000,  activity: -4500   },
-      'Emergency Fund': { assigned: 100000, activity: 0       },
-      'Investment':     { assigned: 150000, activity: 0       },
-    },
-    'May 2026': {
-      'Rent':           { assigned: 450000, activity: 0 },
-      'Electricity':    { assigned: 35000,  activity: 0 },
-      'Water':          { assigned: 12000,  activity: 0 },
-      'Internet':       { assigned: 25000,  activity: 0 },
-      'Groceries':      { assigned: 120000, activity: 0 },
-      'Restaurants':    { assigned: 40000,  activity: 0 },
-      'Coffee':         { assigned: 15000,  activity: 0 },
-      'Gas':            { assigned: 60000,  activity: 0 },
-      'Uber':           { assigned: 20000,  activity: 0 },
-      'Car Insurance':  { assigned: 45000,  activity: 0 },
-      'Parking':        { assigned: 10000,  activity: 0 },
-      'Streaming':      { assigned: 15000,  activity: 0 },
-      'Going Out':      { assigned: 30000,  activity: 0 },
-      'Books':          { assigned: 10000,  activity: 0 },
-      'Gym':            { assigned: 25000,  activity: 0 },
-      'Doctor':         { assigned: 20000,  activity: 0 },
-      'Pharmacy':       { assigned: 10000,  activity: 0 },
-      'Emergency Fund': { assigned: 100000, activity: 0 },
-      'Investment':     { assigned: 150000, activity: 0 },
-    },
-  } as Record<string, Record<string, BudgetEntry>>,
-
   transactions: [
     { id: '1',  date: '2026-04-18', payee: 'AutoMercado',         category: 'Groceries',   memo: 'Weekly groceries',     outflow: 42500,  inflow: 0,       cleared: true,  account: 'bac'  },
     { id: '2',  date: '2026-04-17', payee: 'Netflix',             category: 'Streaming',   memo: '',                     outflow: 7500,   inflow: 0,       cleared: true,  account: 'bac'  },
@@ -210,8 +145,6 @@ export const AppData = {
     { month: 'Apr 26', housing: 513300, food: 201500, transport: 106000, entertainment: 37000,  health: 29500, savings: 150000 },
   ] as MonthlySpendingRow[],
 
-  months: ['March 2026', 'April 2026', 'May 2026'],
-
   income: {
     'March 2026': 1200000,
     'April 2026': 1200000,
@@ -222,22 +155,6 @@ export const AppData = {
     'Emergency Fund': 300000,
     'Investment': 0,
   } as Record<string, number>,
-
-  targets: {
-    'Rent':           { type: 'monthly', amount: 450000 },
-    'Electricity':    { type: 'monthly', amount: 35000  },
-    'Water':          { type: 'monthly', amount: 12000  },
-    'Internet':       { type: 'monthly', amount: 25000  },
-    'Groceries':      { type: 'refill',  amount: 130000 },
-    'Restaurants':    { type: 'refill',  amount: 40000  },
-    'Coffee':         { type: 'monthly', amount: 15000  },
-    'Gas':            { type: 'monthly', amount: 60000  },
-    'Car Insurance':  { type: 'monthly', amount: 45000  },
-    'Streaming':      { type: 'monthly', amount: 15000  },
-    'Gym':            { type: 'monthly', amount: 25000  },
-    'Emergency Fund': { type: 'savings', amount: 1000000, by: 'December 2026' },
-    'Investment':     { type: 'monthly', amount: 150000 },
-  } as Record<string, Target>,
 
   scheduled: [
     { id: 's1', next: '2026-05-02', payee: 'Propietario',       category: 'Rent',       amount: -450000, account: 'bac', freq: 'Monthly' },
