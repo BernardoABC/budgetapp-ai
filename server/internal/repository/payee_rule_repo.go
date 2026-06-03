@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -33,6 +34,50 @@ func (r *PayeeRuleRepo) List(ctx context.Context) ([]model.PayeeRule, error) {
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// Create inserts a new payee rule with match_count = 0.
+func (r *PayeeRuleRepo) Create(ctx context.Context, pattern, categoryID string) (model.PayeeRule, error) {
+	var p model.PayeeRule
+	err := r.pool.QueryRow(ctx, `
+		INSERT INTO payee_rules (payee_pattern, category_id, match_count)
+		VALUES ($1, $2::uuid, 0)
+		RETURNING id::text, payee_pattern, category_id::text, match_count
+	`, pattern, categoryID).Scan(&p.ID, &p.Pattern, &p.CategoryID, &p.MatchCount)
+	if err != nil {
+		return p, fmt.Errorf("create payee rule: %w", err)
+	}
+	return p, nil
+}
+
+// Update changes the pattern and category of an existing rule, preserving match_count.
+func (r *PayeeRuleRepo) Update(ctx context.Context, id, pattern, categoryID string) (model.PayeeRule, error) {
+	var p model.PayeeRule
+	err := r.pool.QueryRow(ctx, `
+		UPDATE payee_rules
+		SET payee_pattern = $1, category_id = $2::uuid, updated_at = NOW()
+		WHERE id = $3::uuid
+		RETURNING id::text, payee_pattern, category_id::text, match_count
+	`, pattern, categoryID, id).Scan(&p.ID, &p.Pattern, &p.CategoryID, &p.MatchCount)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return p, ErrNotFound
+		}
+		return p, fmt.Errorf("update payee rule: %w", err)
+	}
+	return p, nil
+}
+
+// Delete removes a payee rule by ID. Returns ErrNotFound if no row was deleted.
+func (r *PayeeRuleRepo) Delete(ctx context.Context, id string) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM payee_rules WHERE id = $1::uuid`, id)
+	if err != nil {
+		return fmt.Errorf("delete payee rule: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Learn upserts a rule for a normalized pattern within an existing transaction.
