@@ -83,6 +83,7 @@ func main() {
 	imports  := handler.NewImportHandler(importSvc, importRepo)
 	rates    := handler.NewExchangeRateHandler(rateSvc)
 	budgets  := handler.NewBudgetHandler(budgetSvc)
+	reports  := handler.NewReportsHandler(txnRepo)
 
 	mux := http.NewServeMux()
 
@@ -135,6 +136,9 @@ func main() {
 	// Targets
 	mux.HandleFunc("PUT /api/categories/{id}/target", budgets.UpsertTarget)
 	mux.HandleFunc("DELETE /api/categories/{id}/target", budgets.DeleteTarget)
+
+	// Reports
+	mux.HandleFunc("GET /api/reports/spending", reports.SpendingByGroup)
 
 	corsMiddleware := handler.CORS(cfg.CORSOrigin)
 	srv := &http.Server{
