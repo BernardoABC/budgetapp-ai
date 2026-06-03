@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
-import { updateTransaction, deleteTransaction, createTransaction, fetchAccountTransactions } from '../api';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { updateTransaction, deleteTransaction, createTransaction, fetchTransactionsPage, batchTransactions, type TxnPage, type TxnFilterParams } from '../api';
+import { useToast } from './Toast';
 import { T, GROUP_COLORS } from '../theme';
 import { AppData } from '../data';
 import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
@@ -20,7 +21,7 @@ interface EditableRowProps {
   fmt: (n: number) => string;
   rowPad: string;
   onSplit: (t: Transaction) => void;
-  onToggleCleared: (id: string) => void;
+  onToggleCleared: (t: Transaction) => void;
 }
 
 function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared }: EditableRowProps) {
@@ -73,7 +74,7 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
       <td style={{ ...st.td, padding: rowPad + ' 12px', color: T.textDim, fontSize: 12 }}>{t.memo || '—'}</td>
       <td style={{ ...st.td, padding: rowPad + ' 12px', textAlign: 'right', fontFamily: T.mono, fontSize: 12.5, color: T.textMid }}>{t.outflow > 0 ? fmt(t.outflow) : ''}</td>
       <td style={{ ...st.td, padding: rowPad + ' 12px', textAlign: 'right', fontFamily: T.mono, fontSize: 12.5, color: T.pos, fontWeight: 600 }}>{t.inflow > 0 ? '+' + fmt(t.inflow) : ''}</td>
-      <td style={{ ...st.td, padding: rowPad + ' 12px', textAlign: 'center' }} onClick={e => { e.stopPropagation(); onToggleCleared(t.id); }}>
+      <td style={{ ...st.td, padding: rowPad + ' 12px', textAlign: 'center' }} onClick={e => { e.stopPropagation(); onToggleCleared(t); }}>
         <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', cursor: 'pointer', background: t.cleared ? T.pos : 'transparent', border: t.cleared ? 'none' : `1.5px solid ${T.textFaint}`, boxShadow: t.cleared ? `0 0 7px ${T.pos}` : 'none' }} />
       </td>
       <td style={{ ...st.td, padding: rowPad + ' 8px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
@@ -100,127 +101,143 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   const catColor = (cat: string) => GROUP_COLORS[categoryGroups.find(g => g.categories.includes(cat))?.name ?? ''] ?? T.textMid;
   const rowPad = density === 'compact' ? '6px' : '10px';
 
-  const [txns, setTxns] = useState<Transaction[]>([]);
+  const toast = useToast();
+
+  // reverse map: categoryId -> name, for display purposes
+  const catNameById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const [name, id] of Object.entries(categoryIdByName)) m[id] = name;
+    return m;
+  }, [categoryIdByName]);
+  void catNameById; // scaffolding for Task 8
+
+  const [page, setPage] = useState<TxnPage | null>(null);
   const [loadingTxns, setLoadingTxns] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showAddTxn, setShowAddTxn] = useState(false);
   const [addForm, setAddForm] = useState({
     date: new Date().toISOString().slice(0, 10),
-    payee: '',
-    category: '',
-    outflow: '',
-    inflow: '',
-    memo: '',
-    cleared: false,
+    payee: '', category: '', outflow: '', inflow: '', memo: '', cleared: false,
   });
   const [addSaving, setAddSaving] = useState(false);
 
-  useEffect(() => {
-    setLoadingTxns(true);
-    setTxns([]);
-    fetchAccountTransactions(accountId)
-      .then(setTxns)
-      .catch(err => console.error('fetch transactions:', err))
-      .finally(() => setLoadingTxns(false));
-  }, [accountId]);
-
   const [selected, setSelected] = useState(new Set<string>());
-  const [sortCol, setSortCol] = useState('date');
-  const [sortDir, setSortDir] = useState('desc');
+  const [sort, setSort] = useState('date_desc');
   const [filter, setFilter] = useState({ payee: '', category: '', from: '', to: '' });
+  const [pageNum, setPageNum] = useState(1);
   const [rules, setRules] = useState<PayeeRule[]>([...AppData.payeeRules]);
   const [modal, setModal] = useState<null | 'reconcile' | 'rules' | { split: Transaction }>(null);
   const [dismissedSched, setDismissedSched] = useState(new Set<string>());
 
+  const txns = page?.transactions ?? [];
+
+  const buildParams = useCallback((): TxnFilterParams => {
+    const categoryId =
+      filter.category === '' ? undefined :
+      filter.category === '__uncategorized__' ? 'none' :
+      (categoryIdByName[filter.category] ?? undefined);
+    return {
+      search: filter.payee || undefined,
+      from_date: filter.from || undefined,
+      to_date: filter.to || undefined,
+      category_id: categoryId,
+      sort,
+      page: pageNum,
+      per_page: 50,
+    };
+  }, [filter, sort, pageNum, categoryIdByName]);
+
+  const reload = useCallback(() => {
+    setLoadingTxns(true);
+    setLoadError(null);
+    return fetchTransactionsPage(accountId, buildParams())
+      .then(setPage)
+      .catch(err => { console.error('fetch transactions:', err); setLoadError(err.message ?? 'Failed to load'); })
+      .finally(() => setLoadingTxns(false));
+  }, [accountId, buildParams]);
+
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => { reload(); }, 300);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [reload]);
+
+  useEffect(() => {
+    setPageNum(1);
+    setSelected(new Set());
+    setFilter({ payee: '', category: '', from: '', to: '' });
+  }, [accountId]);
+
   const upcoming = AppData.scheduled.filter(s => s.account === account.id && !dismissedSched.has(s.id));
 
   const enterScheduled = (s: typeof AppData.scheduled[0]) => {
-    setTxns(ts => [{ id: crypto.randomUUID(), date: s.next, payee: s.payee, category: s.category, memo: 'Scheduled', outflow: s.amount < 0 ? -s.amount : 0, inflow: s.amount > 0 ? s.amount : 0, cleared: false, account: s.account }, ...ts]);
     setDismissedSched(d => new Set(d).add(s.id));
+    toast.info('Scheduled entry handling is not yet wired to the API');
   };
   const skipScheduled = (id: string) => setDismissedSched(d => new Set(d).add(id));
-  const toggleCleared = (id: string) => setTxns(ts => ts.map(t => t.id === id ? { ...t, cleared: !t.cleared } : t));
-  const saveSplit = (id: string, splits: { category: string; amount: number }[]) =>
-    setTxns(ts => ts.map(t => t.id === id ? { ...t, splits: splits.length > 1 ? splits : undefined, category: splits.length === 1 ? splits[0].category : (splits.length > 1 ? null : t.category) } : t));
-
-  const reconcile = (diff: number) => {
-    setTxns(ts => {
-      let next = ts.map(t => t.account === account.id ? { ...t, cleared: true } : t);
-      if (diff !== 0) next = [{ id: crypto.randomUUID(), date: new Date().toISOString().slice(0, 10), payee: 'Reconciliation Adjustment', category: null, memo: 'Balance adjustment', outflow: diff < 0 ? -diff : 0, inflow: diff > 0 ? diff : 0, cleared: true, account: account.id }, ...next];
-      return next;
-    });
-    setModal(null);
-  };
 
   const toggleSelect = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const handleSort = (col: string) => { if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(col); setSortDir('asc'); } };
+
+  const handleSort = (col: string) => {
+    const key = col === 'outflow' || col === 'inflow' ? 'amount' : col;
+    setSort(prev => {
+      const asc = key + '_asc', desc = key + '_desc';
+      return prev === desc ? asc : desc;
+    });
+    setPageNum(1);
+  };
+
+  const sortCol = (() => { const k = sort.replace(/_(asc|desc)$/, ''); return k === 'amount' ? 'outflow' : k; })();
+  const sortDir = sort.endsWith('_asc') ? 'asc' : 'desc';
+
   const handleSave = (updated: Transaction) => {
-    setTxns(ts => ts.map(t => t.id === updated.id ? updated : t));
     const amount = updated.inflow > 0 ? updated.inflow : -updated.outflow;
     const category_id = updated.category ? (categoryIdByName[updated.category] ?? undefined) : undefined;
     updateTransaction(updated.id, {
-      date: updated.date,
-      payee: updated.payee,
-      category_id,
-      amount,
-      memo: updated.memo,
-      cleared: updated.cleared,
+      date: updated.date, payee: updated.payee, category_id, amount,
+      memo: updated.memo, cleared: updated.cleared,
     })
-      .then(() => onAccountsChanged())
-      .catch(err => {
-        console.error('save transaction failed:', err);
-        fetchAccountTransactions(accountId).then(setTxns);
-      });
+      .then(() => { toast.success('Transaction updated'); onAccountsChanged(); reload(); })
+      .catch(err => { console.error('save transaction failed:', err); toast.error('Save failed: ' + err.message); reload(); });
   };
+
+  const toggleCleared = (t: Transaction) => {
+    const amount = t.inflow > 0 ? t.inflow : -t.outflow;
+    const category_id = t.category ? (categoryIdByName[t.category] ?? undefined) : undefined;
+    setPage(p => p ? { ...p, transactions: p.transactions.map(x => x.id === t.id ? { ...x, cleared: !x.cleared } : x) } : p);
+    updateTransaction(t.id, { date: t.date, payee: t.payee, category_id, amount, memo: t.memo, cleared: !t.cleared })
+      .then(() => { onAccountsChanged(); reload(); })
+      .catch(err => { console.error('toggle cleared failed:', err); toast.error('Could not update cleared status'); reload(); });
+  };
+
+  const saveSplit = () => { setModal(null); toast.info('Split persistence is not yet wired to the API'); };
+  const reconcile = (_diff: number) => { setModal(null); toast.info('Reconcile persistence is not yet wired to the API'); };
 
   const handleAddTxn = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddSaving(true);
-    const amount = parseFloat(addForm.inflow) > 0
-      ? parseFloat(addForm.inflow)
-      : -(parseFloat(addForm.outflow) || 0);
+    const amount = parseFloat(addForm.inflow) > 0 ? parseFloat(addForm.inflow) : -(parseFloat(addForm.outflow) || 0);
     const category_id = addForm.category ? (categoryIdByName[addForm.category] ?? undefined) : undefined;
     try {
-      const newTxn = await createTransaction(accountId, {
-        date: addForm.date,
-        payee: addForm.payee,
-        category_id,
-        amount,
-        memo: addForm.memo,
-        cleared: addForm.cleared,
+      await createTransaction(accountId, {
+        date: addForm.date, payee: addForm.payee, category_id, amount,
+        memo: addForm.memo, cleared: addForm.cleared,
       });
-      setTxns(ts => [newTxn, ...ts]);
       setShowAddTxn(false);
       setAddForm({ date: new Date().toISOString().slice(0, 10), payee: '', category: '', outflow: '', inflow: '', memo: '', cleared: false });
+      toast.success('Transaction added');
       onAccountsChanged();
+      reload();
     } catch (err) {
       console.error('create transaction failed:', err);
+      toast.error('Add failed: ' + (err as Error).message);
     } finally {
       setAddSaving(false);
     }
   };
 
-  const filtered = useMemo(() => txns
-    .filter(t => t.account === account.id)
-    .filter(t => !filter.payee || t.payee.toLowerCase().includes(filter.payee.toLowerCase()))
-    .filter(t => !filter.category || t.category === filter.category)
-    .filter(t => !filter.from || t.date >= filter.from)
-    .filter(t => !filter.to || t.date <= filter.to)
-    .sort((a, b) => {
-      const av = (a as unknown as Record<string, unknown>)[sortCol] as string | number ?? '';
-      const bv = (b as unknown as Record<string, unknown>)[sortCol] as string | number ?? '';
-      const aStr = typeof av === 'string' ? av.toLowerCase() : av;
-      const bStr = typeof bv === 'string' ? bv.toLowerCase() : bv;
-      return sortDir === 'asc' ? (aStr > bStr ? 1 : -1) : (aStr < bStr ? 1 : -1);
-    }),
-    [txns, account.id, filter, sortCol, sortDir]);
-
-  const toggleAll = () => setSelected(s => s.size === filtered.length ? new Set() : new Set(filtered.map(t => t.id)));
-
-  const totals = useMemo(() => ({
-    out: filtered.reduce((s, t) => s + t.outflow, 0),
-    inf: filtered.reduce((s, t) => s + t.inflow, 0),
-    count: filtered.length,
-  }), [filtered]);
+  const toggleAll = () => setSelected(s => s.size === txns.length ? new Set() : new Set(txns.map(t => t.id)));
 
   const cols = [
     { key: 'date', label: 'Date' }, { key: 'payee', label: 'Payee' }, { key: 'category', label: 'Category' },
@@ -266,9 +283,9 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
       )}
 
       <div style={st.statRow}>
-        <div style={st.stat}><span style={st.statNum}>{totals.count}</span><span style={st.statLbl}>transactions</span></div>
-        <div style={st.stat}><span style={{ ...st.statNum, color: T.textMid }}>−{fmt(totals.out)}</span><span style={st.statLbl}>outflow</span></div>
-        <div style={st.stat}><span style={{ ...st.statNum, color: T.pos }}>+{fmt(totals.inf)}</span><span style={st.statLbl}>inflow</span></div>
+        <div style={st.stat}><span style={st.statNum}>{page?.pagination.total ?? 0}</span><span style={st.statLbl}>transactions</span></div>
+        <div style={st.stat}><span style={{ ...st.statNum, color: T.textMid }}>−{fmt(page?.summary.total_outflow ?? 0)}</span><span style={st.statLbl}>outflow</span></div>
+        <div style={st.stat}><span style={{ ...st.statNum, color: T.pos }}>+{fmt(page?.summary.total_inflow ?? 0)}</span><span style={st.statLbl}>inflow</span></div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
@@ -278,39 +295,25 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
       <div style={st.filterBar}>
         <div style={st.searchWrap}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }}><circle cx="11" cy="11" r="7" stroke={T.textDim} strokeWidth="1.8"/><path d="m20 20-3.5-3.5" stroke={T.textDim} strokeWidth="1.8" strokeLinecap="round"/></svg>
-          <input placeholder="Search payee…" value={filter.payee} onChange={e => setFilter(f => ({ ...f, payee: e.target.value }))} style={{ ...st.filterInput, paddingLeft: 32, width: 200 }} />
+          <input placeholder="Search payee…" value={filter.payee} onChange={e => { setFilter(f => ({ ...f, payee: e.target.value })); setPageNum(1); }} style={{ ...st.filterInput, paddingLeft: 32, width: 200 }} />
         </div>
-        <select value={filter.category} onChange={e => setFilter(f => ({ ...f, category: e.target.value }))} style={st.filterSelect}>
+        <select value={filter.category} onChange={e => { setFilter(f => ({ ...f, category: e.target.value })); setPageNum(1); }} style={st.filterSelect}>
           <option value="">All categories</option>
+          <option value="__uncategorized__">Uncategorized</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <input type="date" value={filter.from} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} style={st.filterInput} />
+        <input type="date" value={filter.from} onChange={e => { setFilter(f => ({ ...f, from: e.target.value })); setPageNum(1); }} style={st.filterInput} />
         <span style={{ color: T.textFaint, fontSize: 12 }}>→</span>
-        <input type="date" value={filter.to} onChange={e => setFilter(f => ({ ...f, to: e.target.value }))} style={st.filterInput} />
-        {hasFilter && <button onClick={() => setFilter({ payee: '', category: '', from: '', to: '' })} style={st.clearBtn}>Clear</button>}
-        {selected.size > 0 && (
-          <button
-            onClick={() => {
-              const ids = [...selected];
-              setTxns(ts => ts.filter(t => !selected.has(t.id)));
-              setSelected(new Set());
-              Promise.all(ids.map(id => deleteTransaction(id)))
-                .then(() => onAccountsChanged())
-                .catch(err => {
-                  console.error('delete failed:', err);
-                  fetchAccountTransactions(accountId).then(setTxns);
-                });
-            }}
-            style={{ ...st.clearBtn, color: T.neg, borderColor: T.negDim, background: T.negDim, marginLeft: 'auto' }}
-          >
-            Delete {selected.size}
-          </button>
-        )}
+        <input type="date" value={filter.to} onChange={e => { setFilter(f => ({ ...f, to: e.target.value })); setPageNum(1); }} style={st.filterInput} />
+        {hasFilter && <button onClick={() => { setFilter({ payee: '', category: '', from: '', to: '' }); setPageNum(1); }} style={st.clearBtn}>Clear</button>}
       </div>
 
       {loadingTxns && (
-        <div style={{ padding: '20px', textAlign: 'center', color: T.textDim, fontSize: 13 }}>
-          Loading transactions…
+        <div style={{ padding: '20px', textAlign: 'center', color: T.textDim, fontSize: 13 }}>Loading transactions…</div>
+      )}
+      {loadError && !loadingTxns && (
+        <div style={{ padding: '16px 20px', textAlign: 'center', color: T.neg, fontSize: 13, background: T.negDim, border: `1px solid ${T.negDim}`, borderRadius: T.radius, marginBottom: 12 }}>
+          {loadError} · <button onClick={() => reload()} style={{ ...st.clearBtn, color: T.neg, marginLeft: 6 }}>Retry</button>
         </div>
       )}
 
@@ -318,7 +321,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              <th style={st.th}><input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={toggleAll} style={st.check} /></th>
+              <th style={st.th}><input type="checkbox" checked={selected.size === txns.length && txns.length > 0} onChange={toggleAll} style={st.check} /></th>
               {cols.map(({ key, label }) => (
                 <th key={key} onClick={() => handleSort(key)} style={{ ...st.th, cursor: 'pointer', textAlign: ['outflow', 'inflow', 'cleared'].includes(key) ? 'right' : 'left' }}>
                   {label}<SortIcon col={key} sortCol={sortCol} sortDir={sortDir} />
@@ -328,15 +331,29 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: T.textDim, fontSize: 13 }}>No transactions match your filters</td></tr>}
-            {filtered.map(t => <EditableRow key={t.id} t={t} categories={categories} catColor={catColor} onSave={handleSave} onToggleSelect={toggleSelect} selected={selected.has(t.id)} fmt={fmt} rowPad={rowPad} onSplit={tx => setModal({ split: tx })} onToggleCleared={toggleCleared} />)}
+            {!loadingTxns && txns.length === 0 && (
+              <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: T.textDim, fontSize: 13 }}>
+                {hasFilter ? 'No transactions match your filters' : 'No transactions yet'}
+              </td></tr>
+            )}
+            {txns.map(t => <EditableRow key={t.id} t={t} categories={categories} catColor={catColor} onSave={handleSave} onToggleSelect={toggleSelect} selected={selected.has(t.id)} fmt={fmt} rowPad={rowPad} onSplit={tx => setModal({ split: tx })} onToggleCleared={toggleCleared} />)}
           </tbody>
         </table>
       </div>
 
+      {page && page.pagination.total_pages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, fontSize: 12.5, color: T.textDim }}>
+          <span>Showing page {page.pagination.page} of {page.pagination.total_pages} · {page.pagination.total} total</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button disabled={pageNum <= 1} onClick={() => setPageNum(n => Math.max(1, n - 1))} style={{ ...st.clearBtn, opacity: pageNum <= 1 ? 0.4 : 1 }}>◀ Prev</button>
+            <button disabled={pageNum >= page.pagination.total_pages} onClick={() => setPageNum(n => n + 1)} style={{ ...st.clearBtn, opacity: pageNum >= page.pagination.total_pages ? 0.4 : 1 }}>Next ▶</button>
+          </div>
+        </div>
+      )}
+
       {modal === 'reconcile' && <ReconcileModal account={account} clearedBalance={account.balance} fmt={fmt} onClose={() => setModal(null)} onReconcile={reconcile} />}
       {modal === 'rules' && <RulesManager rules={rules} categories={categories} onClose={() => setModal(null)} onAdd={r => setRules(rs => [...rs, r])} onDelete={id => setRules(rs => rs.filter(x => x.id !== id))} />}
-      {modal && typeof modal === 'object' && 'split' in modal && <SplitModal txn={modal.split} categories={categories} fmt={fmt} onClose={() => setModal(null)} onSave={saveSplit} />}
+      {modal && typeof modal === 'object' && 'split' in modal && <SplitModal txn={modal.split} categories={categories} fmt={fmt} onClose={() => setModal(null)} onSave={(_id, _splits) => saveSplit()} />}
       {showAddTxn && (
         <div style={stModal.overlay} onClick={e => e.target === e.currentTarget && setShowAddTxn(false)}>
           <div style={stModal.panel}>
