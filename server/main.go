@@ -80,6 +80,7 @@ func main() {
 	accounts := handler.NewAccountHandler(accountRepo)
 	txns     := handler.NewTransactionHandler(txnRepo)
 	cats     := handler.NewCategoryHandler(catRepo)
+	rules    := handler.NewPayeeRuleHandler(ruleRepo)
 	imports  := handler.NewImportHandler(importSvc, importRepo)
 	rates    := handler.NewExchangeRateHandler(rateSvc)
 	budgets  := handler.NewBudgetHandler(budgetSvc)
@@ -116,6 +117,12 @@ func main() {
 	mux.HandleFunc("POST /api/categories", cats.CreateCategory)
 	mux.HandleFunc("PUT /api/categories/{id}", cats.UpdateCategory)
 	mux.HandleFunc("DELETE /api/categories/{id}", cats.DeleteCategory)
+
+	// Payee Rules
+	mux.HandleFunc("GET /api/payee-rules",        rules.List)
+	mux.HandleFunc("POST /api/payee-rules",        rules.Create)
+	mux.HandleFunc("PUT /api/payee-rules/{id}",    rules.Update)
+	mux.HandleFunc("DELETE /api/payee-rules/{id}", rules.Delete)
 
 	// Imports
 	mux.HandleFunc("POST /api/imports/preview", imports.Preview)
