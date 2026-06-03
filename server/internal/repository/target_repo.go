@@ -46,11 +46,6 @@ func (r *TargetRepo) GetAll(ctx context.Context) (map[string]*model.Target, erro
 
 // Upsert creates or replaces a target for a category.
 func (r *TargetRepo) Upsert(ctx context.Context, categoryID string, t model.Target) error {
-	var dl interface{}
-	if t.Deadline != nil {
-		dl = *t.Deadline
-	}
-
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO category_targets (category_id, type, amount, deadline)
 		VALUES ($1::uuid, $2, $3, $4::date)
@@ -59,7 +54,7 @@ func (r *TargetRepo) Upsert(ctx context.Context, categoryID string, t model.Targ
 		    amount = EXCLUDED.amount,
 		    deadline = EXCLUDED.deadline,
 		    updated_at = NOW()
-	`, categoryID, t.Type, t.Amount, dl)
+	`, categoryID, t.Type, t.Amount, t.Deadline)
 	if err != nil {
 		return fmt.Errorf("upsert target %s: %w", categoryID, err)
 	}

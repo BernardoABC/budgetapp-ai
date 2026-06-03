@@ -137,6 +137,30 @@ func TestTargetRepo_Delete(t *testing.T) {
 	}
 }
 
+func TestTargetRepo_UpsertNilDeadline(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	catID := testutil.SeedCategory(t, pool)
+	repo := repository.NewTargetRepo(pool)
+	ctx := context.Background()
+
+	target := model.Target{Type: "monthly", Amount: 100000, Deadline: nil}
+	if err := repo.Upsert(ctx, catID, target); err != nil {
+		t.Fatal(err)
+	}
+
+	all, err := repo.GetAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := all[catID]
+	if result == nil {
+		t.Fatal("target not found")
+	}
+	if result.Deadline != nil {
+		t.Errorf("want nil deadline got %q", *result.Deadline)
+	}
+}
+
 func TestTargetRepo_GetAllEmpty(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	repo := repository.NewTargetRepo(pool)
