@@ -61,7 +61,7 @@ export async function fetchAccountTransactions(
   page = 1,
   perPage = 200,
 ): Promise<Transaction[]> {
-  type ApiTxn = Omit<Transaction, 'outflow' | 'inflow'> & { amount: number; currency: string };
+  type ApiTxn = Omit<Transaction, 'outflow' | 'inflow'> & { amount: number; currency: string; exchange_rate?: number | null };
   const data: { transactions: ApiTxn[] } = await apiFetch(
     `/accounts/${accountId}/transactions?page=${page}&per_page=${perPage}`,
   );
@@ -70,6 +70,8 @@ export async function fetchAccountTransactions(
     return {
       id: t.id, date: t.date, payee: t.payee, category: t.category,
       memo: t.memo, cleared: t.cleared, account: t.account,
+      currency: t.currency,
+      exchange_rate: t.exchange_rate,
       outflow: major < 0 ? -major : 0,
       inflow: major > 0 ? major : 0,
     } as Transaction;
@@ -140,4 +142,28 @@ export async function updateCategory(id: string, body: { name: string; hidden?: 
 
 export async function deleteCategory(id: string): Promise<void> {
   return apiFetch(`/categories/${id}`, { method: 'DELETE' });
+}
+
+// ─── Exchange Rates ───────────────────────────────────────────────────────────
+
+export interface ExchangeRate {
+  date: string;
+  usd_to_crc: number;
+  source: string;
+}
+
+export async function fetchCurrentRate(): Promise<ExchangeRate> {
+  return apiFetch<ExchangeRate>('/exchange-rates/current');
+}
+
+export async function fetchRates(from: string, to: string): Promise<ExchangeRate[]> {
+  const data = await apiFetch<{ rates: ExchangeRate[] }>(`/exchange-rates?from=${from}&to=${to}`);
+  return data.rates ?? [];
+}
+
+export async function upsertRate(date: string, usd_to_crc: number): Promise<ExchangeRate> {
+  return apiFetch<ExchangeRate>(`/exchange-rates/${date}`, {
+    method: 'PUT',
+    body: JSON.stringify({ usd_to_crc }),
+  });
 }

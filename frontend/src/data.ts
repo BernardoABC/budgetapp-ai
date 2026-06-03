@@ -31,6 +31,8 @@ export interface Transaction {
   inflow: number;
   cleared: boolean;
   account: string;
+  currency?: string;
+  exchange_rate?: number | null;
   splits?: { category: string; amount: number }[];
 }
 
