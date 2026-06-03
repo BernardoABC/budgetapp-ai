@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { T, GROUP_COLORS } from '../theme';
 import type { Transaction, CategoryGroup } from '../data';
+import { fetchRecentTransactions } from '../api';
 
 interface Props {
-  transactions: Transaction[];
   categoryGroups: CategoryGroup[];
   fmt: (n: number) => string;
   onNavigate: (page: string, accountId?: string) => void;
@@ -69,7 +69,15 @@ function SpendingBar({ label, color, spent, budget, fmt }: { label: string; colo
   );
 }
 
-export function Dashboard({ transactions, categoryGroups, fmt, onNavigate }: Props) {
+export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+
+  useEffect(() => {
+    fetchRecentTransactions(20)
+      .then(setTransactions)
+      .catch(err => console.warn('Failed to load recent transactions:', err.message));
+  }, []);
+
   const netWorth = 1780300 + 3320000;
 
   const thisMonthSpending = useMemo(() =>
