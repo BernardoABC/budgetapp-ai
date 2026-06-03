@@ -272,10 +272,11 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   }, [currentYM, categoryIdByName, fetchCounter]);
 
   useEffect(() => {
-    const date = `${currentYM}-01`;
-    fetchNearestRate(date)
-      .then(rate => setMonthRate(rate))
-      .catch(() => setMonthRate(null));
+    let cancelled = false;
+    fetchNearestRate(`${currentYM}-01`)
+      .then(rate => { if (!cancelled) setMonthRate(rate); })
+      .catch(() => { if (!cancelled) setMonthRate(null); });
+    return () => { cancelled = true; };
   }, [currentYM]);
 
   const month = currentDisplayMonth;
@@ -459,7 +460,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
           <button onClick={() => setCurrentYM(ym => prevYM(ym))} style={st.monthBtn}>‹</button>
           <div style={st.monthCenter}>
             <span style={st.curMonth}>{month}</span>
-            {currency === 'USD' && monthRate !== null && fmt(100) !== fmtMonth(100) && (
+            {currency === 'USD' && monthRate !== null && monthRate.date !== new Date().toISOString().slice(0, 10) && (
               <div style={{ fontSize: 10.5, color: T.textDim, marginTop: 2, fontFamily: T.mono }}>
                 Rate: ₡{Math.round(monthRate.usd_to_crc).toLocaleString('en-US')} ({new Date(monthRate.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
               </div>

@@ -141,7 +141,7 @@ function App() {
     if (key === 'accent') applyAccent(val as AccentKey);
   };
 
-  const fmtBound = (amount: number) => fmt(amount, currency, exchangeRate);
+  const fmtBound = useCallback((amount: number) => fmt(amount, currency, exchangeRate), [currency, exchangeRate]);
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: T.bg, backgroundImage: T.bgGrad, position: 'relative' }}>
