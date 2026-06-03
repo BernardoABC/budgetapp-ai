@@ -379,3 +379,37 @@ export interface ImportRecord {
 export async function fetchImportHistory(): Promise<ImportRecord[]> {
   return apiFetch<ImportRecord[]>('/imports');
 }
+
+// ─── Payee Rules ──────────────────────────────────────────────────────────────
+
+export interface PayeeRule {
+  id: string;
+  pattern: string;
+  category_id: string;
+  match_count: number;
+}
+
+export async function fetchPayeeRules(): Promise<PayeeRule[]> {
+  const data = await apiFetch<{ id: string; payee_pattern: string; category_id: string; match_count: number }[]>('/payee-rules');
+  return (data ?? []).map(r => ({ id: r.id, pattern: r.payee_pattern, category_id: r.category_id, match_count: r.match_count }));
+}
+
+export async function createPayeeRule(pattern: string, categoryId: string): Promise<PayeeRule> {
+  const r = await apiFetch<{ id: string; payee_pattern: string; category_id: string; match_count: number }>('/payee-rules', {
+    method: 'POST',
+    body: JSON.stringify({ payee_pattern: pattern, category_id: categoryId }),
+  });
+  return { id: r.id, pattern: r.payee_pattern, category_id: r.category_id, match_count: r.match_count };
+}
+
+export async function updatePayeeRule(id: string, pattern: string, categoryId: string): Promise<PayeeRule> {
+  const r = await apiFetch<{ id: string; payee_pattern: string; category_id: string; match_count: number }>(`/payee-rules/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ payee_pattern: pattern, category_id: categoryId }),
+  });
+  return { id: r.id, pattern: r.payee_pattern, category_id: r.category_id, match_count: r.match_count };
+}
+
+export async function deletePayeeRule(id: string): Promise<void> {
+  return apiFetch(`/payee-rules/${id}`, { method: 'DELETE' });
+}
