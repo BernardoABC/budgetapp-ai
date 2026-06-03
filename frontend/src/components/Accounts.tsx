@@ -22,9 +22,10 @@ interface EditableRowProps {
   rowPad: string;
   onSplit: (t: Transaction) => void;
   onToggleCleared: (t: Transaction) => void;
+  onDelete: (id: string) => void;
 }
 
-function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared }: EditableRowProps) {
+function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared, onDelete }: EditableRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(t);
   const commit = () => { onSave(draft); setEditing(false); };
@@ -77,8 +78,9 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
       <td style={{ ...st.td, padding: rowPad + ' 12px', textAlign: 'center' }} onClick={e => { e.stopPropagation(); onToggleCleared(t); }}>
         <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', cursor: 'pointer', background: t.cleared ? T.pos : 'transparent', border: t.cleared ? 'none' : `1.5px solid ${T.textFaint}`, boxShadow: t.cleared ? `0 0 7px ${T.pos}` : 'none' }} />
       </td>
-      <td style={{ ...st.td, padding: rowPad + ' 8px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-        <button onClick={() => onSplit(t)} style={st.splitBtn}>⑂</button>
+      <td style={{ ...st.td, padding: rowPad + ' 8px', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+        <button onClick={() => onSplit(t)} style={st.splitBtn} title="Split">⑂</button>
+        <button onClick={() => onDelete(t.id)} style={{ ...st.splitBtn, marginLeft: 5, color: T.neg }} title="Delete">✕</button>
       </td>
     </tr>
   );
@@ -243,6 +245,35 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     }
   };
 
+  const [bulkCat, setBulkCat] = useState('');
+
+  const runBatch = (action: 'categorize' | 'clear' | 'unclear' | 'delete', categoryName?: string) => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    const categoryId = action === 'categorize'
+      ? (categoryName === '__uncategorized__' ? '' : (categoryName ? (categoryIdByName[categoryName] ?? '') : ''))
+      : undefined;
+    batchTransactions(ids, action, categoryId)
+      .then(r => {
+        setSelected(new Set());
+        toast.success(`${r.affected} transaction${r.affected === 1 ? '' : 's'} updated`);
+        onAccountsChanged();
+        reload();
+      })
+      .catch(err => { console.error('batch failed:', err); toast.error('Bulk action failed: ' + err.message); });
+  };
+
+  const confirmBulkDelete = () => {
+    if (window.confirm(`Delete ${selected.size} transaction(s)? This cannot be undone.`)) runBatch('delete');
+  };
+
+  const handleSingleDelete = (id: string) => {
+    if (!window.confirm('Delete this transaction? This cannot be undone.')) return;
+    deleteTransaction(id)
+      .then(() => { toast.success('Transaction deleted'); onAccountsChanged(); reload(); })
+      .catch(err => { console.error('delete failed:', err); toast.error('Delete failed: ' + err.message); });
+  };
+
   const toggleAll = () => setSelected(s => s.size === txns.length ? new Set() : new Set(txns.map(t => t.id)));
 
   const cols = [
@@ -314,6 +345,25 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
         {hasFilter && <button onClick={() => { setFilter({ payee: '', category: '', from: '', to: '' }); setPageNum(1); }} style={st.clearBtn}>Clear</button>}
       </div>
 
+      {selected.size > 0 && (
+        <div style={st.bulkBar}>
+          <span style={{ fontWeight: 700, color: T.text }}>{selected.size} selected</span>
+          <select value={bulkCat} onChange={e => setBulkCat(e.target.value)} style={st.filterSelect}>
+            <option value="">Set category…</option>
+            <option value="__uncategorized__">— Uncategorized —</option>
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button
+            onClick={() => { runBatch('categorize', bulkCat); setBulkCat(''); }}
+            disabled={bulkCat === ''}
+            style={{ ...st.headerBtn, opacity: bulkCat === '' ? 0.4 : 1 }}
+          >Apply</button>
+          <button onClick={() => runBatch('clear')} style={st.headerBtn}>Clear</button>
+          <button onClick={() => runBatch('unclear')} style={st.headerBtn}>Unclear</button>
+          <button onClick={confirmBulkDelete} style={{ ...st.clearBtn, color: T.neg, borderColor: T.negDim, background: T.negDim, marginLeft: 'auto' }}>Delete {selected.size}</button>
+        </div>
+      )}
+
       {loadingTxns && (
         <div style={{ padding: '20px', textAlign: 'center', color: T.textDim, fontSize: 13 }}>Loading transactions…</div>
       )}
@@ -342,7 +392,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                 {hasFilter ? 'No transactions match your filters' : 'No transactions yet'}
               </td></tr>
             )}
-            {txns.map(t => <EditableRow key={t.id} t={t} categories={categories} catColor={catColor} onSave={handleSave} onToggleSelect={toggleSelect} selected={selected.has(t.id)} fmt={fmt} rowPad={rowPad} onSplit={tx => setModal({ split: tx })} onToggleCleared={toggleCleared} />)}
+            {txns.map(t => <EditableRow key={t.id} t={t} categories={categories} catColor={catColor} onSave={handleSave} onToggleSelect={toggleSelect} selected={selected.has(t.id)} fmt={fmt} rowPad={rowPad} onSplit={tx => setModal({ split: tx })} onToggleCleared={toggleCleared} onDelete={handleSingleDelete} />)}
           </tbody>
         </table>
       </div>
@@ -467,6 +517,7 @@ const st = {
   inlineSelect:    { padding: '5px 8px', fontSize: 12, border: `1px solid var(--accent)`, borderRadius: 6, background: T.surface2, color: T.text },
   saveBtn:         { padding: '5px 11px', fontSize: 12, fontWeight: 700, background: 'var(--accent)', color: '#06140d', border: 'none', borderRadius: 6, cursor: 'pointer' },
   cancelBtn:       { padding: '5px 9px', fontSize: 12, background: 'none', color: T.textDim, border: `1px solid ${T.border}`, borderRadius: 6, cursor: 'pointer' },
+  bulkBar:         { display: 'flex', gap: 8, alignItems: 'center', padding: '10px 14px', marginBottom: 12, background: T.accentDim, border: `1px solid var(--accent)`, borderRadius: T.radius },
 };
 
 const stModal = {
