@@ -117,7 +117,6 @@ function App() {
   }, []);
 
   // Still static
-  const { monthlySpending } = AppData;
   const transactions = AppData.transactions;
 
   const [accountId, setAccountId] = useState<string>(saved.accountId ?? AppData.accounts.budget[0].id);
@@ -151,7 +150,7 @@ function App() {
           {page === 'budget' && <Budget categoryGroups={categoryGroups} fmt={fmtBound} currency={currency} density={tweaks.density} categoryIdByName={categoryIdByName} onCategoriesChanged={reloadCategories} />}
           {page === 'accounts' && <Accounts accounts={accounts} accountId={accountId} categoryGroups={categoryGroups} fmt={fmtBound} density={tweaks.density} categoryIdByName={categoryIdByName} onAccountsChanged={reloadAccounts} />}
           {page === 'import' && <ImportWizard accounts={accounts} categoryGroups={categoryGroups} onNavigate={navigate} />}
-          {page === 'reports' && <Reports monthlySpending={monthlySpending} fmt={fmtBound} />}
+          {page === 'reports' && <Reports fmt={fmtBound} />}
         </div>
       </Layout>
 

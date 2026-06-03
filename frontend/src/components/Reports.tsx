@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { T, GROUP_COLORS } from '../theme';
 import { AppData } from '../data';
 import type { MonthlySpendingRow } from '../data';
+import { fetchSpendingReport } from '../api';
 
 const groupKey = (g: string) => g.toLowerCase().split(' ')[0];
 
@@ -183,12 +184,23 @@ function AreaLineChart({ data, valueOf, color, fmt, suffix }: {
 }
 
 interface Props {
-  monthlySpending: MonthlySpendingRow[];
   fmt: (n: number) => string;
 }
 
-export function Reports({ monthlySpending, fmt }: Props) {
+export function Reports({ fmt }: Props) {
   const [activeReport, setActiveReport] = useState('trend');
+  const [monthlySpending, setMonthlySpending] = useState<MonthlySpendingRow[]>([]);
+
+  useEffect(() => {
+    const now = new Date();
+    const to = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const d = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const from = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    fetchSpendingReport(from, to)
+      .then(setMonthlySpending)
+      .catch(err => console.warn('Failed to load spending report:', err.message));
+  }, []);
+
   const D = AppData;
   const latestNW = D.netWorthHistory[D.netWorthHistory.length - 1];
   const latestAge = D.ageOfMoney[D.ageOfMoney.length - 1];
