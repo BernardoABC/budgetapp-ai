@@ -101,7 +101,9 @@ function App() {
       .then(([accs, rawGroups, rate]) => {
         setAccounts(accs);
         setExchangeRate(rate.usd_to_crc);
-        setExchangeRateDate(rate.date);
+        setExchangeRateDate(
+          new Date(rate.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        );
         const idMap: Record<string, string> = {};
         rawGroups.forEach(g => g.categories.forEach(c => { idMap[c.name] = c.id; }));
         setCategoryIdByName(idMap);
