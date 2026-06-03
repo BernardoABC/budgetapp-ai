@@ -246,8 +246,8 @@ func (r *TransactionRepo) SpendingByGroup(ctx context.Context, from, to string) 
 		WHERE t.amount < 0
 		  AND t.date >= ($1 || '-01')::date
 		  AND t.date <  (($2 || '-01')::date + INTERVAL '1 month')
-		GROUP BY month, cg.name
-		ORDER BY month, cg.name
+		GROUP BY date_trunc('month', t.date::date), cg.name
+		ORDER BY date_trunc('month', t.date::date), cg.name
 	`, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("spending by group: %w", err)
