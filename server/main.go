@@ -122,6 +122,7 @@ func main() {
 
 	// Exchange rates
 	mux.HandleFunc("GET /api/exchange-rates/current", rates.Current)
+	mux.HandleFunc("GET /api/exchange-rates/nearest", rates.Nearest)
 	mux.HandleFunc("GET /api/exchange-rates", rates.ListByRange)
 	mux.HandleFunc("PUT /api/exchange-rates/{date}", rates.Upsert)
 

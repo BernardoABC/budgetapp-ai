@@ -35,6 +35,32 @@ func (h *ExchangeRateHandler) Current(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *ExchangeRateHandler) Nearest(w http.ResponseWriter, r *http.Request) {
+	date := r.URL.Query().Get("date")
+	if date == "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "query param 'date' (YYYY-MM-DD) is required")
+		return
+	}
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "date must be YYYY-MM-DD")
+		return
+	}
+	er, err := h.svc.GetNearest(r.Context(), date)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "No exchange rate available for that date")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"date":       er.Date,
+		"usd_to_crc": er.USDToCRC,
+		"source":     er.Source,
+	})
+}
+
 func (h *ExchangeRateHandler) ListByRange(w http.ResponseWriter, r *http.Request) {
 	from := r.URL.Query().Get("from")
 	to := r.URL.Query().Get("to")
