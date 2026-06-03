@@ -4,7 +4,8 @@ import { compute, quickAssign as engineQuickAssign, targetLabel } from '../engin
 import { MoveMoneyModal, CategoryInspector } from './BudgetModals';
 import type { CategoryGroup, Target } from '../data';
 import type { CatState, MonthState } from '../engine';
-import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory } from '../api';
+import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate } from '../api';
+import type { ExchangeRate } from '../api';
 
 const FALLBACK_COLORS = ['#5b9dff', '#3ddc97', '#f6c45a', '#c084fc', '#ff7a85', '#38d6e8', '#fb923c', '#a78bfa'];
 
@@ -206,12 +207,13 @@ function GroupBlock(props: GroupBlockProps) {
 interface Props {
   categoryGroups: CategoryGroup[];
   fmt: (n: number) => string;
+  currency: string;
   density: string;
   categoryIdByName: Record<string, string>;
   onCategoriesChanged: () => void;
 }
 
-export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCategoriesChanged }: Props) {
+export function Budget({ categoryGroups, fmt, currency, density, categoryIdByName, onCategoriesChanged }: Props) {
   const [currentYM, setCurrentYM] = useState(() => new Date().toISOString().slice(0, 7));
   const currentDisplayMonth = toDisplayMonth(currentYM);
   const [localBudget, setLocalBudget] = useState<Record<string, Record<string, { assigned: number; activity: number }>>>({});
@@ -222,6 +224,7 @@ export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCateg
   const [aom, setAom] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchCounter, setFetchCounter] = useState(0);
+  const [monthRate, setMonthRate] = useState<ExchangeRate | null>(null);
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [groups, setGroups] = useState(() => categoryGroups.map(g => ({ ...g, categories: [...g.categories] })));
@@ -268,8 +271,23 @@ export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCateg
     }).finally(() => setLoading(false));
   }, [currentYM, categoryIdByName, fetchCounter]);
 
+  useEffect(() => {
+    const date = `${currentYM}-01`;
+    fetchNearestRate(date)
+      .then(rate => setMonthRate(rate))
+      .catch(() => setMonthRate(null));
+  }, [currentYM]);
+
   const month = currentDisplayMonth;
   const rowPad = density === 'compact' ? '6px' : '11px';
+  const fmtMonth = useMemo<(n: number) => string>(() => {
+    if (currency !== 'USD' || monthRate === null) return fmt;
+    const rate = monthRate.usd_to_crc;
+    return (amount: number) => {
+      const usd = amount / rate;
+      return (amount < 0 ? '-' : '') + '$' + Math.abs(usd).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    };
+  }, [currency, monthRate, fmt]);
 
   const dataT = useMemo(() => ({
     months: [currentDisplayMonth],
@@ -439,7 +457,14 @@ export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCateg
       <div style={st.topBar}>
         <div style={st.monthNav}>
           <button onClick={() => setCurrentYM(ym => prevYM(ym))} style={st.monthBtn}>‹</button>
-          <div style={st.monthCenter}><span style={st.curMonth}>{month}</span></div>
+          <div style={st.monthCenter}>
+            <span style={st.curMonth}>{month}</span>
+            {currency === 'USD' && monthRate !== null && fmt(100) !== fmtMonth(100) && (
+              <div style={{ fontSize: 10.5, color: T.textDim, marginTop: 2, fontFamily: T.mono }}>
+                Rate: ₡{Math.round(monthRate.usd_to_crc).toLocaleString('en-US')} ({new Date(monthRate.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
+              </div>
+            )}
+          </div>
           <button onClick={() => setCurrentYM(ym => nextYM(ym))} style={st.monthBtn}>›</button>
         </div>
 
@@ -499,7 +524,7 @@ export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCateg
               <tbody>
                 {groups.map((g, gi) => (
                   <GroupBlock key={g.id} group={g} gidx={gi} color={colorFor(g.name, gi)} catState={state.cats}
-                    collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmt} onSaveAssigned={handleSaveAssigned}
+                    collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmtMonth} onSaveAssigned={handleSaveAssigned}
                     onOpenMove={setMoveCat} onOpenInspector={setInspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
                     onRenameCat={renameCat} onMoveCat={reorderCat} onHideCat={hideCat} onDeleteCat={deleteCat} onAddCat={addCat}
                     onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} />
@@ -511,14 +536,14 @@ export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCateg
       )}
 
       {moveCat && (
-        <MoveMoneyModal cat={moveCat} cats={allCats} fmt={fmt} onClose={() => setMoveCat(null)} onMove={handleMove} />
+        <MoveMoneyModal cat={moveCat} cats={allCats} fmt={fmtMonth} onClose={() => setMoveCat(null)} onMove={handleMove} />
       )}
       {inspectorCat && state.cats[inspectorCat] && (() => {
         const grpName = (groups.find(g => g.categories.includes(inspectorCat)) ?? {}).name ?? '';
         const grpIdx = groups.findIndex(g => g.categories.includes(inspectorCat));
         return (
           <CategoryInspector cat={inspectorCat} color={colorFor(grpName, grpIdx)} c={state.cats[inspectorCat]}
-            months={futureMonths} monthIdx={0} fmt={fmt} onClose={() => setInspectorCat(null)}
+            months={futureMonths} monthIdx={0} fmt={fmtMonth} onClose={() => setInspectorCat(null)}
             onSetTarget={setTarget} onMoveMoney={cat => setMoveCat(cat)} onHide={hideCat}
             onDelete={cat => { const g = groups.find(x => x.categories.includes(cat)); if (g) deleteCat(g.id, cat); }} />
         );
