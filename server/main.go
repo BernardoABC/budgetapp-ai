@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"budgetapp/internal/bccr"
 	"budgetapp/internal/config"
 	"budgetapp/internal/database"
 	"budgetapp/internal/database/migrations"
@@ -38,17 +39,46 @@ func main() {
 
 	// Repos
 	accountRepo := repository.NewAccountRepo(pool)
-	txnRepo := repository.NewTransactionRepo(pool)
-	catRepo := repository.NewCategoryRepo(pool)
-	ruleRepo := repository.NewPayeeRuleRepo(pool)
-	importRepo := repository.NewImportRepo(pool)
+	txnRepo     := repository.NewTransactionRepo(pool)
+	catRepo     := repository.NewCategoryRepo(pool)
+	ruleRepo    := repository.NewPayeeRuleRepo(pool)
+	importRepo  := repository.NewImportRepo(pool)
+	rateRepo    := repository.NewExchangeRateRepo(pool)
+
+	// Services
+	bccrClient := bccr.NewClient(cfg.BCCRAPIToken)
+	rateSvc    := service.NewExchangeRateService(rateRepo, bccrClient)
+	importSvc  := service.NewImportService(pool, accountRepo, ruleRepo, importRepo, rateSvc)
+
+	// Fetch today's rate on startup (non-blocking)
+	go func() {
+		if err := rateSvc.FetchAndStoreToday(ctx); err != nil {
+			slog.Warn("startup rate fetch failed", "err", err)
+		}
+	}()
+
+	// Refresh daily just after midnight
+	go func() {
+		for {
+			now := time.Now()
+			next := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 1, 0, 0, now.Location())
+			select {
+			case <-time.After(time.Until(next)):
+				if err := rateSvc.FetchAndStoreToday(ctx); err != nil {
+					slog.Warn("daily rate fetch failed", "err", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	// Handlers
 	accounts := handler.NewAccountHandler(accountRepo)
-	txns := handler.NewTransactionHandler(txnRepo)
-	cats := handler.NewCategoryHandler(catRepo)
-	importSvc := service.NewImportService(pool, accountRepo, ruleRepo, importRepo)
-	imports := handler.NewImportHandler(importSvc, importRepo)
+	txns     := handler.NewTransactionHandler(txnRepo)
+	cats     := handler.NewCategoryHandler(catRepo)
+	imports  := handler.NewImportHandler(importSvc, importRepo)
+	rates    := handler.NewExchangeRateHandler(rateSvc)
 
 	mux := http.NewServeMux()
 
@@ -85,6 +115,11 @@ func main() {
 	mux.HandleFunc("POST /api/imports/preview", imports.Preview)
 	mux.HandleFunc("POST /api/imports/confirm", imports.Confirm)
 	mux.HandleFunc("GET /api/imports", imports.History)
+
+	// Exchange rates
+	mux.HandleFunc("GET /api/exchange-rates/current", rates.Current)
+	mux.HandleFunc("GET /api/exchange-rates", rates.ListByRange)
+	mux.HandleFunc("PUT /api/exchange-rates/{date}", rates.Upsert)
 
 	corsMiddleware := handler.CORS(cfg.CORSOrigin)
 	srv := &http.Server{
