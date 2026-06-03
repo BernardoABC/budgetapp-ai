@@ -122,3 +122,87 @@ func TestTransactionRepo_SortAndSummary(t *testing.T) {
 		t.Errorf("want uncleared_balance 5000 got %d", summary.UnclearedBalance)
 	}
 }
+
+func TestTransactionRepo_BatchCategorize(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	id1 := testutil.SeedTransactionFull(t, pool, acc, "", "2026-04-01", -1000, "A", "", false)
+	id2 := testutil.SeedTransactionFull(t, pool, acc, "", "2026-04-02", -2000, "B", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	n, err := repo.BatchUpdate(ctx, []string{id1, id2}, "categorize", cat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("want 2 affected got %d", n)
+	}
+	_, total, _, _ := repo.ListByAccount(ctx, acc, repository.TxnFilter{CategoryID: cat})
+	if total != 2 {
+		t.Errorf("want 2 in category got %d", total)
+	}
+}
+
+func TestTransactionRepo_BatchClear(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	id1 := testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "A", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	if _, err := repo.BatchUpdate(ctx, []string{id1}, "clear", ""); err != nil {
+		t.Fatal(err)
+	}
+	cleared := true
+	_, total, _, _ := repo.ListByAccount(ctx, acc, repository.TxnFilter{Cleared: &cleared})
+	if total != 1 {
+		t.Errorf("want 1 cleared got %d", total)
+	}
+}
+
+func TestTransactionRepo_BatchDeleteReversesBalance(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool) // balance starts at 0
+	cat := testutil.SeedCategory(t, pool)
+	id1 := testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "A", "", false)
+	id2 := testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-02", -2000, "B", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	n, err := repo.BatchUpdate(ctx, []string{id1, id2}, "delete", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("want 2 deleted got %d", n)
+	}
+	// rows gone
+	_, total, _, _ := repo.ListByAccount(ctx, acc, repository.TxnFilter{})
+	if total != 0 {
+		t.Errorf("want 0 remaining got %d", total)
+	}
+	// balance reversed: 0 - (-3000) = 3000
+	var bal int64
+	pool.QueryRow(ctx, `SELECT balance FROM accounts WHERE id = $1::uuid`, acc).Scan(&bal)
+	if bal != 3000 {
+		t.Errorf("want balance 3000 after reversal got %d", bal)
+	}
+}
+
+func TestTransactionRepo_BatchUnknownAction(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	id1 := testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "A", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	if _, err := repo.BatchUpdate(context.Background(), []string{id1}, "bogus", ""); err == nil {
+		t.Error("want error for unknown action, got nil")
+	}
+}

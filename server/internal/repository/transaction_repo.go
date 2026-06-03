@@ -335,6 +335,80 @@ func (r *TransactionRepo) Delete(ctx context.Context, id string) error {
 	return tx.Commit(ctx)
 }
 
+// BatchUpdate applies an action to many transactions in one DB transaction.
+// action: "categorize" (categoryID="" uncategorizes), "clear", "unclear", "delete".
+// Returns the number of affected rows.
+func (r *TransactionRepo) BatchUpdate(ctx context.Context, ids []string, action, categoryID string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var affected int64
+	switch action {
+	case "categorize":
+		tag, err := tx.Exec(ctx,
+			`UPDATE transactions SET category_id = NULLIF($1,'')::uuid, updated_at = NOW() WHERE id = ANY($2::uuid[])`,
+			categoryID, ids)
+		if err != nil {
+			return 0, fmt.Errorf("batch categorize: %w", err)
+		}
+		affected = tag.RowsAffected()
+	case "clear", "unclear":
+		tag, err := tx.Exec(ctx,
+			`UPDATE transactions SET cleared = $1, updated_at = NOW() WHERE id = ANY($2::uuid[])`,
+			action == "clear", ids)
+		if err != nil {
+			return 0, fmt.Errorf("batch clear: %w", err)
+		}
+		affected = tag.RowsAffected()
+	case "delete":
+		rows, err := tx.Query(ctx,
+			`SELECT account_id::text, COALESCE(SUM(amount),0)::bigint
+			 FROM transactions WHERE id = ANY($1::uuid[]) GROUP BY account_id`, ids)
+		if err != nil {
+			return 0, fmt.Errorf("batch delete sums: %w", err)
+		}
+		type acctSum struct {
+			id  string
+			sum int64
+		}
+		var sums []acctSum
+		for rows.Next() {
+			var a acctSum
+			if err := rows.Scan(&a.id, &a.sum); err != nil {
+				rows.Close()
+				return 0, fmt.Errorf("scan delete sum: %w", err)
+			}
+			sums = append(sums, a)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return 0, err
+		}
+		tag, err := tx.Exec(ctx, `DELETE FROM transactions WHERE id = ANY($1::uuid[])`, ids)
+		if err != nil {
+			return 0, fmt.Errorf("batch delete: %w", err)
+		}
+		affected = tag.RowsAffected()
+		for _, a := range sums {
+			if _, err := tx.Exec(ctx,
+				`UPDATE accounts SET balance = balance - $1, updated_at = NOW() WHERE id = $2::uuid`,
+				a.sum, a.id); err != nil {
+				return 0, fmt.Errorf("reverse balance: %w", err)
+			}
+		}
+	default:
+		return 0, fmt.Errorf("unknown batch action: %s", action)
+	}
+
+	return affected, tx.Commit(ctx)
+}
+
 // SpendingByGroupRow is one (month, group) spend total in centimos (outflows only).
 type SpendingByGroupRow struct {
 	Month     string
