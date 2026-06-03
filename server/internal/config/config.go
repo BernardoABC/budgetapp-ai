@@ -3,9 +3,10 @@ package config
 import "os"
 
 type Config struct {
-	DatabaseURL string
-	Port        string
-	CORSOrigin  string
+	DatabaseURL  string
+	Port         string
+	CORSOrigin   string
+	BCCRAPIToken string
 }
 
 func Load() Config {
@@ -18,8 +19,9 @@ func Load() Config {
 		cors = "*"
 	}
 	return Config{
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		Port:        port,
-		CORSOrigin:  cors,
+		DatabaseURL:  os.Getenv("DATABASE_URL"),
+		Port:         port,
+		CORSOrigin:   cors,
+		BCCRAPIToken: os.Getenv("BCCR_API_TOKEN"),
 	}
 }
