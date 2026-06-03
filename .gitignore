@@ -1,0 +1,8 @@
+# Bank statement exports (contain real account/transaction data)
+*.csv
+*.qif
+*.dat
+*.txt
+
+# Environment
+server/.env
