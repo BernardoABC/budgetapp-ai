@@ -194,6 +194,20 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, onNav
   const idToName = Object.fromEntries(Object.entries(categoryIdByName).map(([name, id]) => [id, name]));
   const allCategoryNames = categoryGroups.flatMap(g => g.categories);
 
+  const [liveRules, setLiveRules] = useState<ApiPayeeRule[]>([]);
+  useEffect(() => {
+    fetchPayeeRules().then(setLiveRules).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (liveRules.length === 0) return;
+    setParsed(rows => rows.map(r => {
+      const mapped = liveRules.map(lr => ({ id: lr.id, match: lr.pattern, category: idToName[lr.category_id] ?? '' }));
+      const cat = categorize(r.payee, mapped);
+      return { ...r, category: cat, autoCat: !!cat };
+    }));
+  }, [liveRules]);
+
   if (done) {
     return (
       <div style={st.doneWrap}>
@@ -246,16 +260,19 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, onNav
 }
 
 function ImportHistory() {
+  const toast = useToast();
   const [records, setRecords] = useState<ImportRecord[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchImportHistory()
-      .then(setRecords)
-      .catch(err => console.warn('Failed to load import history:', err.message));
-    fetchAccounts()
-      .then(accs => setAccounts([...accs.budget, ...accs.tracking]))
-      .catch(() => {});
+    Promise.all([
+      fetchImportHistory(),
+      fetchAccounts().then(accs => [...accs.budget, ...accs.tracking]).catch(() => [] as Account[]),
+    ])
+      .then(([recs, accs]) => { setRecords(recs); setAccounts(accs); })
+      .catch(err => toast.error('Failed to load import history: ' + err.message))
+      .finally(() => setLoading(false));
   }, []);
 
   const accountName = (id: string) => accounts.find(a => a.id === id)?.name ?? id;
@@ -263,6 +280,15 @@ function ImportHistory() {
     try { return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); }
     catch { return s; }
   };
+
+  if (loading) return (
+    <div style={{ maxWidth: 760, margin: '0 auto 28px', padding: '0 24px' }}>
+      <div style={{ ...stHistory.panel }}>
+        <div style={stHistory.header}>Import History</div>
+        <div style={{ padding: '24px 18px', color: T.textDim, fontSize: 13 }}>Loading…</div>
+      </div>
+    </div>
+  );
 
   if (records.length === 0) return null;
 
