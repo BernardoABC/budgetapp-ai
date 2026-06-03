@@ -157,7 +157,7 @@ export async function batchTransactions(
 ): Promise<{ affected: number }> {
   return apiFetch('/transactions/batch', {
     method: 'PATCH',
-    body: JSON.stringify({ transaction_ids: ids, action, category_id: categoryId ?? '' }),
+    body: JSON.stringify({ transaction_ids: ids, action, ...(categoryId !== undefined ? { category_id: categoryId } : {}) }),
   });
 }
 

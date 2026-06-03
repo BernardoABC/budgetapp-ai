@@ -388,7 +388,7 @@ func (r *TransactionRepo) BatchUpdate(ctx context.Context, ids []string, action,
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
-			return 0, err
+			return 0, fmt.Errorf("batch delete rows: %w", err)
 		}
 		tag, err := tx.Exec(ctx, `DELETE FROM transactions WHERE id = ANY($1::uuid[])`, ids)
 		if err != nil {
