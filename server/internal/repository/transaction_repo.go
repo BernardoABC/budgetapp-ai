@@ -37,7 +37,8 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, p
 		SELECT t.id::text, t.account_id::text,
 		       COALESCE(t.category_id::text,''), COALESCE(c.name,''),
 		       t.date::text, t.amount, t.currency,
-		       COALESCE(t.payee,''), COALESCE(t.memo,''), t.cleared
+		       COALESCE(t.payee,''), COALESCE(t.memo,''), t.cleared,
+		       t.exchange_rate
 		FROM transactions t
 		LEFT JOIN categories c ON c.id = t.category_id
 		WHERE t.account_id = $1
@@ -53,7 +54,8 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, p
 	for rows.Next() {
 		var t model.Transaction
 		if err := rows.Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
-			&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared); err != nil {
+			&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared,
+			&t.ExchangeRate); err != nil {
 			return nil, 0, fmt.Errorf("scan transaction: %w", err)
 		}
 		txns = append(txns, t)
@@ -67,12 +69,14 @@ func (r *TransactionRepo) Get(ctx context.Context, id string) (model.Transaction
 		SELECT t.id::text, t.account_id::text,
 		       COALESCE(t.category_id::text,''), COALESCE(c.name,''),
 		       t.date::text, t.amount, t.currency,
-		       COALESCE(t.payee,''), COALESCE(t.memo,''), t.cleared
+		       COALESCE(t.payee,''), COALESCE(t.memo,''), t.cleared,
+		       t.exchange_rate
 		FROM transactions t
 		LEFT JOIN categories c ON c.id = t.category_id
 		WHERE t.id = $1
 	`, id).Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
-		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared)
+		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared,
+		&t.ExchangeRate)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return t, ErrNotFound

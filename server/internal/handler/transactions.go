@@ -29,16 +29,17 @@ func (h *TransactionHandler) toResponse(t model.Transaction) map[string]any {
 		categoryID = t.CategoryID
 	}
 	return map[string]any{
-		"id":          t.ID,
-		"account":     t.AccountID,
-		"date":        t.Date,
-		"payee":       t.Payee,
-		"category":    category,
-		"category_id": categoryID,
-		"memo":        t.Memo,
-		"amount":      t.Amount,
-		"currency":    t.Currency,
-		"cleared":     t.Cleared,
+		"id":            t.ID,
+		"account":       t.AccountID,
+		"date":          t.Date,
+		"payee":         t.Payee,
+		"category":      category,
+		"category_id":   categoryID,
+		"memo":          t.Memo,
+		"amount":        t.Amount,
+		"currency":      t.Currency,
+		"cleared":       t.Cleared,
+		"exchange_rate": t.ExchangeRate,
 	}
 }
 
