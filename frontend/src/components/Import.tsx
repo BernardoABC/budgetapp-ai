@@ -4,8 +4,9 @@ import { categorize } from '../engine';
 import { AppData } from '../data';
 import type { CategoryGroup } from '../data';
 import type { Account } from '../data';
-import { fetchImportHistory, fetchAccounts } from '../api';
-import type { ImportRecord } from '../api';
+import { fetchImportHistory, fetchAccounts, fetchPayeeRules, createPayeeRule, updatePayeeRule, deletePayeeRule } from '../api';
+import type { ImportRecord, PayeeRule as ApiPayeeRule } from '../api';
+import { useToast } from './Toast';
 
 interface ParsedRow {
   id: number;
@@ -182,13 +183,16 @@ interface Props {
 }
 
 export function ImportWizard({ accounts, categoryGroups, categoryIdByName, onNavigate }: Props) {
-  void categoryIdByName; // will be used in Tasks 5 & 6
+  const [tab, setTab] = useState<'import' | 'rules'>('import');
   const [step, setStep] = useState(0);
   const [uploadInfo, setUploadInfo] = useState<{ file: { name: string }; accountId: string } | null>(null);
   const [parsed, setParsed] = useState<ParsedRow[]>(SAMPLE_PARSED);
   const [done, setDone] = useState(false);
   const handleChangeParsed = (id: number, key: string, val: string | null) =>
     setParsed(rows => rows.map(r => r.id === id ? { ...r, [key]: val } : r));
+
+  const idToName = Object.fromEntries(Object.entries(categoryIdByName).map(([name, id]) => [id, name]));
+  const allCategoryNames = categoryGroups.flatMap(g => g.categories);
 
   if (done) {
     return (
@@ -203,15 +207,42 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, onNav
 
   return (
     <>
-      <div style={{ padding: '28px 24px', maxWidth: 760, margin: '0 auto' }}>
-        <StepIndicator step={step} />
-        <div style={{ marginTop: 28 }}>
-          {step === 0 && <Step1 accounts={accounts} onNext={info => { setUploadInfo(info); setStep(1); }} />}
-          {step === 1 && <Step2 parsed={parsed} onChangeParsed={handleChangeParsed} categoryGroups={categoryGroups} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
-          {step === 2 && <Step3 parsed={parsed} uploadInfo={uploadInfo ?? { file: { name: 'estado_cuenta_abril.csv' } }} onBack={() => setStep(1)} onConfirm={() => setDone(true)} />}
+      {/* Tab bar */}
+      <div style={{ maxWidth: 760, margin: '0 auto', padding: '16px 24px 0' }}>
+        <div style={{ display: 'flex', borderBottom: `1px solid ${T.border}`, gap: 0 }}>
+          {(['import', 'rules'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{
+              padding: '10px 20px', fontSize: 13, fontWeight: 600,
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: tab === t ? 'var(--accent)' : T.textDim,
+              borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
+              marginBottom: -1, textTransform: 'capitalize' as const,
+            }}>{t === 'import' ? 'Import' : 'Rules'}</button>
+          ))}
         </div>
       </div>
-      <ImportHistory />
+
+      {tab === 'import' && (
+        <>
+          <div style={{ padding: '28px 24px 0', maxWidth: 760, margin: '0 auto' }}>
+            <StepIndicator step={step} />
+            <div style={{ marginTop: 28 }}>
+              {step === 0 && <Step1 accounts={accounts} onNext={info => { setUploadInfo(info); setStep(1); }} />}
+              {step === 1 && <Step2 parsed={parsed} onChangeParsed={handleChangeParsed} categoryGroups={categoryGroups} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
+              {step === 2 && <Step3 parsed={parsed} uploadInfo={uploadInfo ?? { file: { name: 'estado_cuenta_abril.csv' } }} onBack={() => setStep(1)} onConfirm={() => setDone(true)} />}
+            </div>
+          </div>
+          <ImportHistory />
+        </>
+      )}
+
+      {tab === 'rules' && (
+        <RulesManager
+          categoryIdByName={categoryIdByName}
+          idToName={idToName}
+          allCategoryNames={allCategoryNames}
+        />
+      )}
     </>
   );
 }
@@ -270,6 +301,158 @@ function ImportHistory() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+function RulesManager({ categoryIdByName, idToName, allCategoryNames }: {
+  categoryIdByName: Record<string, string>;
+  idToName: Record<string, string>;
+  allCategoryNames: string[];
+}) {
+  const toast = useToast();
+  const [rules, setRules] = useState<ApiPayeeRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState({ pattern: '', categoryId: '' });
+
+  const load = () => {
+    setLoading(true);
+    setLoadError(null);
+    fetchPayeeRules()
+      .then(r => { setRules(r); setLoading(false); })
+      .catch(err => { setLoadError(err.message); setLoading(false); });
+  };
+  useEffect(() => { load(); }, []);
+
+  const startAdd = () => { setAdding(true); setForm({ pattern: '', categoryId: categoryIdByName[allCategoryNames[0]] ?? '' }); };
+  const startEdit = (r: ApiPayeeRule) => { setEditingId(r.id); setForm({ pattern: r.pattern, categoryId: r.category_id }); };
+  const cancelForm = () => { setAdding(false); setEditingId(null); };
+
+  const saveAdd = async () => {
+    if (!form.pattern || !form.categoryId) return;
+    try {
+      await createPayeeRule(form.pattern, form.categoryId);
+      toast.success('Rule saved');
+      setAdding(false);
+      load();
+    } catch (err: any) { toast.error(err.message); }
+  };
+
+  const saveEdit = async () => {
+    if (!editingId || !form.pattern || !form.categoryId) return;
+    try {
+      await updatePayeeRule(editingId, form.pattern, form.categoryId);
+      toast.success('Rule updated');
+      setEditingId(null);
+      load();
+    } catch (err: any) { toast.error(err.message); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Delete this rule?')) return;
+    try {
+      await deletePayeeRule(id);
+      toast.success('Rule deleted');
+      load();
+    } catch (err: any) { toast.error(err.message); }
+  };
+
+  const CategorySelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <select value={value} onChange={e => onChange(e.target.value)} style={{ ...st.select, padding: '7px 10px', fontSize: 13 }}>
+      {allCategoryNames.map(name => (
+        <option key={name} value={categoryIdByName[name] ?? ''}>{name}</option>
+      ))}
+    </select>
+  );
+
+  return (
+    <div style={{ maxWidth: 760, margin: '0 auto', padding: '24px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Payee Rules</div>
+          <div style={{ fontSize: 12, color: T.textDim, marginTop: 3 }}>
+            Patterns are matched as case-insensitive substrings against payee names during import.
+          </div>
+        </div>
+        {!adding && <button onClick={startAdd} style={st.primaryBtn}>+ Add Rule</button>}
+      </div>
+
+      {loadError && (
+        <div style={{ padding: '12px 14px', background: 'rgba(255,80,80,0.08)', border: `1px solid rgba(255,80,80,0.2)`, borderRadius: 8, color: T.neg, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ flex: 1 }}>{loadError}</span>
+          <button onClick={load} style={{ background: 'none', border: 'none', color: T.neg, cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>Retry</button>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ padding: '32px 0', textAlign: 'center', color: T.textDim, fontSize: 13 }}>Loading…</div>
+      ) : (
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden' }}>
+          {/* Table header */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 72px 72px', padding: '8px 14px', background: 'rgba(255,255,255,0.03)', fontSize: 10.5, fontWeight: 700, color: T.textDim, letterSpacing: '0.07em', textTransform: 'uppercase' as const, borderBottom: `1px solid ${T.border}` }}>
+            <span>Pattern</span><span>Category</span><span>Used</span><span></span>
+          </div>
+
+          {rules.length === 0 && !adding && (
+            <div style={{ padding: '32px 0', textAlign: 'center', color: T.textDim, fontSize: 13 }}>
+              No rules yet — add one to auto-categorize imports.
+            </div>
+          )}
+
+          {rules.map(rule => (
+            editingId === rule.id ? (
+              <div key={rule.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 72px 72px', padding: '8px 14px', alignItems: 'center', borderBottom: `1px solid ${T.border}`, background: 'rgba(61,220,151,0.04)' }}>
+                <input
+                  value={form.pattern}
+                  onChange={e => setForm(f => ({ ...f, pattern: e.target.value }))}
+                  style={{ ...st.select, padding: '6px 9px', fontSize: 13, fontFamily: T.mono }}
+                  placeholder="payee pattern"
+                  autoFocus
+                />
+                <CategorySelect value={form.categoryId} onChange={v => setForm(f => ({ ...f, categoryId: v }))} />
+                <span style={{ fontSize: 12, color: T.textFaint }}>{rule.match_count}×</span>
+                <span style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={saveEdit} style={{ ...st.primaryBtn, padding: '5px 10px', fontSize: 12 }}>Save</button>
+                  <button onClick={cancelForm} style={{ ...st.ghostBtn, padding: '5px 8px', fontSize: 12 }}>✕</button>
+                </span>
+              </div>
+            ) : (
+              <div key={rule.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 72px 72px', padding: '10px 14px', alignItems: 'center', borderBottom: `1px solid ${T.borderSoft}`, fontSize: 13 }}>
+                <span style={{ color: T.text, fontFamily: T.mono, fontSize: 12.5 }}>{rule.pattern}</span>
+                <span style={{ color: T.textMid }}>{idToName[rule.category_id] ?? rule.category_id}</span>
+                <span style={{ color: T.textFaint, fontSize: 12 }}>{rule.match_count}×</span>
+                <span style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => startEdit(rule)} style={{ background: 'none', border: 'none', color: T.textDim, cursor: 'pointer', fontSize: 14, padding: '2px 4px' }}>✎</button>
+                  <button onClick={() => handleDelete(rule.id)} style={{ background: 'none', border: 'none', color: T.textFaint, cursor: 'pointer', fontSize: 14, padding: '2px 4px' }}>✕</button>
+                </span>
+              </div>
+            )
+          ))}
+
+          {adding && (
+            <div style={{ padding: '10px 14px', borderTop: rules.length > 0 ? `1px solid ${T.border}` : undefined, background: 'rgba(61,220,151,0.04)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 72px 72px', alignItems: 'center', gap: 0 }}>
+                <input
+                  value={form.pattern}
+                  onChange={e => setForm(f => ({ ...f, pattern: e.target.value }))}
+                  style={{ ...st.select, padding: '7px 10px', fontSize: 13, fontFamily: T.mono }}
+                  placeholder="e.g. walmart"
+                  autoFocus
+                />
+                <CategorySelect value={form.categoryId} onChange={v => setForm(f => ({ ...f, categoryId: v }))} />
+                <span />
+                <span style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={saveAdd} style={{ ...st.primaryBtn, padding: '6px 10px', fontSize: 12 }}>Save</button>
+                  <button onClick={cancelForm} style={{ ...st.ghostBtn, padding: '6px 8px', fontSize: 12 }}>Cancel</button>
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
