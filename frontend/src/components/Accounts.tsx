@@ -157,17 +157,23 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   }, [accountId, buildParams]);
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAccountId = useRef<string>(accountId);
+
   useEffect(() => {
+    // If account changed, reset filter state immediately before scheduling reload
+    if (lastAccountId.current !== accountId) {
+      lastAccountId.current = accountId;
+      setFilter({ payee: '', category: '', from: '', to: '' });
+      setPageNum(1);
+      setSelected(new Set());
+      // Don't schedule a debounced reload here — the state changes above will
+      // trigger this effect again with the reset values
+      return;
+    }
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => { reload(); }, 300);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
-  }, [reload]);
-
-  useEffect(() => {
-    setPageNum(1);
-    setSelected(new Set());
-    setFilter({ payee: '', category: '', from: '', to: '' });
-  }, [accountId]);
+  }, [reload, accountId]);
 
   const upcoming = AppData.scheduled.filter(s => s.account === account.id && !dismissedSched.has(s.id));
 

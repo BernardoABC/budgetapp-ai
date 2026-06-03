@@ -201,6 +201,14 @@ func (h *TransactionHandler) Batch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Action == "categorize" && req.CategoryID != "" {
+		// Validate UUID format to return a 400 instead of a DB cast error
+		if len(req.CategoryID) != 36 {
+			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "category_id must be a valid UUID or empty")
+			return
+		}
+	}
+
 	affected, err := h.repo.BatchUpdate(r.Context(), req.TransactionIDs, req.Action, req.CategoryID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
