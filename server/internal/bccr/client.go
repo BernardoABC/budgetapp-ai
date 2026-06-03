@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -26,8 +27,9 @@ func NewClient(token string) *Client {
 }
 
 type bccrResponse struct {
-	Estado bool       `json:"estado"`
-	Datos  []bccrData `json:"datos"`
+	Estado  bool       `json:"estado"`
+	Mensaje string     `json:"mensaje"`
+	Datos   []bccrData `json:"datos"`
 }
 type bccrData struct {
 	Indicadores []bccrIndicador `json:"indicadores"`
@@ -47,6 +49,7 @@ func (c *Client) FetchRates(ctx context.Context, from, to string) (map[string]fl
 	fromFmt := strings.ReplaceAll(from, "-", "/")
 	toFmt := strings.ReplaceAll(to, "-", "/")
 
+	// BCCR requires raw slashes in date params (not percent-encoded %2F).
 	url := fmt.Sprintf(
 		"%s/cuadro/1/series?fechaInicio=%s&fechaFin=%s&idioma=ES",
 		c.baseURL, fromFmt, toFmt,
@@ -64,6 +67,7 @@ func (c *Client) FetchRates(ctx context.Context, from, to string) (map[string]fl
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		io.Copy(io.Discard, resp.Body) //nolint:errcheck
 		return nil, fmt.Errorf("bccr status %d", resp.StatusCode)
 	}
 
@@ -71,8 +75,11 @@ func (c *Client) FetchRates(ctx context.Context, from, to string) (map[string]fl
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return nil, fmt.Errorf("bccr decode: %w", err)
 	}
-	if !body.Estado || len(body.Datos) == 0 {
-		return nil, fmt.Errorf("bccr: empty or failed response")
+	if !body.Estado {
+		return nil, fmt.Errorf("bccr: API error: %s", body.Mensaje)
+	}
+	if len(body.Datos) == 0 {
+		return nil, fmt.Errorf("bccr: empty response")
 	}
 
 	rates := make(map[string]float64)
