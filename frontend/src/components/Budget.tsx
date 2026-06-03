@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { T, GROUP_COLORS } from '../theme';
 import { compute, quickAssign as engineQuickAssign, targetLabel } from '../engine';
 import { MoveMoneyModal, CategoryInspector } from './BudgetModals';
@@ -216,7 +216,7 @@ export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCateg
   const currentDisplayMonth = toDisplayMonth(currentYM);
   const [localBudget, setLocalBudget] = useState<Record<string, Record<string, { assigned: number; activity: number }>>>({});
   const [targets, setTargets] = useState<Record<string, Target>>({});
-  const carryInRef = useRef<Record<string, number>>({});
+  const [carryIn, setCarryIn] = useState<Record<string, number>>({});
   const serverRtaRef = useRef<number>(0);
   const serverAssignedTotalRef = useRef<number>(0);
   const [aom, setAom] = useState<number | null>(null);
@@ -257,7 +257,7 @@ export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCateg
         }
       }
 
-      carryInRef.current = newCarryIn;
+      setCarryIn(newCarryIn);
       serverRtaRef.current = data.ready_to_assign;
       serverAssignedTotalRef.current = Object.values(newBudgetMonth).reduce((s, e) => s + e.assigned, 0);
       setAom(data.age_of_money);
@@ -274,10 +274,10 @@ export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCateg
   const dataT = useMemo(() => ({
     months: [currentDisplayMonth],
     budget: {},
-    openingCarryover: carryInRef.current,
+    openingCarryover: carryIn,
     targets,
     categoryGroups: groups,
-  }), [currentDisplayMonth, targets, groups]);
+  }), [currentDisplayMonth, carryIn, targets, groups]);
 
   const state = useMemo(
     () => compute(dataT, localBudget, currentDisplayMonth, groups),
@@ -427,6 +427,8 @@ export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCateg
     }
   };
 
+  const futureMonths = useMemo(() => futureMonthDisplays(currentYM), [currentYM]);
+
   const allCats = groups.flatMap((g, gi) => g.categories.map(cat => ({
     color: colorFor(g.name, gi),
     ...(state.cats[cat] ?? { cat, assigned: 0, activity: 0, carryIn: 0, available: 0, target: null, underfunded: 0, targetNeed: 0, fundedPct: null })
@@ -516,7 +518,7 @@ export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCateg
         const grpIdx = groups.findIndex(g => g.categories.includes(inspectorCat));
         return (
           <CategoryInspector cat={inspectorCat} color={colorFor(grpName, grpIdx)} c={state.cats[inspectorCat]}
-            months={futureMonthDisplays(currentYM)} monthIdx={0} fmt={fmt} onClose={() => setInspectorCat(null)}
+            months={futureMonths} monthIdx={0} fmt={fmt} onClose={() => setInspectorCat(null)}
             onSetTarget={setTarget} onMoveMoney={cat => setMoveCat(cat)} onHide={hideCat}
             onDelete={cat => { const g = groups.find(x => x.categories.includes(cat)); if (g) deleteCat(g.id, cat); }} />
         );
@@ -524,8 +526,6 @@ export function Budget({ categoryGroups, fmt, density, categoryIdByName, onCateg
     </div>
   );
 }
-
-import React from 'react';
 
 const st = {
   topBar:      { display: 'flex', alignItems: 'center', gap: 16, padding: '14px 28px', background: 'rgba(255,255,255,0.015)', borderBottom: `1px solid ${T.border}`, flexWrap: 'wrap' as const },
