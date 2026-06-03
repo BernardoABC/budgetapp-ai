@@ -1,8 +1,11 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { T } from '../theme';
 import { categorize } from '../engine';
 import { AppData } from '../data';
 import type { CategoryGroup } from '../data';
+import type { Account } from '../data';
+import { fetchImportHistory, fetchAccounts } from '../api';
+import type { ImportRecord } from '../api';
 
 interface ParsedRow {
   id: number;
@@ -197,16 +200,85 @@ export function ImportWizard({ accounts, categoryGroups, onNavigate }: Props) {
   }
 
   return (
-    <div style={{ padding: '28px 24px', maxWidth: 760, margin: '0 auto' }}>
-      <StepIndicator step={step} />
-      <div style={{ marginTop: 28 }}>
-        {step === 0 && <Step1 accounts={accounts} onNext={info => { setUploadInfo(info); setStep(1); }} />}
-        {step === 1 && <Step2 parsed={parsed} onChangeParsed={handleChangeParsed} categoryGroups={categoryGroups} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
-        {step === 2 && <Step3 parsed={parsed} uploadInfo={uploadInfo ?? { file: { name: 'estado_cuenta_abril.csv' } }} onBack={() => setStep(1)} onConfirm={() => setDone(true)} />}
+    <>
+      <div style={{ padding: '28px 24px', maxWidth: 760, margin: '0 auto' }}>
+        <StepIndicator step={step} />
+        <div style={{ marginTop: 28 }}>
+          {step === 0 && <Step1 accounts={accounts} onNext={info => { setUploadInfo(info); setStep(1); }} />}
+          {step === 1 && <Step2 parsed={parsed} onChangeParsed={handleChangeParsed} categoryGroups={categoryGroups} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
+          {step === 2 && <Step3 parsed={parsed} uploadInfo={uploadInfo ?? { file: { name: 'estado_cuenta_abril.csv' } }} onBack={() => setStep(1)} onConfirm={() => setDone(true)} />}
+        </div>
+      </div>
+      <ImportHistory />
+    </>
+  );
+}
+
+function ImportHistory() {
+  const [records, setRecords] = useState<ImportRecord[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+
+  useEffect(() => {
+    fetchImportHistory()
+      .then(setRecords)
+      .catch(err => console.warn('Failed to load import history:', err.message));
+    fetchAccounts()
+      .then(accs => setAccounts([...accs.budget, ...accs.tracking]))
+      .catch(() => {});
+  }, []);
+
+  const accountName = (id: string) => accounts.find(a => a.id === id)?.name ?? id;
+  const fmtDate = (s: string) => {
+    try { return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); }
+    catch { return s; }
+  };
+
+  if (records.length === 0) return null;
+
+  return (
+    <div style={{ maxWidth: 760, margin: '0 auto 28px', padding: '0 24px' }}>
+      <div style={stHistory.panel}>
+        <div style={stHistory.header}>Import History</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                {['File', 'Account', 'Transactions', 'Date', 'Status'].map(h => (
+                  <th key={h} style={{ ...stHistory.th, textAlign: h === 'Transactions' ? 'right' : 'left' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {records.map(r => (
+                <tr key={r.id}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <td style={stHistory.td}>{r.filename}</td>
+                  <td style={stHistory.td}>{accountName(r.account_id)}</td>
+                  <td style={{ ...stHistory.td, textAlign: 'right', fontFamily: T.mono }}>{r.transaction_count}</td>
+                  <td style={{ ...stHistory.td, fontFamily: T.mono, fontSize: 12, color: T.textDim }}>{fmtDate(r.imported_at)}</td>
+                  <td style={stHistory.td}>
+                    <span style={{ ...stHistory.badge, background: r.status === 'completed' ? 'rgba(61,220,151,0.12)' : 'rgba(246,196,90,0.12)', color: r.status === 'completed' ? T.pos : T.warn }}>
+                      {r.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
+
+const stHistory = {
+  panel:  { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, overflow: 'hidden', boxShadow: T.shadow },
+  header: { padding: '14px 18px', fontSize: 13, fontWeight: 700, color: T.text, borderBottom: `1px solid ${T.border}`, letterSpacing: '-0.01em' },
+  th:     { padding: '10px 18px', fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: '0.06em', textTransform: 'uppercase' as const, borderBottom: `1px solid ${T.border}`, whiteSpace: 'nowrap' as const, background: 'rgba(255,255,255,0.015)' },
+  td:     { padding: '10px 18px', fontSize: 13, color: T.textMid, borderBottom: `1px solid ${T.borderSoft}`, transition: 'background 0.1s' },
+  badge:  { display: 'inline-block', padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700, textTransform: 'capitalize' as const },
+};
 
 import React from 'react';
 

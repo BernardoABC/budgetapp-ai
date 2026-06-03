@@ -304,3 +304,18 @@ export async function fetchRecentTransactions(limit: number): Promise<Transactio
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, limit);
 }
+
+// ─── Import History ───────────────────────────────────────────────────────────
+
+export interface ImportRecord {
+  id: string;
+  account_id: string;
+  filename: string;
+  imported_at: string;
+  transaction_count: number;
+  status: string;
+}
+
+export async function fetchImportHistory(): Promise<ImportRecord[]> {
+  return apiFetch<ImportRecord[]>('/imports');
+}
