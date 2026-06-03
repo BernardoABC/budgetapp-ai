@@ -223,3 +223,43 @@ func (r *TransactionRepo) Delete(ctx context.Context, id string) error {
 
 	return tx.Commit(ctx)
 }
+
+// SpendingByGroupRow is one (month, group) spend total in centimos (outflows only).
+type SpendingByGroupRow struct {
+	Month     string
+	GroupName string
+	Total     int64
+}
+
+// SpendingByGroup returns outflow totals grouped by category group and calendar
+// month for the given inclusive YYYY-MM range. Transactions with no category are
+// excluded.
+func (r *TransactionRepo) SpendingByGroup(ctx context.Context, from, to string) ([]SpendingByGroupRow, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			to_char(date_trunc('month', t.date::date), 'YYYY-MM') AS month,
+			cg.name AS group_name,
+			SUM(ABS(t.amount))::bigint AS total
+		FROM transactions t
+		JOIN categories c  ON c.id = t.category_id
+		JOIN category_groups cg ON cg.id = c.group_id
+		WHERE t.amount < 0
+		  AND t.date >= ($1 || '-01')::date
+		  AND t.date <  (($2 || '-01')::date + INTERVAL '1 month')
+		GROUP BY month, cg.name
+		ORDER BY month, cg.name
+	`, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("spending by group: %w", err)
+	}
+	defer rows.Close()
+	var out []SpendingByGroupRow
+	for rows.Next() {
+		var row SpendingByGroupRow
+		if err := rows.Scan(&row.Month, &row.GroupName, &row.Total); err != nil {
+			return nil, fmt.Errorf("scan spending row: %w", err)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
