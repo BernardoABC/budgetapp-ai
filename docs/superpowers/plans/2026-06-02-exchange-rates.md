@@ -1,5 +1,7 @@
 # Exchange Rates + Currency Toggle Implementation Plan
 
+> **Status: COMPLETED — 2026-06-03**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fetch USD↔CRC rates from BCCR's REST API, stamp `transactions.exchange_rate` on import, expose rate endpoints, and wire the frontend to display live rates with a working CRC/USD toggle.

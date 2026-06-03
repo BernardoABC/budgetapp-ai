@@ -1,5 +1,7 @@
 # Budgeting Engine Implementation Plan
 
+> **Status: COMPLETED — 2026-06-03**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Wire the existing Budget UI to a real backend by building the budget/target storage engine, rollover algorithm, Age of Money computation, and replacing all hardcoded `AppData` references with live API calls.

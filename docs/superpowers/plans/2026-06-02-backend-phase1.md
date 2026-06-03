@@ -1,5 +1,7 @@
 # Backend Phase 1 Implementation Plan
 
+> **Status: COMPLETED — 2026-06-03**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement Phase 1 Steps 1.2–1.5: PostgreSQL migrations, Go CRUD API for accounts/transactions/categories, and wire the React frontend to real fetch() calls.
