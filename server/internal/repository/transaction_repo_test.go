@@ -1,0 +1,124 @@
+// server/internal/repository/transaction_repo_test.go
+package repository_test
+
+import (
+	"context"
+	"testing"
+
+	"budgetapp/internal/repository"
+	"budgetapp/internal/testutil"
+)
+
+func TestTransactionRepo_FilterSearch(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "ZARA", "shirt", false)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-02", -2000, "NIKE", "zapatos", false)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-03", -3000, "WALMART", "ZARA-brand socks", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	// search matches payee (ZARA) and memo (ZARA-brand socks) -> 2 rows
+	txns, total, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{Search: "zara"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 {
+		t.Errorf("want total 2 got %d (txns len %d)", total, len(txns))
+	}
+}
+
+func TestTransactionRepo_FilterDateRange(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "A", "", false)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-15", -2000, "B", "", false)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-05-01", -3000, "C", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	_, total, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{FromDate: "2026-04-10", ToDate: "2026-04-30"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Errorf("want 1 got %d", total)
+	}
+}
+
+func TestTransactionRepo_FilterCleared(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "A", "", true)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-02", -2000, "B", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+	cleared := true
+
+	_, total, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{Cleared: &cleared})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Errorf("want 1 cleared got %d", total)
+	}
+}
+
+func TestTransactionRepo_FilterUncategorized(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "A", "", false)
+	testutil.SeedTransactionFull(t, pool, acc, "", "2026-04-02", -2000, "B", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	_, total, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{CategoryID: "none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Errorf("want 1 uncategorized got %d", total)
+	}
+}
+
+func TestTransactionRepo_SortAndSummary(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "AAA", "", true)  // outflow, cleared
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-02", 5000, "BBB", "", false)  // inflow, uncleared
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	txns, total, summary, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{Sort: "amount_asc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 {
+		t.Fatalf("want 2 got %d", total)
+	}
+	if txns[0].Amount != -1000 {
+		t.Errorf("amount_asc: want first -1000 got %d", txns[0].Amount)
+	}
+	if summary.TotalInflow != 5000 {
+		t.Errorf("want inflow 5000 got %d", summary.TotalInflow)
+	}
+	if summary.TotalOutflow != 1000 {
+		t.Errorf("want outflow magnitude 1000 got %d", summary.TotalOutflow)
+	}
+	if summary.ClearedBalance != -1000 {
+		t.Errorf("want cleared_balance -1000 got %d", summary.ClearedBalance)
+	}
+	if summary.UnclearedBalance != 5000 {
+		t.Errorf("want uncleared_balance 5000 got %d", summary.UnclearedBalance)
+	}
+}

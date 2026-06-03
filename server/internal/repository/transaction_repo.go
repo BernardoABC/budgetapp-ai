@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,22 +19,133 @@ func NewTransactionRepo(pool *pgxpool.Pool) *TransactionRepo {
 	return &TransactionRepo{pool: pool}
 }
 
-func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, page, perPage int) ([]model.Transaction, int64, error) {
+// TxnFilter holds the optional filters for listing an account's transactions.
+type TxnFilter struct {
+	Search     string // ILIKE across payee and memo
+	FromDate   string // "YYYY-MM-DD" inclusive
+	ToDate     string // "YYYY-MM-DD" inclusive
+	CategoryID string // UUID, "none" (uncategorized), or "" (all)
+	Cleared    *bool  // nil = all
+	MinAmount  *int64 // centimos, compared against ABS(amount)
+	MaxAmount  *int64 // centimos, compared against ABS(amount)
+	Sort       string // see sortClause; default date_desc
+	Page       int    // 1-based, default 1
+	PerPage    int    // default 50, max 200
+}
+
+// TxnSummary aggregates the full filtered set (not just one page), in centimos.
+type TxnSummary struct {
+	TotalInflow      int64 `json:"total_inflow"`
+	TotalOutflow     int64 `json:"total_outflow"` // positive magnitude
+	ClearedBalance   int64 `json:"cleared_balance"`
+	UnclearedBalance int64 `json:"uncleared_balance"`
+}
+
+// whereClause builds the shared WHERE predicate. accountID is always $1; further
+// args start at $2. Returns the SQL fragment (without the "WHERE" keyword) and the
+// arg slice including accountID at index 0.
+func (f TxnFilter) whereClause(accountID string) (string, []any) {
+	conds := []string{"t.account_id = $1"}
+	args := []any{accountID}
+	add := func(cond string, val any) {
+		args = append(args, val)
+		conds = append(conds, strings.Replace(cond, "?", "$"+strconv.Itoa(len(args)), 1))
+	}
+	if f.Search != "" {
+		args = append(args, "%"+f.Search+"%")
+		n := "$" + strconv.Itoa(len(args))
+		conds = append(conds, "(t.payee ILIKE "+n+" OR t.memo ILIKE "+n+")")
+	}
+	if f.FromDate != "" {
+		add("t.date >= ?::date", f.FromDate)
+	}
+	if f.ToDate != "" {
+		add("t.date <= ?::date", f.ToDate)
+	}
+	if f.CategoryID == "none" {
+		conds = append(conds, "t.category_id IS NULL")
+	} else if f.CategoryID != "" {
+		add("t.category_id = ?::uuid", f.CategoryID)
+	}
+	if f.Cleared != nil {
+		add("t.cleared = ?", *f.Cleared)
+	}
+	if f.MinAmount != nil {
+		add("ABS(t.amount) >= ?", *f.MinAmount)
+	}
+	if f.MaxAmount != nil {
+		add("ABS(t.amount) <= ?", *f.MaxAmount)
+	}
+	return strings.Join(conds, " AND "), args
+}
+
+// sortClause whitelists ORDER BY expressions so no raw input reaches SQL.
+func sortClause(sort string) string {
+	switch sort {
+	case "date_asc":
+		return "t.date ASC, t.created_at ASC"
+	case "amount_asc":
+		return "t.amount ASC"
+	case "amount_desc":
+		return "t.amount DESC"
+	case "payee_asc":
+		return "t.payee ASC"
+	case "payee_desc":
+		return "t.payee DESC"
+	case "category_asc":
+		return "c.name ASC NULLS LAST"
+	case "category_desc":
+		return "c.name DESC NULLS LAST"
+	case "memo_asc":
+		return "t.memo ASC NULLS LAST"
+	case "memo_desc":
+		return "t.memo DESC NULLS LAST"
+	case "cleared_asc":
+		return "t.cleared ASC"
+	case "cleared_desc":
+		return "t.cleared DESC"
+	default: // date_desc
+		return "t.date DESC, t.created_at DESC"
+	}
+}
+
+func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f TxnFilter) ([]model.Transaction, int64, TxnSummary, error) {
+	page := f.Page
 	if page < 1 {
 		page = 1
 	}
-	if perPage < 1 || perPage > 500 {
-		perPage = 100
+	perPage := f.PerPage
+	if perPage < 1 || perPage > 200 {
+		perPage = 50
 	}
 	offset := (page - 1) * perPage
 
+	where, args := f.whereClause(accountID)
+	var summary TxnSummary
+
 	var total int64
 	if err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM transactions WHERE account_id = $1`, accountID,
+		`SELECT COUNT(*) FROM transactions t WHERE `+where, args...,
 	).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count transactions: %w", err)
+		return nil, 0, summary, fmt.Errorf("count transactions: %w", err)
 	}
 
+	if err := r.pool.QueryRow(ctx, `
+		SELECT
+			COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN t.amount < 0 THEN ABS(t.amount) ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN t.cleared THEN t.amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN NOT t.cleared THEN t.amount ELSE 0 END), 0)
+		FROM transactions t
+		LEFT JOIN categories c ON c.id = t.category_id
+		WHERE `+where, args...,
+	).Scan(&summary.TotalInflow, &summary.TotalOutflow, &summary.ClearedBalance, &summary.UnclearedBalance); err != nil {
+		return nil, 0, summary, fmt.Errorf("summary transactions: %w", err)
+	}
+
+	pageArgs := append(append([]any{}, args...), perPage, offset)
+	limPlace := "$" + strconv.Itoa(len(pageArgs)-1)
+	offPlace := "$" + strconv.Itoa(len(pageArgs))
 	rows, err := r.pool.Query(ctx, `
 		SELECT t.id::text, t.account_id::text,
 		       COALESCE(t.category_id::text,''), COALESCE(c.name,''),
@@ -41,12 +154,11 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, p
 		       t.exchange_rate
 		FROM transactions t
 		LEFT JOIN categories c ON c.id = t.category_id
-		WHERE t.account_id = $1
-		ORDER BY t.date DESC, t.created_at DESC
-		LIMIT $2 OFFSET $3
-	`, accountID, perPage, offset)
+		WHERE `+where+`
+		ORDER BY `+sortClause(f.Sort)+`
+		LIMIT `+limPlace+` OFFSET `+offPlace, pageArgs...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("list transactions: %w", err)
+		return nil, 0, summary, fmt.Errorf("list transactions: %w", err)
 	}
 	defer rows.Close()
 
@@ -56,11 +168,11 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, p
 		if err := rows.Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
 			&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared,
 			&t.ExchangeRate); err != nil {
-			return nil, 0, fmt.Errorf("scan transaction: %w", err)
+			return nil, 0, summary, fmt.Errorf("scan transaction: %w", err)
 		}
 		txns = append(txns, t)
 	}
-	return txns, total, rows.Err()
+	return txns, total, summary, rows.Err()
 }
 
 func (r *TransactionRepo) Get(ctx context.Context, id string) (model.Transaction, error) {

@@ -45,10 +45,28 @@ func (h *TransactionHandler) toResponse(t model.Transaction) map[string]any {
 
 func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Request) {
 	accountID := r.PathValue("id")
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	perPage, _ := strconv.Atoi(q.Get("per_page"))
 
-	txns, total, err := h.repo.ListByAccount(r.Context(), accountID, page, perPage)
+	f := repository.TxnFilter{
+		Search:     q.Get("search"),
+		FromDate:   q.Get("from_date"),
+		ToDate:     q.Get("to_date"),
+		CategoryID: q.Get("category_id"),
+		Sort:       q.Get("sort"),
+		Page:       page,
+		PerPage:    perPage,
+	}
+	if c := q.Get("cleared"); c == "true" {
+		v := true
+		f.Cleared = &v
+	} else if c == "false" {
+		v := false
+		f.Cleared = &v
+	}
+
+	txns, total, summary, err := h.repo.ListByAccount(r.Context(), accountID, f)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
@@ -59,19 +77,20 @@ func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Reques
 		resp[i] = h.toResponse(t)
 	}
 
-	p := page
+	p := f.Page
 	if p < 1 {
 		p = 1
 	}
-	pp := perPage
-	if pp < 1 || pp > 500 {
-		pp = 100
+	pp := f.PerPage
+	if pp < 1 || pp > 200 {
+		pp = 50
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"transactions": resp,
 		"total":        total,
 		"page":         p,
 		"per_page":     pp,
+		"summary":      summary,
 	})
 }
 

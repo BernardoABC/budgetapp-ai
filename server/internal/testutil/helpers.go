@@ -113,6 +113,28 @@ func SeedTransactionNoCategory(t *testing.T, pool *pgxpool.Pool, accountID, date
 	return id
 }
 
+// SeedTransactionFull inserts a transaction with payee, memo, and cleared set.
+func SeedTransactionFull(t *testing.T, pool *pgxpool.Pool, accountID, categoryID, date string, amount int64, payee, memo string, cleared bool) string {
+	t.Helper()
+	var catParam interface{}
+	if categoryID != "" {
+		catParam = categoryID
+	}
+	var id string
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO transactions (account_id, category_id, date, amount, currency, payee, memo, cleared)
+		 VALUES ($1::uuid, $2::uuid, $3::date, $4, 'CRC', $5, NULLIF($6,''), $7) RETURNING id::text`,
+		accountID, catParam, date, amount, payee, memo, cleared,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("SeedTransactionFull: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM transactions WHERE id = $1::uuid`, id)
+	})
+	return id
+}
+
 var idCounter int64
 
 func randomID() int64 {
