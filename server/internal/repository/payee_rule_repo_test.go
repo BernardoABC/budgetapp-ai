@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"budgetapp/internal/repository"
@@ -28,6 +29,9 @@ func TestPayeeRuleCRUD(t *testing.T) {
 	if rule.ID == "" {
 		t.Error("ID is empty")
 	}
+	t.Cleanup(func() {
+		_ = repo.Delete(context.Background(), rule.ID)
+	})
 
 	// List includes new rule
 	rules, err := repo.List(ctx)
@@ -75,7 +79,7 @@ func TestPayeeRuleDeleteNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	err := repo.Delete(ctx, "00000000-0000-0000-0000-000000000000")
-	if err == nil {
-		t.Fatal("expected ErrNotFound, got nil")
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
