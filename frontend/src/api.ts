@@ -57,26 +57,75 @@ export async function toggleAccountClosed(id: string): Promise<Account> {
 
 // ─── Transactions ──────────────────────────────────────────────────────────────
 
+export interface TxnPage {
+  transactions: Transaction[];
+  pagination: { page: number; per_page: number; total: number; total_pages: number };
+  summary: { total_inflow: number; total_outflow: number; cleared_balance: number; uncleared_balance: number };
+}
+
+export interface TxnFilterParams {
+  search?: string;
+  from_date?: string;
+  to_date?: string;
+  category_id?: string;   // UUID, "none", or omitted
+  cleared?: boolean;
+  sort?: string;          // date_desc | date_asc | amount_asc | amount_desc | payee_asc | ...
+  page?: number;
+  per_page?: number;
+}
+
+function mapApiTxn(t: { id: string; date: string; payee: string; category: string | null; memo: string; cleared: boolean; account: string; currency: string; amount: number; exchange_rate?: number | null }): Transaction {
+  const major = t.amount / 100;
+  return {
+    id: t.id, date: t.date, payee: t.payee, category: t.category,
+    memo: t.memo, cleared: t.cleared, account: t.account,
+    currency: t.currency, exchange_rate: t.exchange_rate,
+    outflow: major < 0 ? -major : 0,
+    inflow: major > 0 ? major : 0,
+  } as Transaction;
+}
+
+export async function fetchTransactionsPage(
+  accountId: string,
+  filter: TxnFilterParams = {},
+): Promise<TxnPage> {
+  const params = new URLSearchParams();
+  if (filter.search) params.set('search', filter.search);
+  if (filter.from_date) params.set('from_date', filter.from_date);
+  if (filter.to_date) params.set('to_date', filter.to_date);
+  if (filter.category_id) params.set('category_id', filter.category_id);
+  if (filter.cleared !== undefined) params.set('cleared', String(filter.cleared));
+  if (filter.sort) params.set('sort', filter.sort);
+  params.set('page', String(filter.page ?? 1));
+  params.set('per_page', String(filter.per_page ?? 50));
+
+  type ApiTxn = Parameters<typeof mapApiTxn>[0];
+  const data = await apiFetch<{
+    transactions: ApiTxn[];
+    pagination: TxnPage['pagination'];
+    summary: { total_inflow: number; total_outflow: number; cleared_balance: number; uncleared_balance: number };
+  }>(`/accounts/${accountId}/transactions?${params}`);
+
+  return {
+    transactions: (data.transactions ?? []).map(mapApiTxn),
+    pagination: data.pagination,
+    summary: {
+      total_inflow: data.summary.total_inflow / 100,
+      total_outflow: data.summary.total_outflow / 100,
+      cleared_balance: data.summary.cleared_balance / 100,
+      uncleared_balance: data.summary.uncleared_balance / 100,
+    },
+  };
+}
+
+// Backwards-compatible helper used by fetchRecentTransactions / Dashboard.
 export async function fetchAccountTransactions(
   accountId: string,
   page = 1,
   perPage = 200,
 ): Promise<Transaction[]> {
-  type ApiTxn = Omit<Transaction, 'outflow' | 'inflow'> & { amount: number; currency: string; exchange_rate?: number | null };
-  const data: { transactions: ApiTxn[] } = await apiFetch(
-    `/accounts/${accountId}/transactions?page=${page}&per_page=${perPage}`,
-  );
-  return (data.transactions ?? []).map(t => {
-    const major = t.amount / 100;
-    return {
-      id: t.id, date: t.date, payee: t.payee, category: t.category,
-      memo: t.memo, cleared: t.cleared, account: t.account,
-      currency: t.currency,
-      exchange_rate: t.exchange_rate,
-      outflow: major < 0 ? -major : 0,
-      inflow: major > 0 ? major : 0,
-    } as Transaction;
-  });
+  const data = await fetchTransactionsPage(accountId, { page, per_page: perPage });
+  return data.transactions;
 }
 
 export async function createTransaction(
@@ -99,6 +148,17 @@ export async function updateTransaction(
 
 export async function deleteTransaction(id: string): Promise<void> {
   return apiFetch(`/transactions/${id}`, { method: 'DELETE' });
+}
+
+export async function batchTransactions(
+  ids: string[],
+  action: 'categorize' | 'clear' | 'unclear' | 'delete',
+  categoryId?: string,
+): Promise<{ affected: number }> {
+  return apiFetch('/transactions/batch', {
+    method: 'PATCH',
+    body: JSON.stringify({ transaction_ids: ids, action, category_id: categoryId ?? '' }),
+  });
 }
 
 // ─── Categories ────────────────────────────────────────────────────────────────
