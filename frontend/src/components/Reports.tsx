@@ -193,16 +193,22 @@ interface Props {
 export function Reports({ fmt }: Props) {
   const [activeReport, setActiveReport] = useState('trend');
   const [monthlySpending, setMonthlySpending] = useState<MonthlySpendingRow[]>([]);
+  const [loadingReport, setLoadingReport] = useState(true);
+  const [reportError, setReportError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadReport = () => {
+    setLoadingReport(true);
+    setReportError(null);
     const now = new Date();
     const to = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const d = new Date(now.getFullYear(), now.getMonth() - 5, 1);
     const from = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     fetchSpendingReport(from, to)
-      .then(setMonthlySpending)
-      .catch(err => console.warn('Failed to load spending report:', err.message));
-  }, []);
+      .then(data => { setMonthlySpending(data); setLoadingReport(false); })
+      .catch(err => { setReportError(err.message); setLoadingReport(false); });
+  };
+
+  useEffect(() => { loadReport(); }, []);
 
   const D = AppData;
   const latestNW = D.netWorthHistory[D.netWorthHistory.length - 1];
@@ -245,48 +251,57 @@ export function Reports({ fmt }: Props) {
       </div>
 
       <div style={st.panel}>
-        {activeReport === 'trend' && (
-          <>
-            <div style={st.panelHeader}><span>Spending by Category Group</span><span style={st.panelMeta}>Nov 2025 – Apr 2026</span></div>
-            <div style={{ display: 'flex', gap: 16, padding: '12px 18px', flexWrap: 'wrap' }}>
-              {Object.entries(GROUP_COLORS).map(([g, color]) => (
-                <div key={g} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 9, height: 9, borderRadius: 2.5, background: color, boxShadow: `0 0 7px ${color}66` }} />
-                  <span style={{ fontSize: 12, color: T.textMid, fontWeight: 500 }}>{g}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ padding: '0 14px 16px' }}><LineChart data={monthlySpending} /></div>
-          </>
-        )}
-        {activeReport === 'donut' && (
-          <>
-            <div style={st.panelHeader}><span>Spending Breakdown</span><span style={st.panelMeta}>Last 6 months</span></div>
-            <div style={{ padding: '24px 28px' }}><DonutChart data={monthlySpending} fmt={fmt} /></div>
-          </>
-        )}
-        {activeReport === 'income' && (
-          <>
-            <div style={st.panelHeader}><span>Income vs Expense</span><span style={st.panelMeta}>Nov 2025 – Apr 2026</span></div>
-            <div style={{ display: 'flex', gap: 16, padding: '12px 18px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 9, height: 9, borderRadius: 2.5, background: T.pos }} /><span style={{ fontSize: 12, color: T.textMid }}>Income</span></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 9, height: 9, borderRadius: 2.5, background: T.neg }} /><span style={{ fontSize: 12, color: T.textMid }}>Expense</span></div>
-            </div>
-            <div style={{ padding: '0 14px 16px' }}><IncomeExpenseChart data={D.incomeExpense} fmt={fmt} /></div>
-          </>
-        )}
-        {activeReport === 'networth' && (
-          <>
-            <div style={st.panelHeader}><span>Net Worth</span><span style={st.panelMeta}>{fmt(latestNW.assets - latestNW.debt)} today</span></div>
-            <div style={{ padding: '12px 14px 16px' }}><AreaLineChart data={D.netWorthHistory} valueOf={d => (d as typeof latestNW).assets - (d as typeof latestNW).debt} color="#5b9dff" fmt={fmt} /></div>
-          </>
-        )}
-        {activeReport === 'age' && (
-          <>
-            <div style={st.panelHeader}><span>Age of Money</span><span style={st.panelMeta}>{latestAge.days} days</span></div>
-            <div style={{ padding: '12px 14px 16px' }}><AreaLineChart data={D.ageOfMoney} valueOf={d => (d as typeof latestAge).days} color="#3ddc97" fmt={fmt} suffix="d" /></div>
-          </>
-        )}
+        {reportError ? (
+          <div style={{ padding: '32px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 13, color: T.neg, flex: 1 }}>{reportError}</span>
+            <button onClick={loadReport} style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 7, padding: '5px 12px', fontSize: 12, color: T.textMid, cursor: 'pointer' }}>Retry</button>
+          </div>
+        ) : loadingReport ? (
+          <div style={{ padding: '60px 18px', textAlign: 'center', color: T.textDim, fontSize: 13 }}>Loading report…</div>
+        ) : <>
+          {activeReport === 'trend' && (
+            <>
+              <div style={st.panelHeader}><span>Spending by Category Group</span><span style={st.panelMeta}>Nov 2025 – Apr 2026</span></div>
+              <div style={{ display: 'flex', gap: 16, padding: '12px 18px', flexWrap: 'wrap' }}>
+                {Object.entries(GROUP_COLORS).map(([g, color]) => (
+                  <div key={g} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 9, height: 9, borderRadius: 2.5, background: color, boxShadow: `0 0 7px ${color}66` }} />
+                    <span style={{ fontSize: 12, color: T.textMid, fontWeight: 500 }}>{g}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: '0 14px 16px' }}><LineChart data={monthlySpending} /></div>
+            </>
+          )}
+          {activeReport === 'donut' && (
+            <>
+              <div style={st.panelHeader}><span>Spending Breakdown</span><span style={st.panelMeta}>Last 6 months</span></div>
+              <div style={{ padding: '24px 28px' }}><DonutChart data={monthlySpending} fmt={fmt} /></div>
+            </>
+          )}
+          {activeReport === 'income' && (
+            <>
+              <div style={st.panelHeader}><span>Income vs Expense</span><span style={st.panelMeta}>Nov 2025 – Apr 2026</span></div>
+              <div style={{ display: 'flex', gap: 16, padding: '12px 18px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 9, height: 9, borderRadius: 2.5, background: T.pos }} /><span style={{ fontSize: 12, color: T.textMid }}>Income</span></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 9, height: 9, borderRadius: 2.5, background: T.neg }} /><span style={{ fontSize: 12, color: T.textMid }}>Expense</span></div>
+              </div>
+              <div style={{ padding: '0 14px 16px' }}><IncomeExpenseChart data={D.incomeExpense} fmt={fmt} /></div>
+            </>
+          )}
+          {activeReport === 'networth' && (
+            <>
+              <div style={st.panelHeader}><span>Net Worth</span><span style={st.panelMeta}>{fmt(latestNW.assets - latestNW.debt)} today</span></div>
+              <div style={{ padding: '12px 14px 16px' }}><AreaLineChart data={D.netWorthHistory} valueOf={d => (d as typeof latestNW).assets - (d as typeof latestNW).debt} color="#5b9dff" fmt={fmt} /></div>
+            </>
+          )}
+          {activeReport === 'age' && (
+            <>
+              <div style={st.panelHeader}><span>Age of Money</span><span style={st.panelMeta}>{latestAge.days} days</span></div>
+              <div style={{ padding: '12px 14px 16px' }}><AreaLineChart data={D.ageOfMoney} valueOf={d => (d as typeof latestAge).days} color="#3ddc97" fmt={fmt} suffix="d" /></div>
+            </>
+          )}
+        </>}
       </div>
 
       {(activeReport === 'trend' || activeReport === 'donut') && (
