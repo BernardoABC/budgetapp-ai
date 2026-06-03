@@ -4,6 +4,7 @@ import type {
   CategoryGroup,
   CategoryGroupAPI,
   CategoryItemAPI,
+  MonthlySpendingRow,
 } from './data';
 
 const BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080') + '/api';
@@ -263,4 +264,43 @@ export async function upsertCategoryTarget(
 
 export async function deleteCategoryTarget(categoryId: string): Promise<void> {
   await apiFetch(`/categories/${categoryId}/target`, { method: 'DELETE' });
+}
+
+// ─── Reports ─────────────────────────────────────────────────────────────────
+
+interface SpendingApiMonth {
+  month: string;
+  groups: { name: string; total: number }[];
+}
+
+const groupKey = (g: string) => g.toLowerCase().split(' ')[0];
+
+export async function fetchSpendingReport(from: string, to: string): Promise<MonthlySpendingRow[]> {
+  const data = await apiFetch<SpendingApiMonth[]>(
+    `/reports/spending?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+  );
+  return data.map(m => {
+    const row: MonthlySpendingRow = {
+      month: m.month,
+      housing: 0, food: 0, transport: 0, entertainment: 0, health: 0, savings: 0,
+    };
+    for (const g of m.groups) {
+      const key = groupKey(g.name);
+      if (key in row) (row as Record<string, string | number>)[key] = g.total;
+    }
+    return row;
+  });
+}
+
+// ─── Recent Transactions ──────────────────────────────────────────────────────
+
+export async function fetchRecentTransactions(limit: number): Promise<Transaction[]> {
+  const accs = await fetchAccounts();
+  const pages = await Promise.all(
+    accs.budget.map(a => fetchAccountTransactions(a.id, 1, limit).catch(() => [] as Transaction[]))
+  );
+  return pages
+    .flat()
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, limit);
 }
