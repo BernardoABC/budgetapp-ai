@@ -34,15 +34,41 @@ The `transactions.exchange_rate` column stores `NUMERIC(12,4)` — the USD→CRC
 ## Exchange Rate Sources
 
 ### Primary: BCCR (Banco Central de Costa Rica)
-The Central Bank publishes official buy/sell rates daily.
+The Central Bank publishes official buy/sell rates daily via the SDDE REST API.
 
-**API Endpoint:** `https://gee.bccr.fi.cr/Indicadores/Suscripciones/WS/wsindicadoreseconomicos.asmx`
+**Base URL:** `https://apim.bccr.fi.cr/SDDE/api/Bccr.Ge.SDDE.Publico.Indicadores.API`
 
-This is a SOAP API. Key indicators:
-- Indicator 317: USD buy rate (tipo de cambio de compra)
-- Indicator 318: USD sell rate (tipo de cambio de venta)
+**Auth:** `Authorization: Bearer {BCCR_API_TOKEN}` (JWT stored in `server/.env`)
 
-For simplicity, we'll use the **sell rate** (venta) as it represents what you'd pay to buy USD — the more conservative/common rate for expense tracking.
+**Endpoint for a date range:**
+```
+GET /cuadro/1/series?fechaInicio=yyyy/mm/dd&fechaFin=yyyy/mm/dd&idioma=ES
+```
+
+Cuadro 1 = "Tipo cambio de compra y de venta del dólar de los Estados Unidos de América". Both buy and sell rates come in one response; we use indicator `"318"` (sell/venta) only.
+
+**Response structure:**
+```json
+{
+  "estado": true,
+  "mensaje": "Consulta exitosa",
+  "datos": [{
+    "indicadores": [
+      { "codigoIndicador": "317", "nombreIndicador": "Tipo cambio compra", "series": [...] },
+      { "codigoIndicador": "318", "nombreIndicador": "Tipo cambio venta",
+        "series": [{ "fecha": "2026-05-28", "valorDatoPorPeriodo": 455.52 }, ...] }
+    ]
+  }]
+}
+```
+
+Notes:
+- Input dates use slashes (`yyyy/mm/dd`); output dates use dashes (`YYYY-MM-DD`) matching the DB format
+- `codigoIndicador` is a string, not an integer
+- Weekends and holidays carry Friday's rate (BCCR publishes one value for the whole non-business period)
+- Today's rate is available same-day
+
+We use the **sell rate** (venta, `"318"`) as it represents what you'd pay to acquire USD.
 
 ### Fallback: exchangerate.host
 Free REST API: `https://api.exchangerate.host/timeseries?start_date=2026-04-01&end_date=2026-04-14&base=USD&symbols=CRC`
