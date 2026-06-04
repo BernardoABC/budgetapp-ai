@@ -425,6 +425,44 @@ func TestTransactionRepo_Reconcile_WithAdjustment(t *testing.T) {
 	}
 }
 
+func TestTransactionRepo_DeleteTransfer_CascadePeer(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	fromAccID := testutil.SeedOnBudgetAccount(t, pool)
+	toAccID   := testutil.SeedOnBudgetAccount(t, pool)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx  := context.Background()
+
+	from, to, err := repo.CreateTransfer(ctx, model.CreateTransferReq{
+		FromAccountID: fromAccID,
+		ToAccountID:   toAccID,
+		Date:          "2026-06-04",
+		Amount:        3000,
+		Cleared:       false,
+	})
+	if err != nil {
+		t.Fatalf("CreateTransfer: %v", err)
+	}
+
+	if err := repo.Delete(ctx, from.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	if _, err := repo.Get(ctx, to.ID); err == nil {
+		t.Error("peer transaction still exists after deleting one transfer leg")
+	}
+
+	var fromBal, toBal int64
+	pool.QueryRow(ctx, `SELECT balance FROM accounts WHERE id = $1::uuid`, fromAccID).Scan(&fromBal)
+	pool.QueryRow(ctx, `SELECT balance FROM accounts WHERE id = $1::uuid`, toAccID).Scan(&toBal)
+	if fromBal != 0 {
+		t.Errorf("from account balance want 0 got %d", fromBal)
+	}
+	if toBal != 0 {
+		t.Errorf("to account balance want 0 got %d", toBal)
+	}
+}
+
 func TestTransactionRepo_CreateTransfer(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	fromAccID := testutil.SeedOnBudgetAccount(t, pool)

@@ -363,21 +363,39 @@ func (r *TransactionRepo) Delete(ctx context.Context, id string) error {
 
 	var amount int64
 	var accountID string
+	var peerID *string
 	if err := tx.QueryRow(ctx,
-		`SELECT amount, account_id::text FROM transactions WHERE id = $1`, id,
-	).Scan(&amount, &accountID); err != nil {
+		`SELECT amount, account_id::text, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, id,
+	).Scan(&amount, &accountID, &peerID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("get transaction for delete: %w", err)
 	}
 
-	if _, err := tx.Exec(ctx, `DELETE FROM transactions WHERE id = $1`, id); err != nil {
+	if peerID != nil && *peerID != "" {
+		var peerAmount int64
+		var peerAccountID string
+		if err := tx.QueryRow(ctx,
+			`SELECT amount, account_id::text FROM transactions WHERE id = $1::uuid`, *peerID,
+		).Scan(&peerAmount, &peerAccountID); err == nil {
+			if _, err := tx.Exec(ctx, `DELETE FROM transactions WHERE id = $1::uuid`, *peerID); err != nil {
+				return fmt.Errorf("delete peer leg: %w", err)
+			}
+			if _, err := tx.Exec(ctx,
+				`UPDATE accounts SET balance = balance - $1, updated_at = NOW() WHERE id = $2::uuid`,
+				peerAmount, peerAccountID); err != nil {
+				return fmt.Errorf("reverse peer balance: %w", err)
+			}
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM transactions WHERE id = $1::uuid`, id); err != nil {
 		return fmt.Errorf("delete transaction: %w", err)
 	}
 
 	if _, err := tx.Exec(ctx,
-		`UPDATE accounts SET balance = balance - $1, updated_at = NOW() WHERE id = $2`,
+		`UPDATE accounts SET balance = balance - $1, updated_at = NOW() WHERE id = $2::uuid`,
 		amount, accountID,
 	); err != nil {
 		return fmt.Errorf("reverse balance: %w", err)
