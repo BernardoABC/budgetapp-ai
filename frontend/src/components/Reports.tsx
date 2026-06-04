@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { T, GROUP_COLORS } from '../theme';
-import { AppData } from '../data';
 import type { MonthlySpendingRow } from '../data';
-import { fetchSpendingReport, groupKey } from '../api';
+import { fetchSpendingReport, groupKey, fetchIncomeExpense, fetchNetWorth, fetchAgeOfMoney } from '../api';
 
 function LineChart({ data }: { data: MonthlySpendingRow[] }) {
   const W = 660, H = 240, PL = 64, PR = 16, PT = 16, PB = 34;
@@ -108,7 +107,7 @@ function DonutChart({ data, fmt }: { data: MonthlySpendingRow[]; fmt: (n: number
   );
 }
 
-function IncomeExpenseChart({ data, fmt }: { data: typeof AppData.incomeExpense; fmt: (n: number) => string }) {
+function IncomeExpenseChart({ data, fmt }: { data: { month: string; income: number; expense: number }[]; fmt: (n: number) => string }) {
   const W = 660, H = 240, PL = 64, PR = 16, PT = 16, PB = 34;
   const iW = W - PL - PR, iH = H - PT - PB;
   const max = Math.max(...data.flatMap(d => [d.income, d.expense])) * 1.12;
@@ -193,6 +192,9 @@ interface Props {
 export function Reports({ fmt }: Props) {
   const [activeReport, setActiveReport] = useState('trend');
   const [monthlySpending, setMonthlySpending] = useState<MonthlySpendingRow[]>([]);
+  const [incomeExpense, setIncomeExpense] = useState<{ month: string; income: number; expense: number }[]>([]);
+  const [netWorthData, setNetWorthData] = useState<{ month: string; net_worth: number }[]>([]);
+  const [ageOfMoney, setAgeOfMoney] = useState<{ month: string; days: number }[]>([]);
   const [loadingReport, setLoadingReport] = useState(true);
   const [reportError, setReportError] = useState<string | null>(null);
 
@@ -203,16 +205,36 @@ export function Reports({ fmt }: Props) {
     const to = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const d = new Date(now.getFullYear(), now.getMonth() - 5, 1);
     const from = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    fetchSpendingReport(from, to)
-      .then(data => { setMonthlySpending(data); setLoadingReport(false); })
+    Promise.all([
+      fetchSpendingReport(from, to),
+      fetchIncomeExpense(from, to),
+      fetchNetWorth(from, to),
+      fetchAgeOfMoney(6),
+    ])
+      .then(([spending, ie, nw, aom]) => {
+        setMonthlySpending(spending);
+        setIncomeExpense(ie);
+        setNetWorthData(nw);
+        setAgeOfMoney(aom);
+        setLoadingReport(false);
+      })
       .catch(err => { setReportError(err.message); setLoadingReport(false); });
   };
 
   useEffect(() => { loadReport(); }, []);
 
-  const D = AppData;
-  const latestNW = D.netWorthHistory[D.netWorthHistory.length - 1];
-  const latestAge = D.ageOfMoney[D.ageOfMoney.length - 1];
+  const latestAge = ageOfMoney[ageOfMoney.length - 1];
+  // Convert centimos to major units for chart display (api.ts returns raw centimos)
+  const incomeExpenseMajor = incomeExpense.map(d => ({
+    month: d.month,
+    income: d.income / 100,
+    expense: d.expense / 100,
+  }));
+  const netWorthMajor = netWorthData.map(d => ({
+    month: d.month,
+    net_worth: d.net_worth / 100,
+  }));
+  const latestNW = netWorthMajor[netWorthMajor.length - 1];
   const keys = Object.keys(GROUP_COLORS).map(groupKey);
 
   const reportCards = [
@@ -286,19 +308,19 @@ export function Reports({ fmt }: Props) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 9, height: 9, borderRadius: 2.5, background: T.pos }} /><span style={{ fontSize: 12, color: T.textMid }}>Income</span></div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 9, height: 9, borderRadius: 2.5, background: T.neg }} /><span style={{ fontSize: 12, color: T.textMid }}>Expense</span></div>
               </div>
-              <div style={{ padding: '0 14px 16px' }}><IncomeExpenseChart data={D.incomeExpense} fmt={fmt} /></div>
+              <div style={{ padding: '0 14px 16px' }}><IncomeExpenseChart data={incomeExpenseMajor} fmt={fmt} /></div>
             </>
           )}
           {activeReport === 'networth' && (
             <>
-              <div style={st.panelHeader}><span>Net Worth</span><span style={st.panelMeta}>{fmt(latestNW.assets - latestNW.debt)} today</span></div>
-              <div style={{ padding: '12px 14px 16px' }}><AreaLineChart data={D.netWorthHistory} valueOf={d => (d as typeof latestNW).assets - (d as typeof latestNW).debt} color="#5b9dff" fmt={fmt} /></div>
+              <div style={st.panelHeader}><span>Net Worth</span><span style={st.panelMeta}>{latestNW ? fmt(latestNW.net_worth) : '—'} today</span></div>
+              <div style={{ padding: '12px 14px 16px' }}><AreaLineChart data={netWorthMajor} valueOf={d => (d as { month: string; net_worth: number }).net_worth} color="#5b9dff" fmt={fmt} /></div>
             </>
           )}
           {activeReport === 'age' && (
             <>
-              <div style={st.panelHeader}><span>Age of Money</span><span style={st.panelMeta}>{latestAge.days} days</span></div>
-              <div style={{ padding: '12px 14px 16px' }}><AreaLineChart data={D.ageOfMoney} valueOf={d => (d as typeof latestAge).days} color="#3ddc97" fmt={fmt} suffix="d" /></div>
+              <div style={st.panelHeader}><span>Age of Money</span><span style={st.panelMeta}>{latestAge ? latestAge.days + ' days' : '—'}</span></div>
+              <div style={{ padding: '12px 14px 16px' }}><AreaLineChart data={ageOfMoney} valueOf={d => (d as { month: string; days: number }).days} color="#3ddc97" fmt={fmt} suffix="d" /></div>
             </>
           )}
         </>}
