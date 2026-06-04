@@ -108,13 +108,14 @@ function DonutChart({ data, fmt }: { data: MonthlySpendingRow[]; fmt: (n: number
 }
 
 function IncomeExpenseChart({ data, fmt }: { data: { month: string; income: number; expense: number }[]; fmt: (n: number) => string }) {
+  const [hover, setHover] = useState<number | null>(null);
   const W = 660, H = 240, PL = 64, PR = 16, PT = 16, PB = 34;
   const iW = W - PL - PR, iH = H - PT - PB;
+  if (data.length === 0) return <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}><text x={W / 2} y={H / 2} textAnchor="middle" fontSize="13" fill={T.textDim} fontFamily={T.sans}>No data</text></svg>;
   const max = Math.max(...data.flatMap(d => [d.income, d.expense])) * 1.12;
   const toY = (v: number) => PT + iH - (v / max) * iH;
   const band = iW / data.length;
   const bw = Math.min(26, band / 3);
-  const [hover, setHover] = useState<number | null>(null);
   const ticks = [0, 0.5, 1].map(t => Math.round(max * t / 100000) * 100000);
 
   return (
