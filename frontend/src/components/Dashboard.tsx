@@ -88,43 +88,37 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
     setTxnError(null);
     Promise.all([
       fetchRecentTransactions(20),
-      fetchAccounts(),
-      fetchBudget(currentYM),
+      fetchAccounts().catch(err => { console.warn('fetchAccounts failed', err); return null; }),
+      fetchBudget(currentYM).catch(err => { console.warn('fetchBudget failed', err); return null; }),
     ])
       .then(([txns, accts, budget]) => {
         setTransactions(txns);
         setLoadingTxns(false);
 
-        // Net worth: sum all account balances (budget + tracking), already in major units
-        const nw = [...accts.budget, ...accts.tracking].reduce((s, a) => s + a.balance, 0);
-        setNetWorth(nw);
+        if (accts) {
+          const nw = [...accts.budget, ...accts.tracking].reduce((s, a) => s + a.balance, 0);
+          setNetWorth(nw);
+        }
 
-        // Spent: sum of -activity across all budget groups (activity is negative for spending)
-        const spent = budget.category_groups.reduce((s, g) => s + (-g.activity), 0);
-        setThisMonthSpending(spent < 0 ? 0 : spent);
-
-        // Ready to Assign: from budget, already in major units
-        setReadyToAssign(budget.ready_to_assign);
-
-        // Spending bars: one entry per category group
-        const bars = budget.category_groups.map(g => ({
-          name: g.name,
-          spent: -g.activity < 0 ? 0 : -g.activity,
-          assigned: g.assigned,
-          color: GROUP_COLORS[g.name],
-        }));
-        setGroupSpend(bars);
-
-        // Budget alerts: all categories across all groups where available < 0
-        const alerts: Array<{ cat: string; available: number }> = [];
-        for (const g of budget.category_groups) {
-          for (const c of g.categories) {
-            if (c.available < 0) {
-              alerts.push({ cat: c.name, available: c.available });
+        if (budget) {
+          const spent = budget.category_groups.reduce((s, g) => s + (-g.activity), 0);
+          setThisMonthSpending(spent < 0 ? 0 : spent);
+          setReadyToAssign(budget.ready_to_assign);
+          const bars = budget.category_groups.map(g => ({
+            name: g.name,
+            spent: -g.activity < 0 ? 0 : -g.activity,
+            assigned: g.assigned,
+            color: GROUP_COLORS[g.name],
+          }));
+          setGroupSpend(bars);
+          const alerts: Array<{ cat: string; available: number }> = [];
+          for (const g of budget.category_groups) {
+            for (const c of g.categories) {
+              if (c.available < 0) alerts.push({ cat: c.name, available: c.available });
             }
           }
+          setOverspent(alerts);
         }
-        setOverspent(alerts);
       })
       .catch(err => {
         setTxnError(err.message);
