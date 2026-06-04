@@ -109,6 +109,7 @@ func main() {
 	mux.HandleFunc("PUT /api/transactions/{id}", txns.Update)
 	mux.HandleFunc("DELETE /api/transactions/{id}", txns.Delete)
 	mux.HandleFunc("PATCH /api/transactions/batch", txns.Batch)
+	mux.HandleFunc("POST /api/transfers", txns.CreateTransfer)
 
 	// Categories
 	mux.HandleFunc("GET /api/category-groups", cats.ListGroups)

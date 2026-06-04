@@ -28,24 +28,29 @@ func (h *TransactionHandler) toResponse(t model.Transaction) map[string]any {
 	if t.CategoryID != "" {
 		categoryID = t.CategoryID
 	}
+	var transferPeerID any = nil
+	if t.TransferPeerID != "" {
+		transferPeerID = t.TransferPeerID
+	}
 	splits := make([]map[string]any, len(t.Splits))
 	for i, s := range t.Splits {
 		splits[i] = map[string]any{"category": s.CategoryName, "amount": s.Amount}
 	}
 	return map[string]any{
-		"id":            t.ID,
-		"account":       t.AccountID,
-		"date":          t.Date,
-		"payee":         t.Payee,
-		"category":      category,
-		"category_id":   categoryID,
-		"memo":          t.Memo,
-		"amount":        t.Amount,
-		"currency":      t.Currency,
-		"cleared":       t.Cleared,
-		"reconciled":    t.Reconciled,
-		"exchange_rate": t.ExchangeRate,
-		"splits":        splits,
+		"id":               t.ID,
+		"account":          t.AccountID,
+		"date":             t.Date,
+		"payee":            t.Payee,
+		"category":         category,
+		"category_id":      categoryID,
+		"memo":             t.Memo,
+		"amount":           t.Amount,
+		"currency":         t.Currency,
+		"cleared":          t.Cleared,
+		"reconciled":       t.Reconciled,
+		"exchange_rate":    t.ExchangeRate,
+		"splits":           splits,
+		"transfer_peer_id": transferPeerID,
 	}
 }
 
@@ -182,6 +187,40 @@ func (h *TransactionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *TransactionHandler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
+	var req model.CreateTransferReq
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+	if req.FromAccountID == "" || req.ToAccountID == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "from_account_id and to_account_id are required")
+		return
+	}
+	if req.FromAccountID == req.ToAccountID {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "from and to accounts must differ")
+		return
+	}
+	if req.Date == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "date is required")
+		return
+	}
+	if req.Amount <= 0 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "amount must be positive")
+		return
+	}
+
+	from, to, err := h.repo.CreateTransfer(r.Context(), req)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"from": h.toResponse(from),
+		"to":   h.toResponse(to),
+	})
 }
 
 type batchReq struct {
