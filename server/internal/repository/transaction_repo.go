@@ -277,7 +277,7 @@ func (r *TransactionRepo) Create(ctx context.Context, accountID string, req mode
 }
 
 // Update replaces a transaction and adjusts the account balance for the diff.
-// req.Amount is already in the account's native minor units.
+// If the transaction is a transfer leg, it mirrors the amount change (sign-flipped) to the peer.
 func (r *TransactionRepo) Update(ctx context.Context, id string, req model.UpdateTransactionReq) (model.Transaction, error) {
 	newAmount := req.Amount
 
@@ -289,9 +289,10 @@ func (r *TransactionRepo) Update(ctx context.Context, id string, req model.Updat
 
 	var oldAmount int64
 	var accountID string
+	var peerID *string
 	if err := tx.QueryRow(ctx,
-		`SELECT amount, account_id::text FROM transactions WHERE id = $1`, id,
-	).Scan(&oldAmount, &accountID); err != nil {
+		`SELECT amount, account_id::text, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, id,
+	).Scan(&oldAmount, &accountID, &peerID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.Transaction{}, ErrNotFound
 		}
@@ -307,14 +308,15 @@ func (r *TransactionRepo) Update(ctx context.Context, id string, req model.Updat
 	err = tx.QueryRow(ctx, `
 		UPDATE transactions
 		SET category_id=$1, date=$2, amount=$3, payee=$4, memo=NULLIF($5,''), cleared=$6, updated_at=NOW()
-		WHERE id=$7
+		WHERE id=$7::uuid
 		RETURNING id::text, account_id::text,
 		          COALESCE(category_id::text,''), '',
 		          date::text, amount, currency,
-		          COALESCE(payee,''), COALESCE(memo,''), cleared, reconciled
+		          COALESCE(payee,''), COALESCE(memo,''), cleared, reconciled,
+		          COALESCE(transfer_peer_id::text,'')
 	`, catIDParam, req.Date, newAmount, req.Payee, req.Memo, req.Cleared, id,
 	).Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
-		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared, &t.Reconciled)
+		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared, &t.Reconciled, &t.TransferPeerID)
 	if err != nil {
 		return t, fmt.Errorf("update transaction: %w", err)
 	}
@@ -322,7 +324,7 @@ func (r *TransactionRepo) Update(ctx context.Context, id string, req model.Updat
 	diff := newAmount - oldAmount
 	if diff != 0 {
 		if _, err := tx.Exec(ctx,
-			`UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2`,
+			`UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2::uuid`,
 			diff, accountID,
 		); err != nil {
 			return t, fmt.Errorf("update balance: %w", err)
@@ -330,11 +332,11 @@ func (r *TransactionRepo) Update(ctx context.Context, id string, req model.Updat
 	}
 
 	if t.CategoryID != "" {
-		tx.QueryRow(ctx, `SELECT name FROM categories WHERE id = $1`, t.CategoryID).Scan(&t.CategoryName) //nolint:errcheck
+		tx.QueryRow(ctx, `SELECT name FROM categories WHERE id = $1::uuid`, t.CategoryID).Scan(&t.CategoryName) //nolint:errcheck
 	}
 
 	if _, err := tx.Exec(ctx,
-		`DELETE FROM transaction_splits WHERE transaction_id = $1`, id,
+		`DELETE FROM transaction_splits WHERE transaction_id = $1::uuid`, id,
 	); err != nil {
 		return t, fmt.Errorf("delete splits: %w", err)
 	}
@@ -344,10 +346,36 @@ func (r *TransactionRepo) Update(ctx context.Context, id string, req model.Updat
 			catParam = s.CategoryID
 		}
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO transaction_splits (transaction_id, category_id, amount) VALUES ($1, $2, $3)`,
+			`INSERT INTO transaction_splits (transaction_id, category_id, amount) VALUES ($1::uuid, $2, $3)`,
 			id, catParam, s.Amount,
 		); err != nil {
 			return t, fmt.Errorf("insert split: %w", err)
+		}
+	}
+
+	// Mirror amount and date to the peer leg (sign-flipped) when amount changed.
+	if peerID != nil && *peerID != "" && diff != 0 {
+		var peerOldAmount int64
+		var peerAccountID string
+		if err := tx.QueryRow(ctx,
+			`SELECT amount, account_id::text FROM transactions WHERE id = $1::uuid`, *peerID,
+		).Scan(&peerOldAmount, &peerAccountID); err == nil {
+			peerNewAmount := -newAmount
+			if _, err := tx.Exec(ctx,
+				`UPDATE transactions SET amount = $1, date = $2, updated_at = NOW() WHERE id = $3::uuid`,
+				peerNewAmount, req.Date, *peerID,
+			); err != nil {
+				return t, fmt.Errorf("update peer leg: %w", err)
+			}
+			peerDiff := peerNewAmount - peerOldAmount
+			if peerDiff != 0 {
+				if _, err := tx.Exec(ctx,
+					`UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2::uuid`,
+					peerDiff, peerAccountID,
+				); err != nil {
+					return t, fmt.Errorf("update peer balance: %w", err)
+				}
+			}
 		}
 	}
 

@@ -505,3 +505,51 @@ func TestTransactionRepo_CreateTransfer(t *testing.T) {
 		t.Errorf("to account balance want 5000 got %d", toBal)
 	}
 }
+
+func TestTransactionRepo_UpdateTransfer_MirrorsPeer(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	fromAccID := testutil.SeedOnBudgetAccount(t, pool)
+	toAccID   := testutil.SeedOnBudgetAccount(t, pool)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx  := context.Background()
+
+	from, to, err := repo.CreateTransfer(ctx, model.CreateTransferReq{
+		FromAccountID: fromAccID,
+		ToAccountID:   toAccID,
+		Date:          "2026-06-04",
+		Amount:        2000,
+		Cleared:       false,
+	})
+	if err != nil {
+		t.Fatalf("CreateTransfer: %v", err)
+	}
+
+	_, err = repo.Update(ctx, from.ID, model.UpdateTransactionReq{
+		Date:    "2026-06-04",
+		Payee:   from.Payee,
+		Amount:  -4000,
+		Cleared: false,
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	peer, err := repo.Get(ctx, to.ID)
+	if err != nil {
+		t.Fatalf("Get peer: %v", err)
+	}
+	if peer.Amount != 4000 {
+		t.Errorf("peer.Amount want 4000 got %d", peer.Amount)
+	}
+
+	var fromBal, toBal int64
+	pool.QueryRow(ctx, `SELECT balance FROM accounts WHERE id = $1::uuid`, fromAccID).Scan(&fromBal)
+	pool.QueryRow(ctx, `SELECT balance FROM accounts WHERE id = $1::uuid`, toAccID).Scan(&toBal)
+	if fromBal != -4000 {
+		t.Errorf("from balance want -4000 got %d", fromBal)
+	}
+	if toBal != 4000 {
+		t.Errorf("to balance want 4000 got %d", toBal)
+	}
+}
