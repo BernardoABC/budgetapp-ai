@@ -32,6 +32,7 @@ export interface Transaction {
   currency?: string;
   exchange_rate?: number | null;
   splits?: { category: string; amount: number }[];
+  transfer_peer_id?: string | null;
 }
 
 export interface MonthlySpendingRow {
@@ -138,6 +139,7 @@ function mapApiTxn(t: {
   cleared: boolean; account: string; currency: string; amount: number;
   exchange_rate?: number | null; reconciled?: boolean;
   splits?: { category: string; amount: number }[];
+  transfer_peer_id?: string | null;
 }): Transaction {
   const major = t.amount / 100;
   return {
@@ -148,6 +150,7 @@ function mapApiTxn(t: {
     inflow: major > 0 ? major : 0,
     reconciled: t.reconciled ?? false,
     splits: (t.splits ?? []).map(s => ({ category: s.category, amount: s.amount / 100 })),
+    transfer_peer_id: t.transfer_peer_id ?? null,
   };
 }
 
@@ -202,6 +205,21 @@ export async function createTransaction(
     method: 'POST',
     body: JSON.stringify({ ...body, amount: Math.round(body.amount * 100) }),
   });
+}
+
+export async function createTransfer(body: {
+  from_account_id: string;
+  to_account_id: string;
+  date: string;
+  amount: number;   // major units; converted to centimos here
+  memo?: string;
+  cleared?: boolean;
+}): Promise<{ from: Transaction; to: Transaction }> {
+  const raw = await apiFetch<{ from: Record<string, unknown>; to: Record<string, unknown> }>('/transfers', {
+    method: 'POST',
+    body: JSON.stringify({ ...body, amount: Math.round(body.amount * 100) }),
+  });
+  return { from: mapApiTxn(raw.from as Parameters<typeof mapApiTxn>[0]), to: mapApiTxn(raw.to as Parameters<typeof mapApiTxn>[0]) };
 }
 
 export async function updateTransaction(
