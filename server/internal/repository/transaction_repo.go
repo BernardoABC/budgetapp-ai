@@ -448,3 +448,39 @@ func (r *TransactionRepo) SpendingByGroup(ctx context.Context, from, to string) 
 	}
 	return out, rows.Err()
 }
+
+// IncomeExpenseRow is one month's income and expense totals in centimos.
+type IncomeExpenseRow struct {
+	Month   string
+	Income  int64
+	Expense int64
+}
+
+// IncomeExpenseByMonth returns monthly income and expense totals for the
+// inclusive YYYY-MM range. Only months with transactions appear.
+func (r *TransactionRepo) IncomeExpenseByMonth(ctx context.Context, from, to string) ([]IncomeExpenseRow, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			to_char(date_trunc('month', t.date::date), 'YYYY-MM') AS month,
+			COALESCE(SUM(t.amount) FILTER (WHERE t.amount > 0), 0)::bigint AS income,
+			COALESCE(SUM(ABS(t.amount)) FILTER (WHERE t.amount < 0), 0)::bigint AS expense
+		FROM transactions t
+		WHERE t.date >= ($1 || '-01')::date
+		  AND t.date <  (($2 || '-01')::date + INTERVAL '1 month')
+		GROUP BY date_trunc('month', t.date::date)
+		ORDER BY date_trunc('month', t.date::date)
+	`, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("income expense by month: %w", err)
+	}
+	defer rows.Close()
+	var out []IncomeExpenseRow
+	for rows.Next() {
+		var row IncomeExpenseRow
+		if err := rows.Scan(&row.Month, &row.Income, &row.Expense); err != nil {
+			return nil, fmt.Errorf("scan income expense row: %w", err)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}

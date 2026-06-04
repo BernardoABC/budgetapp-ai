@@ -206,3 +206,44 @@ func TestTransactionRepo_BatchUnknownAction(t *testing.T) {
 		t.Error("want error for unknown action, got nil")
 	}
 }
+
+func TestTransactionRepo_IncomeExpenseByMonth(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	// income in Jan
+	testutil.SeedTransaction(t, pool, acc, cat, "2026-01-15", 100000)
+	testutil.SeedTransaction(t, pool, acc, cat, "2026-01-20", 50000)
+	// expense in Jan
+	testutil.SeedTransaction(t, pool, acc, cat, "2026-01-25", -30000)
+	// income in Feb
+	testutil.SeedTransaction(t, pool, acc, cat, "2026-02-10", 200000)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+	rows, err := repo.IncomeExpenseByMonth(ctx, "2026-01", "2026-02")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows got %d", len(rows))
+	}
+	if rows[0].Month != "2026-01" {
+		t.Errorf("want month 2026-01 got %s", rows[0].Month)
+	}
+	if rows[0].Income != 150000 {
+		t.Errorf("want income 150000 got %d", rows[0].Income)
+	}
+	if rows[0].Expense != 30000 {
+		t.Errorf("want expense 30000 got %d", rows[0].Expense)
+	}
+	if rows[1].Month != "2026-02" {
+		t.Errorf("want month 2026-02 got %s", rows[1].Month)
+	}
+	if rows[1].Income != 200000 {
+		t.Errorf("want income 200000 got %d", rows[1].Income)
+	}
+	if rows[1].Expense != 0 {
+		t.Errorf("want expense 0 got %d", rows[1].Expense)
+	}
+}
