@@ -1,7 +1,7 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { T, GROUP_COLORS } from '../theme';
 import type { Transaction, CategoryGroup } from '../data';
-import { fetchRecentTransactions } from '../api';
+import { fetchRecentTransactions, fetchAccounts, fetchBudget } from '../api';
 
 interface Props {
   categoryGroups: CategoryGroup[];
@@ -74,36 +74,73 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
   const [loadingTxns, setLoadingTxns] = useState(true);
   const [txnError, setTxnError] = useState<string | null>(null);
 
+  const [netWorth, setNetWorth] = useState(0);
+  const [thisMonthSpending, setThisMonthSpending] = useState(0);
+  const [readyToAssign, setReadyToAssign] = useState(0);
+  const [groupSpend, setGroupSpend] = useState<Array<{ name: string; spent: number; assigned: number; color?: string }>>([]);
+  const [overspent, setOverspent] = useState<Array<{ cat: string; available: number }>>([]);
+
+  const currentYM = new Date().toISOString().slice(0, 7);
+  const currentMonthLabel = new Date().toLocaleString('default', { month: 'long' });
+
   const loadTxns = useCallback(() => {
     setLoadingTxns(true);
     setTxnError(null);
-    fetchRecentTransactions(20)
-      .then(data => { setTransactions(data); setLoadingTxns(false); })
-      .catch(err => { setTxnError(err.message); setLoadingTxns(false); });
-  }, []);
+    Promise.all([
+      fetchRecentTransactions(20),
+      fetchAccounts(),
+      fetchBudget(currentYM),
+    ])
+      .then(([txns, accts, budget]) => {
+        setTransactions(txns);
+        setLoadingTxns(false);
+
+        // Net worth: sum all account balances (budget + tracking), already in major units
+        const nw = [...accts.budget, ...accts.tracking].reduce((s, a) => s + a.balance, 0);
+        setNetWorth(nw);
+
+        // Spent: sum of -activity across all budget groups (activity is negative for spending)
+        const spent = budget.category_groups.reduce((s, g) => s + (-g.activity), 0);
+        setThisMonthSpending(spent < 0 ? 0 : spent);
+
+        // Ready to Assign: from budget, already in major units
+        setReadyToAssign(budget.ready_to_assign);
+
+        // Spending bars: one entry per category group
+        const bars = budget.category_groups.map(g => ({
+          name: g.name,
+          spent: -g.activity < 0 ? 0 : -g.activity,
+          assigned: g.assigned,
+          color: GROUP_COLORS[g.name],
+        }));
+        setGroupSpend(bars);
+
+        // Budget alerts: all categories across all groups where available < 0
+        const alerts: Array<{ cat: string; available: number }> = [];
+        for (const g of budget.category_groups) {
+          for (const c of g.categories) {
+            if (c.available < 0) {
+              alerts.push({ cat: c.name, available: c.available });
+            }
+          }
+        }
+        setOverspent(alerts);
+      })
+      .catch(err => {
+        setTxnError(err.message);
+        setLoadingTxns(false);
+      });
+  }, [currentYM]);
 
   useEffect(() => { loadTxns(); }, [loadTxns]);
-
-  const netWorth = 1780300 + 3320000;
-
-  const currentYM = new Date().toISOString().slice(0, 7);
-  const thisMonthSpending = useMemo(() =>
-    transactions.filter(t => t.date.startsWith(currentYM) && t.outflow > 0).reduce((s, t) => s + t.outflow, 0),
-    [transactions]);
-
-  const readyToAssign = 145000;
-
-  const groupSpend: Array<{ name: string; spent: number; assigned: number; color?: string }> = [];
-
-  const overspent: Array<{ cat: string; available: number }> = [];
 
   const recent = transactions.slice(0, 7);
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1180, margin: '0 auto' }}>
       <div style={st.cardRow}>
-        <StatCard label="Net Worth" value={fmt(netWorth)} sub="↑ 3.2% vs last month" subColor={T.pos} spark={[88,90,89,93,95,98,100]} sparkColor={T.pos} accent />
-        <StatCard label="Spent · April" value={fmt(thisMonthSpending)} sub="Apr 1 – 18" spark={[20,45,38,60,72,80,95]} sparkColor="#5b9dff" />
+        <StatCard label="Net Worth" value={fmt(netWorth)} accent />
+        <StatCard label={`Spent · ${currentMonthLabel}`} value={fmt(thisMonthSpending)} />
         <StatCard label="Ready to Assign" value={fmt(readyToAssign)} sub="Unallocated funds" subColor={T.textDim} />
       </div>
 
@@ -111,7 +148,7 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
         <div style={st.panel}>
           <div style={st.panelHeader}>
             <span>Spending by Category</span>
-            <span style={st.panelMeta}>April 2026</span>
+            <span style={st.panelMeta}>{currentMonthLabel} {new Date().getFullYear()}</span>
           </div>
           <div style={{ padding: '14px 18px 6px' }}>
             {groupSpend.map(g => <SpendingBar key={g.name} label={g.name} color={g.color ?? T.textMid} spent={g.spent} budget={g.assigned} fmt={fmt} />)}
