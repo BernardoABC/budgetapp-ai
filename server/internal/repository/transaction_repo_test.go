@@ -367,3 +367,60 @@ func TestTransactionRepo_IncomeExpenseByMonth(t *testing.T) {
 		t.Errorf("want expense 0 got %d", rows[1].Expense)
 	}
 }
+
+func TestTransactionRepo_Reconcile_NoAdjustment(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "A", "", true)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-02", -2000, "B", "", true)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-03", -3000, "C", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	count, err := repo.Reconcile(ctx, acc, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Errorf("want 2 reconciled, got %d", count)
+	}
+
+	var reconciledInDB int
+	pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM transactions WHERE account_id = $1::uuid AND reconciled = true`, acc,
+	).Scan(&reconciledInDB) //nolint:errcheck
+	if reconciledInDB != 2 {
+		t.Errorf("want 2 reconciled rows in DB, got %d", reconciledInDB)
+	}
+}
+
+func TestTransactionRepo_Reconcile_WithAdjustment(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "A", "", true)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	_, err := repo.Reconcile(ctx, acc, 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var adjCount int
+	pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM transactions WHERE account_id = $1::uuid AND payee = 'Reconciliation Adjustment'`, acc,
+	).Scan(&adjCount) //nolint:errcheck
+	if adjCount != 1 {
+		t.Errorf("want 1 adjustment transaction, got %d", adjCount)
+	}
+
+	var balance int64
+	pool.QueryRow(ctx, `SELECT balance FROM accounts WHERE id = $1::uuid`, acc).Scan(&balance) //nolint:errcheck
+	if balance != 500 {
+		t.Errorf("want account balance 500, got %d", balance)
+	}
+}

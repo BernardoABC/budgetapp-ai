@@ -460,6 +460,43 @@ func (r *TransactionRepo) BatchUpdate(ctx context.Context, ids []string, action,
 	return affected, tx.Commit(ctx)
 }
 
+// Reconcile marks all cleared transactions in an account as reconciled.
+// If adjustment != 0, it first inserts a "Reconciliation Adjustment" transaction
+// (cleared + reconciled) and adjusts the account balance.
+// Returns the number of transactions marked reconciled.
+func (r *TransactionRepo) Reconcile(ctx context.Context, accountID string, adjustment int64) (int64, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if adjustment != 0 {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO transactions (account_id, date, amount, currency, payee, cleared, reconciled)
+			VALUES ($1, NOW()::date, $2, (SELECT currency FROM accounts WHERE id=$1::uuid), 'Reconciliation Adjustment', true, true)
+		`, accountID, adjustment); err != nil {
+			return 0, fmt.Errorf("insert adjustment: %w", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2::uuid`,
+			adjustment, accountID,
+		); err != nil {
+			return 0, fmt.Errorf("update balance: %w", err)
+		}
+	}
+
+	tag, err := tx.Exec(ctx,
+		`UPDATE transactions SET reconciled = true WHERE account_id = $1::uuid AND cleared = true`,
+		accountID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("reconcile transactions: %w", err)
+	}
+
+	return tag.RowsAffected(), tx.Commit(ctx)
+}
+
 // SpendingByGroupRow is one (month, group) spend total in centimos (outflows only).
 type SpendingByGroupRow struct {
 	Month     string
