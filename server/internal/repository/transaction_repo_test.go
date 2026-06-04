@@ -424,3 +424,46 @@ func TestTransactionRepo_Reconcile_WithAdjustment(t *testing.T) {
 		t.Errorf("want account balance 500, got %d", balance)
 	}
 }
+
+func TestTransactionRepo_CreateTransfer(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	fromAccID := testutil.SeedOnBudgetAccount(t, pool)
+	toAccID   := testutil.SeedOnBudgetAccount(t, pool)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx  := context.Background()
+
+	from, to, err := repo.CreateTransfer(ctx, model.CreateTransferReq{
+		FromAccountID: fromAccID,
+		ToAccountID:   toAccID,
+		Date:          "2026-06-04",
+		Amount:        5000, // ₡50.00
+		Cleared:       true,
+	})
+	if err != nil {
+		t.Fatalf("CreateTransfer: %v", err)
+	}
+
+	if from.Amount != -5000 {
+		t.Errorf("from.Amount want -5000 got %d", from.Amount)
+	}
+	if to.Amount != 5000 {
+		t.Errorf("to.Amount want 5000 got %d", to.Amount)
+	}
+	if from.TransferPeerID != to.ID {
+		t.Errorf("from.TransferPeerID %q != to.ID %q", from.TransferPeerID, to.ID)
+	}
+	if to.TransferPeerID != from.ID {
+		t.Errorf("to.TransferPeerID %q != from.ID %q", to.TransferPeerID, from.ID)
+	}
+
+	var fromBal, toBal int64
+	pool.QueryRow(ctx, `SELECT balance FROM accounts WHERE id = $1::uuid`, fromAccID).Scan(&fromBal)
+	pool.QueryRow(ctx, `SELECT balance FROM accounts WHERE id = $1::uuid`, toAccID).Scan(&toBal)
+	if fromBal != -5000 {
+		t.Errorf("from account balance want -5000 got %d", fromBal)
+	}
+	if toBal != 5000 {
+		t.Errorf("to account balance want 5000 got %d", toBal)
+	}
+}

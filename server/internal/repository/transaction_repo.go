@@ -610,3 +610,74 @@ func (r *TransactionRepo) NetWorthByMonth(ctx context.Context, from, to string) 
 	}
 	return out, rows.Err()
 }
+
+// CreateTransfer atomically inserts two linked transaction rows — one outflow
+// from fromAccountID and one inflow to toAccountID — and updates both balances.
+// Returns the outflow (from) leg first, then the inflow (to) leg.
+func (r *TransactionRepo) CreateTransfer(ctx context.Context, req model.CreateTransferReq) (from, to model.Transaction, err error) {
+	if req.Amount <= 0 {
+		return from, to, fmt.Errorf("transfer amount must be positive")
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return from, to, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var fromName, toName string
+	if err := tx.QueryRow(ctx, `SELECT name FROM accounts WHERE id = $1::uuid`, req.FromAccountID).Scan(&fromName); err != nil {
+		return from, to, fmt.Errorf("get from-account: %w", err)
+	}
+	if err := tx.QueryRow(ctx, `SELECT name FROM accounts WHERE id = $1::uuid`, req.ToAccountID).Scan(&toName); err != nil {
+		return from, to, fmt.Errorf("get to-account: %w", err)
+	}
+
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO transactions (account_id, date, amount, currency, payee, memo, cleared)
+		VALUES ($1::uuid, $2::date, $3, (SELECT currency FROM accounts WHERE id=$1::uuid), $4, NULLIF($5,''), $6)
+		RETURNING id::text, account_id::text, '', '', date::text, amount, currency,
+		          COALESCE(payee,''), COALESCE(memo,''), cleared, reconciled
+	`, req.FromAccountID, req.Date, -req.Amount, "Transfer : "+toName, req.Memo, req.Cleared,
+	).Scan(&from.ID, &from.AccountID, &from.CategoryID, &from.CategoryName,
+		&from.Date, &from.Amount, &from.Currency, &from.Payee, &from.Memo, &from.Cleared, &from.Reconciled); err != nil {
+		return from, to, fmt.Errorf("insert from leg: %w", err)
+	}
+
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO transactions (account_id, date, amount, currency, payee, memo, cleared)
+		VALUES ($1::uuid, $2::date, $3, (SELECT currency FROM accounts WHERE id=$1::uuid), $4, NULLIF($5,''), $6)
+		RETURNING id::text, account_id::text, '', '', date::text, amount, currency,
+		          COALESCE(payee,''), COALESCE(memo,''), cleared, reconciled
+	`, req.ToAccountID, req.Date, req.Amount, "Transfer : "+fromName, req.Memo, req.Cleared,
+	).Scan(&to.ID, &to.AccountID, &to.CategoryID, &to.CategoryName,
+		&to.Date, &to.Amount, &to.Currency, &to.Payee, &to.Memo, &to.Cleared, &to.Reconciled); err != nil {
+		return from, to, fmt.Errorf("insert to leg: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE transactions SET transfer_peer_id = $1::uuid WHERE id = $2::uuid`,
+		to.ID, from.ID); err != nil {
+		return from, to, fmt.Errorf("link from leg: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE transactions SET transfer_peer_id = $1::uuid WHERE id = $2::uuid`,
+		from.ID, to.ID); err != nil {
+		return from, to, fmt.Errorf("link to leg: %w", err)
+	}
+	from.TransferPeerID = to.ID
+	to.TransferPeerID = from.ID
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2::uuid`,
+		-req.Amount, req.FromAccountID); err != nil {
+		return from, to, fmt.Errorf("update from balance: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2::uuid`,
+		req.Amount, req.ToAccountID); err != nil {
+		return from, to, fmt.Errorf("update to balance: %w", err)
+	}
+
+	return from, to, tx.Commit(ctx)
+}
