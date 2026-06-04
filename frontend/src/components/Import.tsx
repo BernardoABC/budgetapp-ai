@@ -1,36 +1,29 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { T } from '../theme';
-import { categorize } from '../engine';
-import { AppData } from '../data';
 import type { CategoryGroup } from '../data';
 import type { Account } from '../data';
-import { fetchImportHistory, fetchAccounts, fetchPayeeRules, createPayeeRule, updatePayeeRule, deletePayeeRule } from '../api';
-import type { ImportRecord, PayeeRule as ApiPayeeRule } from '../api';
+import {
+  fetchImportHistory, fetchAccounts, fetchPayeeRules,
+  createPayeeRule, updatePayeeRule, deletePayeeRule,
+  importPreview, importConfirm,
+} from '../api';
+import type { ImportRecord, PayeeRule as ApiPayeeRule, ConfirmTxn } from '../api';
 import { useToast } from './Toast';
 
+type Accounts = { budget: Account[]; tracking: Account[] };
+
+// Amounts are centimos (minor units); divide by 100 for display via fmt().
 interface ParsedRow {
-  id: number;
+  tempId: string;
   date: string;
-  payee: string;
+  descriptionRaw: string;
   amount: number;
-  category: string | null;
+  reference: string;
+  categoryId: string | null;
   autoCat: boolean;
+  duplicateOf: string | null;
+  include: boolean;
 }
-
-const SAMPLE_RAW = [
-  { id: 1, date: '2026-04-19', payee: 'Walmart Escazú',      amount: -32500 },
-  { id: 2, date: '2026-04-19', payee: 'Spotify',             amount: -6990  },
-  { id: 3, date: '2026-04-18', payee: 'Gasolinera El Prado', amount: -35000 },
-  { id: 4, date: '2026-04-18', payee: 'Señor Ceviche',       amount: -14500 },
-  { id: 5, date: '2026-04-17', payee: 'Amazon.com',          amount: -18900 },
-  { id: 6, date: '2026-04-17', payee: 'Farmacia Fischel',    amount: -8200  },
-  { id: 7, date: '2026-04-16', payee: 'SINPE transfer in',   amount: 50000  },
-];
-
-const SAMPLE_PARSED: ParsedRow[] = SAMPLE_RAW.map(r => {
-  const cat = categorize(r.payee, AppData.payeeRules);
-  return { ...r, category: cat, autoCat: !!cat };
-});
 
 function StepIndicator({ step }: { step: number }) {
   const steps = ['Upload', 'Review', 'Confirm'];
@@ -51,7 +44,7 @@ function StepIndicator({ step }: { step: number }) {
   );
 }
 
-function Step1({ accounts, onNext }: { accounts: typeof AppData.accounts; onNext: (info: { file: { name: string }; accountId: string }) => void }) {
+function Step1({ accounts, onNext }: { accounts: Accounts; onNext: (info: { file: File; accountId: string }) => void }) {
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [accountId, setAccountId] = useState(accounts.budget[0].id);
@@ -88,42 +81,68 @@ function Step1({ accounts, onNext }: { accounts: typeof AppData.accounts; onNext
         </select>
       </div>
       <div style={{ marginTop: 26, display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={() => onNext({ file: file ?? { name: 'estado_cuenta_abril.csv' }, accountId })} style={st.primaryBtn}>Continue →</button>
+        <button
+          onClick={() => { if (file) onNext({ file, accountId }); }}
+          disabled={!file}
+          style={{ ...st.primaryBtn, opacity: file ? 1 : 0.45, cursor: file ? 'pointer' : 'not-allowed' }}
+        >Continue →</button>
       </div>
     </div>
   );
 }
 
-function Step2({ parsed, onChangeParsed, categoryGroups, onNext, onBack }: {
+function Step2({ parsed, allCategoryNames, categoryIdByName, idToName, onSetCategory, onToggleInclude, fmt, onNext, onBack }: {
   parsed: ParsedRow[];
-  onChangeParsed: (id: number, key: string, val: string | null) => void;
-  categoryGroups: CategoryGroup[];
+  allCategoryNames: string[];
+  categoryIdByName: Record<string, string>;
+  idToName: Record<string, string>;
+  onSetCategory: (tempId: string, categoryId: string | null) => void;
+  onToggleInclude: (tempId: string) => void;
+  fmt: (n: number) => string;
   onNext: () => void;
   onBack: () => void;
 }) {
-  const categories = categoryGroups.flatMap(g => g.categories);
+  void idToName; // passed for symmetry, not used in rendering
+  const included = parsed.filter(p => p.include);
   const autoCount = parsed.filter(p => p.autoCat).length;
+  const dupCount = parsed.filter(p => p.duplicateOf != null).length;
   return (
     <div style={st.stepCard}>
       <h3 style={st.stepTitle}>Review transactions</h3>
-      <p style={st.stepSub}><b style={{ color: T.text }}>{parsed.length}</b> parsed · <span style={{ color: 'var(--accent)' }}>{autoCount} auto-categorized</span>. Assign the rest as needed.</p>
+      <p style={st.stepSub}>
+        <b style={{ color: T.text }}>{parsed.length}</b> parsed · <span style={{ color: 'var(--accent)' }}>{autoCount} auto-categorized</span>
+        {dupCount > 0 && <> · <span style={{ color: T.warn }}>{dupCount} duplicate{dupCount > 1 ? 's' : ''} skipped</span></>}.
+        <b style={{ color: T.text }}> {included.length}</b> will import.
+      </p>
       <div style={st.reviewTable}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>{['Date', 'Payee', 'Category', 'Amount'].map(h => <th key={h} style={{ ...st.th, textAlign: h === 'Amount' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+          <thead><tr>{['', 'Date', 'Payee', 'Category', 'Amount'].map((h, i) => <th key={i} style={{ ...st.th, textAlign: h === 'Amount' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
           <tbody>
             {parsed.map(row => (
-              <tr key={row.id} style={{ borderBottom: `1px solid ${T.borderSoft}` }}>
+              <tr key={row.tempId} style={{ borderBottom: `1px solid ${T.borderSoft}`, opacity: row.include ? 1 : 0.45 }}>
+                <td style={{ ...st.td, width: 30 }}>
+                  <input type="checkbox" checked={row.include} onChange={() => onToggleInclude(row.tempId)} style={{ cursor: 'pointer' }} />
+                </td>
                 <td style={{ ...st.td, fontFamily: T.mono, fontSize: 12, color: T.textDim }}>{row.date.slice(5).replace('-', '/')}</td>
-                <td style={st.td}><span style={{ fontWeight: 600, color: T.text }}>{row.payee}</span>{row.autoCat && <span style={st.autoTag}>auto</span>}</td>
                 <td style={st.td}>
-                  <select value={row.category ?? ''} onChange={e => onChangeParsed(row.id, 'category', e.target.value || null)}
-                    style={{ ...st.inlineSelect, borderColor: row.category ? T.border : T.warn, color: row.category ? T.text : T.warn }}>
+                  <span style={{ fontWeight: 600, color: T.text }}>{row.descriptionRaw}</span>
+                  {row.autoCat && <span style={st.autoTag}>auto</span>}
+                  {row.duplicateOf != null && <span style={st.dupTag}>duplicate</span>}
+                </td>
+                <td style={st.td}>
+                  <select
+                    value={row.categoryId ?? ''}
+                    onChange={e => onSetCategory(row.tempId, e.target.value || null)}
+                    style={{ ...st.inlineSelect, borderColor: row.categoryId ? T.border : T.warn, color: row.categoryId ? T.text : T.warn }}
+                  >
                     <option value="">— assign —</option>
-                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    {allCategoryNames.map(name => (
+                      <option key={name} value={categoryIdByName[name] ?? ''}>{name}</option>
+                    ))}
                   </select>
                 </td>
                 <td style={{ ...st.td, textAlign: 'right', fontFamily: T.mono, fontSize: 12.5, fontWeight: 600 }}>
-                  <span style={{ color: row.amount > 0 ? T.pos : T.textMid }}>{row.amount > 0 ? '+' : '−'}₡{Math.abs(row.amount).toLocaleString('en-US')}</span>
+                  <span style={{ color: row.amount > 0 ? T.pos : T.textMid }}>{row.amount > 0 ? '+' : '−'}{fmt(Math.abs(row.amount) / 100)}</span>
                 </td>
               </tr>
             ))}
@@ -132,23 +151,29 @@ function Step2({ parsed, onChangeParsed, categoryGroups, onNext, onBack }: {
       </div>
       <div style={{ marginTop: 22, display: 'flex', justifyContent: 'space-between' }}>
         <button onClick={onBack} style={st.ghostBtn}>← Back</button>
-        <button onClick={onNext} style={st.primaryBtn}>Continue →</button>
+        <button onClick={onNext} disabled={included.length === 0}
+          style={{ ...st.primaryBtn, opacity: included.length === 0 ? 0.45 : 1, cursor: included.length === 0 ? 'not-allowed' : 'pointer' }}>
+          Continue →
+        </button>
       </div>
     </div>
   );
 }
 
-function Step3({ parsed, uploadInfo, onBack, onConfirm }: {
+function Step3({ parsed, filename, fmt, confirming, onBack, onConfirm }: {
   parsed: ParsedRow[];
-  uploadInfo: { file: { name: string } };
+  filename: string;
+  fmt: (n: number) => string;
+  confirming: boolean;
   onBack: () => void;
   onConfirm: () => void;
 }) {
-  const outflows = parsed.filter(r => r.amount < 0);
-  const inflows = parsed.filter(r => r.amount > 0);
-  const net = parsed.reduce((s, r) => s + r.amount, 0);
-  const dates = parsed.map(r => r.date).sort();
-  const uncategorized = parsed.filter(r => !r.category).length;
+  const included = parsed.filter(r => r.include);
+  const outflows = included.filter(r => r.amount < 0);
+  const inflows = included.filter(r => r.amount > 0);
+  const net = included.reduce((s, r) => s + r.amount, 0);
+  const dates = included.map(r => r.date).sort();
+  const uncategorized = included.filter(r => !r.categoryId).length;
   const Stat = ({ num, lbl, color }: { num: string | number; lbl: string; color?: string }) => (
     <div style={st.summaryItem}><div style={{ ...st.summaryNum, color: color ?? T.text }}>{num}</div><div style={st.summaryLbl}>{lbl}</div></div>
   );
@@ -157,63 +182,108 @@ function Step3({ parsed, uploadInfo, onBack, onConfirm }: {
       <h3 style={st.stepTitle}>Confirm import</h3>
       <p style={st.stepSub}>Review the summary before importing.</p>
       <div style={st.summaryGrid}>
-        <Stat num={parsed.length} lbl="Transactions" />
+        <Stat num={included.length} lbl="Transactions" />
         <Stat num={outflows.length} lbl="Outflows" color={T.textMid} />
         <Stat num={inflows.length} lbl="Inflows" color={T.pos} />
-        <Stat num={(net > 0 ? '+' : '−') + '₡' + Math.abs(net).toLocaleString('en-US')} lbl="Net" color={net < 0 ? T.neg : T.pos} />
+        <Stat num={(net > 0 ? '+' : '−') + fmt(Math.abs(net) / 100)} lbl="Net" color={net < 0 ? T.neg : T.pos} />
       </div>
       <div style={st.confirmMeta}>
-        <div style={st.metaRow}><span style={st.metaKey}>Date range</span><span style={st.metaVal}>{dates[0]} → {dates[dates.length - 1]}</span></div>
-        <div style={st.metaRow}><span style={st.metaKey}>Source file</span><span style={st.metaVal}>{uploadInfo.file.name}</span></div>
+        <div style={st.metaRow}><span style={st.metaKey}>Date range</span><span style={st.metaVal}>{dates.length ? `${dates[0]} → ${dates[dates.length - 1]}` : '—'}</span></div>
+        <div style={st.metaRow}><span style={st.metaKey}>Source file</span><span style={st.metaVal}>{filename}</span></div>
         {uncategorized > 0 && <div style={st.warnBox}>⚠ {uncategorized} transaction{uncategorized > 1 ? 's' : ''} without a category — you can assign later.</div>}
       </div>
       <div style={{ marginTop: 26, display: 'flex', justifyContent: 'space-between' }}>
-        <button onClick={onBack} style={st.ghostBtn}>← Back</button>
-        <button onClick={onConfirm} style={st.confirmBtn}>Import {parsed.length} transactions ✓</button>
+        <button onClick={onBack} style={st.ghostBtn} disabled={confirming}>← Back</button>
+        <button onClick={onConfirm} disabled={confirming || included.length === 0}
+          style={{ ...st.confirmBtn, opacity: confirming || included.length === 0 ? 0.55 : 1, cursor: confirming ? 'wait' : 'pointer' }}>
+          {confirming ? 'Importing…' : `Import ${included.length} transactions ✓`}
+        </button>
       </div>
     </div>
   );
 }
 
 interface Props {
-  accounts: typeof AppData.accounts;
+  accounts: Accounts;
   categoryGroups: CategoryGroup[];
   categoryIdByName: Record<string, string>;
+  fmt: (n: number) => string;
   onNavigate: (page: string) => void;
 }
 
-export function ImportWizard({ accounts, categoryGroups, categoryIdByName, onNavigate }: Props) {
+export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, onNavigate }: Props) {
+  const toast = useToast();
   const [tab, setTab] = useState<'import' | 'rules'>('import');
   const [step, setStep] = useState(0);
-  const [uploadInfo, setUploadInfo] = useState<{ file: { name: string }; accountId: string } | null>(null);
-  const [parsed, setParsed] = useState<ParsedRow[]>(SAMPLE_PARSED);
+  const [uploadInfo, setUploadInfo] = useState<{ file: File; accountId: string } | null>(null);
+  const [parsed, setParsed] = useState<ParsedRow[]>([]);
+  const [previewing, setPreviewing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
   const [done, setDone] = useState(false);
-  const handleChangeParsed = (id: number, key: string, val: string | null) =>
-    setParsed(rows => rows.map(r => r.id === id ? { ...r, [key]: val } : r));
 
   const idToName = Object.fromEntries(Object.entries(categoryIdByName).map(([name, id]) => [id, name]));
   const allCategoryNames = categoryGroups.flatMap(g => g.categories);
 
-  const [liveRules, setLiveRules] = useState<ApiPayeeRule[]>([]);
-  useEffect(() => {
-    fetchPayeeRules().then(setLiveRules).catch(() => {});
-  }, []);
+  const handleSetCategory = (tempId: string, categoryId: string | null) =>
+    setParsed(rows => rows.map(r => r.tempId === tempId ? { ...r, categoryId } : r));
+  const handleToggleInclude = (tempId: string) =>
+    setParsed(rows => rows.map(r => r.tempId === tempId ? { ...r, include: !r.include } : r));
 
-  useEffect(() => {
-    if (liveRules.length === 0) return;
-    setParsed(rows => rows.map(r => {
-      const mapped = liveRules.map(lr => ({ id: lr.id, match: lr.pattern, category: idToName[lr.category_id] ?? '' }));
-      const cat = categorize(r.payee, mapped);
-      return { ...r, category: cat, autoCat: !!cat };
+  const runPreview = (info: { file: File; accountId: string }) => {
+    setUploadInfo(info);
+    setPreviewing(true);
+    importPreview(info.file, info.accountId)
+      .then(resp => {
+        const rows: ParsedRow[] = resp.transactions.map(t => ({
+          tempId: t.temp_id,
+          date: t.date,
+          descriptionRaw: t.description_raw,
+          amount: t.amount,
+          reference: t.reference,
+          categoryId: t.suggested_category_id,
+          autoCat: t.suggested_category_id != null,
+          duplicateOf: t.duplicate_of,
+          include: t.duplicate_of == null, // duplicates default to excluded
+        }));
+        setParsed(rows);
+        setStep(1);
+      })
+      .catch(err => toast.error('Preview failed: ' + err.message))
+      .finally(() => setPreviewing(false));
+  };
+
+  const runConfirm = () => {
+    if (!uploadInfo) return;
+    setConfirming(true);
+    const payload: ConfirmTxn[] = parsed.map(r => ({
+      include: r.include,
+      date: r.date,
+      amount: r.amount,
+      description_raw: r.descriptionRaw,
+      reference: r.reference,
+      category_id: r.categoryId,
+      payee_override: null,
+      memo: null,
     }));
-  }, [liveRules]);
+    importConfirm(uploadInfo.accountId, uploadInfo.file.name, payload)
+      .then(resp => {
+        setResult({ imported: resp.imported_count, skipped: resp.skipped_count });
+        setDone(true);
+      })
+      .catch(err => toast.error('Import failed: ' + err.message))
+      .finally(() => setConfirming(false));
+  };
 
   if (done) {
     return (
       <div style={st.doneWrap}>
         <div style={st.doneCircle}><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="var(--accent)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
         <h2 style={{ fontSize: 24, fontWeight: 800, color: T.text, margin: 0, letterSpacing: '-0.03em' }}>Import complete</h2>
-        <p style={{ color: T.textDim, margin: 0, fontSize: 14 }}>{parsed.length} transactions added to your account.</p>
+        <p style={{ color: T.textDim, margin: 0, fontSize: 14 }}>
+          {result?.imported ?? 0} transaction{(result?.imported ?? 0) === 1 ? '' : 's'} added
+          {result && result.skipped > 0 ? ` · ${result.skipped} skipped` : ''}.
+        </p>
         <button onClick={() => onNavigate('dashboard')} style={{ ...st.primaryBtn, marginTop: 14 }}>Back to Dashboard</button>
       </div>
     );
@@ -240,10 +310,28 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, onNav
         <div style={{ padding: '28px 24px 0', maxWidth: 760, margin: '0 auto' }}>
           <StepIndicator step={step} />
           <div style={{ marginTop: 28 }}>
-            {step === 0 && <Step1 accounts={accounts} onNext={info => { setUploadInfo(info); setStep(1); }} />}
-            {step === 1 && <Step2 parsed={parsed} onChangeParsed={handleChangeParsed} categoryGroups={categoryGroups} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
-            {step === 2 && <Step3 parsed={parsed} uploadInfo={uploadInfo ?? { file: { name: 'estado_cuenta_abril.csv' } }} onBack={() => setStep(1)} onConfirm={() => setDone(true)} />}
+            {step === 0 && <Step1 accounts={accounts} onNext={runPreview} />}
+            {step === 1 && <Step2
+              parsed={parsed}
+              allCategoryNames={allCategoryNames}
+              categoryIdByName={categoryIdByName}
+              idToName={idToName}
+              onSetCategory={handleSetCategory}
+              onToggleInclude={handleToggleInclude}
+              fmt={fmt}
+              onNext={() => setStep(2)}
+              onBack={() => setStep(0)}
+            />}
+            {step === 2 && <Step3
+              parsed={parsed}
+              filename={uploadInfo?.file.name ?? ''}
+              fmt={fmt}
+              confirming={confirming}
+              onBack={() => setStep(1)}
+              onConfirm={runConfirm}
+            />}
           </div>
+          {previewing && <div style={{ marginTop: 14, textAlign: 'center', color: T.textDim, fontSize: 13 }}>Parsing statement…</div>}
         </div>
         <ImportHistory />
       </div>
@@ -514,6 +602,7 @@ const st = {
   th:          { padding: '10px 14px', fontSize: 10.5, fontWeight: 700, color: T.textDim, letterSpacing: '0.07em', textTransform: 'uppercase' as const, borderBottom: `1px solid ${T.border}`, background: 'rgba(255,255,255,0.015)' },
   td:          { padding: '10px 14px', fontSize: 13, color: T.textMid },
   autoTag:     { marginLeft: 8, background: T.accentDim, color: 'var(--accent)', fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '2px 6px', letterSpacing: '0.05em', textTransform: 'uppercase' as const },
+  dupTag:      { marginLeft: 8, background: T.warnDim, color: T.warn, fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '2px 6px', letterSpacing: '0.05em', textTransform: 'uppercase' as const },
   inlineSelect:{ padding: '5px 9px', fontSize: 12.5, border: '1px solid', borderRadius: 7, background: T.surface2, fontWeight: 600, cursor: 'pointer' },
   summaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginTop: 8 },
   summaryItem: { background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.border}`, borderRadius: T.radiusSm, padding: '16px 14px', textAlign: 'center' as const },
