@@ -47,7 +47,7 @@ function StepIndicator({ step }: { step: number }) {
 function Step1({ accounts, onNext }: { accounts: Accounts; onNext: (info: { file: File; accountId: string }) => void }) {
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [accountId, setAccountId] = useState(accounts.budget[0].id);
+  const [accountId, setAccountId] = useState(accounts.budget[0]?.id ?? accounts.tracking[0]?.id ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
   const handleDrop = useCallback((e: React.DragEvent) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) setFile(f); }, []);
   const allAccounts = [...accounts.budget, ...accounts.tracking];
@@ -91,18 +91,16 @@ function Step1({ accounts, onNext }: { accounts: Accounts; onNext: (info: { file
   );
 }
 
-function Step2({ parsed, allCategoryNames, categoryIdByName, idToName, onSetCategory, onToggleInclude, fmt, onNext, onBack }: {
+function Step2({ parsed, allCategoryNames, categoryIdByName, onSetCategory, onToggleInclude, fmt, onNext, onBack }: {
   parsed: ParsedRow[];
   allCategoryNames: string[];
   categoryIdByName: Record<string, string>;
-  idToName: Record<string, string>;
   onSetCategory: (tempId: string, categoryId: string | null) => void;
   onToggleInclude: (tempId: string) => void;
   fmt: (n: number) => string;
   onNext: () => void;
   onBack: () => void;
 }) {
-  void idToName; // passed for symmetry, not used in rendering
   const included = parsed.filter(p => p.include);
   const autoCount = parsed.filter(p => p.autoCat).length;
   const dupCount = parsed.filter(p => p.duplicateOf != null).length;
@@ -310,12 +308,16 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
         <div style={{ padding: '28px 24px 0', maxWidth: 760, margin: '0 auto' }}>
           <StepIndicator step={step} />
           <div style={{ marginTop: 28 }}>
-            {step === 0 && <Step1 accounts={accounts} onNext={runPreview} />}
+            {step === 0 && (
+              <>
+                <Step1 accounts={accounts} onNext={runPreview} />
+                {previewing && <div style={{ marginTop: 14, textAlign: 'center', color: T.textDim, fontSize: 13 }}>Parsing statement…</div>}
+              </>
+            )}
             {step === 1 && <Step2
               parsed={parsed}
               allCategoryNames={allCategoryNames}
               categoryIdByName={categoryIdByName}
-              idToName={idToName}
               onSetCategory={handleSetCategory}
               onToggleInclude={handleToggleInclude}
               fmt={fmt}
@@ -331,7 +333,6 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
               onConfirm={runConfirm}
             />}
           </div>
-          {previewing && <div style={{ marginTop: 14, textAlign: 'center', color: T.textDim, fontSize: 13 }}>Parsing statement…</div>}
         </div>
         <ImportHistory />
       </div>
