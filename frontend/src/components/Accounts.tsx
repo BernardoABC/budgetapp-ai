@@ -66,7 +66,7 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
       <td style={{ ...st.td, padding: rowPad + ' 12px', fontFamily: T.mono, fontSize: 12, color: T.textDim }}>{fmtDate(t.date)}</td>
       <td style={{ ...st.td, padding: rowPad + ' 12px', fontWeight: 600, color: T.text }}>{t.payee}</td>
       <td style={{ ...st.td, padding: rowPad + ' 12px' }}>
-        {t.splits
+        {t.splits && t.splits.length > 0
           ? <span style={st.splitChip} title={t.splits.map(s => s.category + ' ' + fmt(s.amount)).join('  ·  ')}>⑂ Split · {t.splits.length}</span>
           : t.category
             ? <span style={{ ...st.catTag, color: catColor(t.category) }}><span style={{ width: 6, height: 6, borderRadius: 2, background: 'currentColor' }} />{t.category}</span>
@@ -396,7 +396,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
         </div>
       )}
 
-      {modal === 'reconcile' && <ReconcileModal account={account} clearedBalance={account.balance} fmt={fmt} onClose={() => setModal(null)} onReconcile={reconcile} />}
+      {modal === 'reconcile' && <ReconcileModal account={account} clearedBalance={page?.summary.cleared_balance ?? 0} fmt={fmt} onClose={() => setModal(null)} onReconcile={reconcile} />}
       {modal === 'rules' && <RulesManager rules={rules} categories={categories} onClose={() => setModal(null)} onAdd={r => setRules(rs => [...rs, r])} onDelete={id => setRules(rs => rs.filter(x => x.id !== id))} />}
       {modal && typeof modal === 'object' && 'split' in modal && <SplitModal txn={modal.split} categories={categories} fmt={fmt} onClose={() => setModal(null)} onSave={(id, splits) => saveSplit(id, splits)} />}
       {showAddTxn && (
