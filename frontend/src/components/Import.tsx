@@ -44,7 +44,7 @@ function StepIndicator({ step }: { step: number }) {
   );
 }
 
-function Step1({ accounts, onNext }: { accounts: Accounts; onNext: (info: { file: File; accountId: string }) => void }) {
+function Step1({ accounts, previewing, onNext }: { accounts: Accounts; previewing: boolean; onNext: (info: { file: File; accountId: string }) => void }) {
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [accountId, setAccountId] = useState(accounts.budget[0]?.id ?? accounts.tracking[0]?.id ?? '');
@@ -82,9 +82,9 @@ function Step1({ accounts, onNext }: { accounts: Accounts; onNext: (info: { file
       </div>
       <div style={{ marginTop: 26, display: 'flex', justifyContent: 'flex-end' }}>
         <button
-          onClick={() => { if (file) onNext({ file, accountId }); }}
-          disabled={!file}
-          style={{ ...st.primaryBtn, opacity: file ? 1 : 0.45, cursor: file ? 'pointer' : 'not-allowed' }}
+          onClick={() => { if (file && accountId && !previewing) onNext({ file, accountId }); }}
+          disabled={!file || !accountId || previewing}
+          style={{ ...st.primaryBtn, opacity: (file && accountId && !previewing) ? 1 : 0.45, cursor: (file && accountId && !previewing) ? 'pointer' : 'not-allowed' }}
         >Continue →</button>
       </div>
     </div>
@@ -310,7 +310,7 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
           <div style={{ marginTop: 28 }}>
             {step === 0 && (
               <>
-                <Step1 accounts={accounts} onNext={runPreview} />
+                <Step1 accounts={accounts} previewing={previewing} onNext={runPreview} />
                 {previewing && <div style={{ marginTop: 14, textAlign: 'center', color: T.textDim, fontSize: 13 }}>Parsing statement…</div>}
               </>
             )}
