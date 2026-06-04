@@ -59,3 +59,56 @@ func (h *ReportsHandler) SpendingByGroup(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, http.StatusOK, result)
 }
+
+// IncomeExpense handles GET /api/reports/income-expense?from=YYYY-MM&to=YYYY-MM.
+func (h *ReportsHandler) IncomeExpense(w http.ResponseWriter, r *http.Request) {
+	from := r.URL.Query().Get("from")
+	to := r.URL.Query().Get("to")
+	if from == "" || to == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "from and to query params are required (YYYY-MM)")
+		return
+	}
+
+	rows, err := h.txnRepo.IncomeExpenseByMonth(r.Context(), from, to)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+
+	type row struct {
+		Month   string `json:"month"`
+		Income  int64  `json:"income"`
+		Expense int64  `json:"expense"`
+	}
+	result := make([]row, 0, len(rows))
+	for _, r := range rows {
+		result = append(result, row{Month: r.Month, Income: r.Income, Expense: r.Expense})
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// NetWorth handles GET /api/reports/net-worth?from=YYYY-MM&to=YYYY-MM.
+func (h *ReportsHandler) NetWorth(w http.ResponseWriter, r *http.Request) {
+	from := r.URL.Query().Get("from")
+	to := r.URL.Query().Get("to")
+	if from == "" || to == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "from and to query params are required (YYYY-MM)")
+		return
+	}
+
+	rows, err := h.txnRepo.NetWorthByMonth(r.Context(), from, to)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+
+	type row struct {
+		Month    string `json:"month"`
+		NetWorth int64  `json:"net_worth"`
+	}
+	result := make([]row, 0, len(rows))
+	for _, r := range rows {
+		result = append(result, row{Month: r.Month, NetWorth: r.NetWorth})
+	}
+	writeJSON(w, http.StatusOK, result)
+}
