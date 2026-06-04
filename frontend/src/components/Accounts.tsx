@@ -226,7 +226,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   const reconcile = (diff: number) => {
     reconcileAccount(accountId, diff)
       .then(() => { setModal(null); toast.success('Reconciled'); onAccountsChanged(); reload(); })
-      .catch(err => { console.error('reconcile failed:', err); toast.error('Reconcile failed: ' + (err as Error).message); });
+      .catch(err => { console.error('reconcile failed:', err); toast.error('Reconcile failed: ' + (err as Error).message); reload(); });
   };
 
   const handleAddTxn = async (e: React.FormEvent) => {
