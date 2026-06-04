@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"budgetapp/internal/model"
 	"budgetapp/internal/repository"
 	"budgetapp/internal/testutil"
 )
@@ -240,6 +241,57 @@ func TestTransactionRepo_NetWorthByMonth(t *testing.T) {
 	}
 	if rows[1].NetWorth != 600000 {
 		t.Errorf("want net_worth 600000 got %d", rows[1].NetWorth)
+	}
+}
+
+func TestTransactionRepo_UpdateSplits_StoresAndClearsRows(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat1 := testutil.SeedCategory(t, pool)
+	cat2 := testutil.SeedCategory(t, pool)
+	txnID := testutil.SeedTransactionFull(t, pool, acc, cat1, "2026-04-01", -5000, "SUPER", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	// first update: store two splits
+	_, err := repo.Update(ctx, txnID, model.UpdateTransactionReq{
+		Date: "2026-04-01", Payee: "SUPER", CategoryID: cat1, Amount: -5000,
+		Splits: []model.SplitRow{
+			{CategoryID: cat1, Amount: 3000},
+			{CategoryID: cat2, Amount: 2000},
+		},
+	})
+	if err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+
+	var count int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM transaction_splits WHERE transaction_id = $1::uuid`, txnID,
+	).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Errorf("after first update want 2 splits, got %d", count)
+	}
+
+	// second update: clear splits
+	_, err = repo.Update(ctx, txnID, model.UpdateTransactionReq{
+		Date: "2026-04-01", Payee: "SUPER", CategoryID: cat1, Amount: -5000,
+		Splits: nil,
+	})
+	if err != nil {
+		t.Fatalf("second update: %v", err)
+	}
+
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM transaction_splits WHERE transaction_id = $1::uuid`, txnID,
+	).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("after clear update want 0 splits, got %d", count)
 	}
 }
 

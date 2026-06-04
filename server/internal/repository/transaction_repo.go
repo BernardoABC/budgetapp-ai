@@ -278,10 +278,10 @@ func (r *TransactionRepo) Update(ctx context.Context, id string, req model.Updat
 		RETURNING id::text, account_id::text,
 		          COALESCE(category_id::text,''), '',
 		          date::text, amount, currency,
-		          COALESCE(payee,''), COALESCE(memo,''), cleared
+		          COALESCE(payee,''), COALESCE(memo,''), cleared, reconciled
 	`, catIDParam, req.Date, newAmount, req.Payee, req.Memo, req.Cleared, id,
 	).Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
-		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared)
+		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared, &t.Reconciled)
 	if err != nil {
 		return t, fmt.Errorf("update transaction: %w", err)
 	}
@@ -298,6 +298,24 @@ func (r *TransactionRepo) Update(ctx context.Context, id string, req model.Updat
 
 	if t.CategoryID != "" {
 		tx.QueryRow(ctx, `SELECT name FROM categories WHERE id = $1`, t.CategoryID).Scan(&t.CategoryName) //nolint:errcheck
+	}
+
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM transaction_splits WHERE transaction_id = $1`, id,
+	); err != nil {
+		return t, fmt.Errorf("delete splits: %w", err)
+	}
+	for _, s := range req.Splits {
+		var catParam interface{}
+		if s.CategoryID != "" {
+			catParam = s.CategoryID
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO transaction_splits (transaction_id, category_id, amount) VALUES ($1, $2, $3)`,
+			id, catParam, s.Amount,
+		); err != nil {
+			return t, fmt.Errorf("insert split: %w", err)
+		}
 	}
 
 	return t, tx.Commit(ctx)
