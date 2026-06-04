@@ -129,7 +129,6 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   const [pageNum, setPageNum] = useState(1);
   const [rules, setRules] = useState<PayeeRule[]>([...AppData.payeeRules]);
   const [modal, setModal] = useState<null | 'reconcile' | 'rules' | { split: Transaction }>(null);
-  const [dismissedSched, setDismissedSched] = useState(new Set<string>());
 
   const txns = page?.transactions ?? [];
 
@@ -176,14 +175,6 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     searchTimer.current = setTimeout(() => { reload(); }, 300);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [reload, accountId]);
-
-  const upcoming = AppData.scheduled.filter(s => s.account === account.id && !dismissedSched.has(s.id));
-
-  const enterScheduled = (s: typeof AppData.scheduled[0]) => {
-    setDismissedSched(d => new Set(d).add(s.id));
-    toast.info('Scheduled entry handling is not yet wired to the API');
-  };
-  const skipScheduled = (id: string) => setDismissedSched(d => new Set(d).add(id));
 
   const toggleSelect = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -300,24 +291,6 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
           </div>
         </div>
       </div>
-
-      {upcoming.length > 0 && (
-        <div style={st.upcoming}>
-          <div style={st.upcomingHead}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}><span style={st.schedDot} />Upcoming · {upcoming.length} scheduled</span>
-          </div>
-          {upcoming.map(s => (
-            <div key={s.id} style={st.schedRow}>
-              <span style={{ fontFamily: T.mono, fontSize: 12, color: T.textDim, width: 64 }}>{s.next.slice(5).replace('-', '/')}</span>
-              <span style={{ fontWeight: 600, color: T.text, flex: 1 }}>{s.payee}</span>
-              <span style={st.freqChip}>{s.freq}</span>
-              <span style={{ fontFamily: T.mono, fontSize: 12.5, fontWeight: 600, color: s.amount > 0 ? T.pos : T.textMid, width: 96, textAlign: 'right' }}>{s.amount > 0 ? '+' : '−'}{fmt(Math.abs(s.amount))}</span>
-              <button onClick={() => enterScheduled(s)} style={st.enterBtn}>Enter</button>
-              <button onClick={() => skipScheduled(s.id)} style={st.skipBtn}>Skip</button>
-            </div>
-          ))}
-        </div>
-      )}
 
       <div style={st.statRow}>
         <div style={st.stat}><span style={st.statNum}>{page?.pagination.total ?? 0}</span><span style={st.statLbl}>transactions</span></div>
@@ -505,13 +478,6 @@ const st = {
   splitBtn:        { width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.textDim, cursor: 'pointer', fontSize: 13, lineHeight: 1 },
   headerBtn:       { padding: '8px 14px', fontSize: 12.5, fontWeight: 600, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textMid, cursor: 'pointer' },
   headerBtnAccent: { padding: '8px 14px', fontSize: 12.5, fontWeight: 700, background: T.accentDim, border: `1px solid var(--accent)`, borderRadius: 8, color: 'var(--accent)', cursor: 'pointer' },
-  upcoming:        { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, marginBottom: 16, overflow: 'hidden', boxShadow: T.shadowSm },
-  upcomingHead:    { padding: '10px 16px', fontSize: 11.5, fontWeight: 700, color: T.textMid, letterSpacing: '0.04em', textTransform: 'uppercase' as const, borderBottom: `1px solid ${T.border}`, background: 'rgba(255,255,255,0.015)' },
-  schedDot:        { width: 7, height: 7, borderRadius: '50%', background: T.warn, boxShadow: `0 0 7px ${T.warn}`, display: 'inline-block' },
-  schedRow:        { display: 'flex', alignItems: 'center', gap: 12, padding: '9px 16px', borderBottom: `1px solid ${T.borderSoft}` },
-  freqChip:        { fontSize: 10.5, fontWeight: 600, color: T.textDim, background: 'rgba(255,255,255,0.04)', borderRadius: 5, padding: '2px 8px' },
-  enterBtn:        { padding: '5px 12px', fontSize: 12, fontWeight: 700, background: 'var(--accent)', color: '#06140d', border: 'none', borderRadius: 7, cursor: 'pointer' },
-  skipBtn:         { padding: '5px 10px', fontSize: 12, fontWeight: 600, background: 'none', color: T.textDim, border: `1px solid ${T.border}`, borderRadius: 7, cursor: 'pointer' },
   check:           { accentColor: 'var(--accent)', width: 14, height: 14, cursor: 'pointer' },
   inlineInput:     { padding: '5px 8px', fontSize: 12.5, border: `1px solid var(--accent)`, borderRadius: 6, fontFamily: T.mono, background: T.surface2, color: T.text, width: 96 },
   inlineSelect:    { padding: '5px 8px', fontSize: 12, border: `1px solid var(--accent)`, borderRadius: 6, background: T.surface2, color: T.text },
