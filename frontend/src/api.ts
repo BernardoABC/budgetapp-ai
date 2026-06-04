@@ -27,6 +27,7 @@ export interface Transaction {
   outflow: number;
   inflow: number;
   cleared: boolean;
+  reconciled: boolean;
   account: string;
   currency?: string;
   exchange_rate?: number | null;
@@ -132,7 +133,12 @@ export interface TxnFilterParams {
   per_page?: number;
 }
 
-function mapApiTxn(t: { id: string; date: string; payee: string; category: string | null; memo: string; cleared: boolean; account: string; currency: string; amount: number; exchange_rate?: number | null }): Transaction {
+function mapApiTxn(t: {
+  id: string; date: string; payee: string; category: string | null; memo: string;
+  cleared: boolean; account: string; currency: string; amount: number;
+  exchange_rate?: number | null; reconciled?: boolean;
+  splits?: { category: string; amount: number }[];
+}): Transaction {
   const major = t.amount / 100;
   return {
     id: t.id, date: t.date, payee: t.payee, category: t.category,
@@ -140,7 +146,9 @@ function mapApiTxn(t: { id: string; date: string; payee: string; category: strin
     currency: t.currency, exchange_rate: t.exchange_rate,
     outflow: major < 0 ? -major : 0,
     inflow: major > 0 ? major : 0,
-  } as Transaction;
+    reconciled: t.reconciled ?? false,
+    splits: (t.splits ?? []).map(s => ({ category: s.category, amount: s.amount / 100 })),
+  };
 }
 
 export async function fetchTransactionsPage(
@@ -198,7 +206,11 @@ export async function createTransaction(
 
 export async function updateTransaction(
   id: string,
-  body: { date?: string; payee?: string; category_id?: string; amount?: number; memo?: string; cleared?: boolean },
+  body: {
+    date?: string; payee?: string; category_id?: string; amount?: number;
+    memo?: string; cleared?: boolean;
+    splits?: { category_id: string; amount: number }[]; // amounts already in centimos
+  },
 ): Promise<Transaction> {
   const payload = body.amount === undefined ? body : { ...body, amount: Math.round(body.amount * 100) };
   return apiFetch(`/transactions/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -216,6 +228,16 @@ export async function batchTransactions(
   return apiFetch('/transactions/batch', {
     method: 'PATCH',
     body: JSON.stringify({ transaction_ids: ids, action, ...(categoryId !== undefined ? { category_id: categoryId } : {}) }),
+  });
+}
+
+export async function reconcileAccount(
+  accountId: string,
+  adjustment: number, // major units; converted to centimos here
+): Promise<{ reconciled_count: number }> {
+  return apiFetch(`/accounts/${accountId}/reconcile`, {
+    method: 'POST',
+    body: JSON.stringify({ adjustment: Math.round(adjustment * 100) }),
   });
 }
 
