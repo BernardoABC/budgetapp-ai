@@ -104,6 +104,7 @@ func main() {
 	// Transactions
 	mux.HandleFunc("GET /api/accounts/{id}/transactions", txns.ListByAccount)
 	mux.HandleFunc("POST /api/accounts/{id}/transactions", txns.Create)
+	mux.HandleFunc("POST /api/accounts/{id}/reconcile", txns.Reconcile)
 	mux.HandleFunc("GET /api/transactions/{id}", txns.Get)
 	mux.HandleFunc("PUT /api/transactions/{id}", txns.Update)
 	mux.HandleFunc("DELETE /api/transactions/{id}", txns.Delete)

@@ -28,6 +28,10 @@ func (h *TransactionHandler) toResponse(t model.Transaction) map[string]any {
 	if t.CategoryID != "" {
 		categoryID = t.CategoryID
 	}
+	splits := make([]map[string]any, len(t.Splits))
+	for i, s := range t.Splits {
+		splits[i] = map[string]any{"category": s.CategoryName, "amount": s.Amount}
+	}
 	return map[string]any{
 		"id":            t.ID,
 		"account":       t.AccountID,
@@ -39,7 +43,9 @@ func (h *TransactionHandler) toResponse(t model.Transaction) map[string]any {
 		"amount":        t.Amount,
 		"currency":      t.Currency,
 		"cleared":       t.Cleared,
+		"reconciled":    t.Reconciled,
 		"exchange_rate": t.ExchangeRate,
+		"splits":        splits,
 	}
 }
 
@@ -215,4 +221,23 @@ func (h *TransactionHandler) Batch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"affected": affected})
+}
+
+type reconcileReq struct {
+	Adjustment int64 `json:"adjustment"`
+}
+
+func (h *TransactionHandler) Reconcile(w http.ResponseWriter, r *http.Request) {
+	accountID := r.PathValue("id")
+	var req reconcileReq
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+	count, err := h.repo.Reconcile(r.Context(), accountID, req.Adjustment)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"reconciled_count": count})
 }
