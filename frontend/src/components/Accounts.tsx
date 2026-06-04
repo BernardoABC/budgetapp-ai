@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { updateTransaction, deleteTransaction, createTransaction, fetchTransactionsPage, batchTransactions, type TxnPage, type TxnFilterParams } from '../api';
+import { updateTransaction, deleteTransaction, createTransaction, fetchTransactionsPage, batchTransactions, reconcileAccount, type TxnPage, type TxnFilterParams } from '../api';
 import { useToast } from './Toast';
 import { T, GROUP_COLORS } from '../theme';
 import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
@@ -211,8 +211,23 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
       .catch(err => { console.error('toggle cleared failed:', err); toast.error('Could not update cleared status'); reload(); });
   };
 
-  const saveSplit = () => { setModal(null); toast.info('Split persistence is not yet wired to the API'); };
-  const reconcile = (_diff: number) => { setModal(null); toast.info('Reconcile persistence is not yet wired to the API'); };
+  const saveSplit = (id: string, splits: { category: string; amount: number }[]) => {
+    const txn = page?.transactions.find(t => t.id === id);
+    if (!txn) return;
+    const category_id = txn.category ? (categoryIdByName[txn.category] ?? undefined) : undefined;
+    const amount = txn.inflow > 0 ? txn.inflow : -txn.outflow;
+    updateTransaction(id, {
+      date: txn.date, payee: txn.payee, category_id, amount, memo: txn.memo, cleared: txn.cleared,
+      splits: splits.map(s => ({ category_id: categoryIdByName[s.category] ?? '', amount: Math.round(s.amount * 100) })),
+    })
+      .then(() => { setModal(null); toast.success('Split saved'); onAccountsChanged(); reload(); })
+      .catch(err => { console.error('save split failed:', err); toast.error('Save failed: ' + (err as Error).message); reload(); });
+  };
+  const reconcile = (diff: number) => {
+    reconcileAccount(accountId, diff)
+      .then(() => { setModal(null); toast.success('Reconciled'); onAccountsChanged(); reload(); })
+      .catch(err => { console.error('reconcile failed:', err); toast.error('Reconcile failed: ' + (err as Error).message); });
+  };
 
   const handleAddTxn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -383,7 +398,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
 
       {modal === 'reconcile' && <ReconcileModal account={account} clearedBalance={account.balance} fmt={fmt} onClose={() => setModal(null)} onReconcile={reconcile} />}
       {modal === 'rules' && <RulesManager rules={rules} categories={categories} onClose={() => setModal(null)} onAdd={r => setRules(rs => [...rs, r])} onDelete={id => setRules(rs => rs.filter(x => x.id !== id))} />}
-      {modal && typeof modal === 'object' && 'split' in modal && <SplitModal txn={modal.split} categories={categories} fmt={fmt} onClose={() => setModal(null)} onSave={(_id, _splits) => saveSplit()} />}
+      {modal && typeof modal === 'object' && 'split' in modal && <SplitModal txn={modal.split} categories={categories} fmt={fmt} onClose={() => setModal(null)} onSave={(id, splits) => saveSplit(id, splits)} />}
       {showAddTxn && (
         <div style={stModal.overlay} onClick={e => e.target === e.currentTarget && setShowAddTxn(false)}>
           <div style={stModal.panel}>
