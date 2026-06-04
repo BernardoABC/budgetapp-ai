@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -150,10 +151,20 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 		       COALESCE(t.category_id::text,''), COALESCE(c.name,''),
 		       t.date::text, t.amount, t.currency,
 		       COALESCE(t.payee,''), COALESCE(t.memo,''), t.cleared,
-		       t.exchange_rate
+		       t.exchange_rate, t.reconciled,
+		       COALESCE(
+		         json_agg(
+		           json_build_object('category', c2.name, 'amount', s.amount)
+		           ORDER BY s.created_at
+		         ) FILTER (WHERE s.id IS NOT NULL),
+		         '[]'::json
+		       ) AS splits
 		FROM transactions t
 		LEFT JOIN categories c ON c.id = t.category_id
+		LEFT JOIN transaction_splits s ON s.transaction_id = t.id
+		LEFT JOIN categories c2 ON c2.id = s.category_id
 		WHERE `+where+`
+		GROUP BY t.id, c.name
 		ORDER BY `+sortClause(f.Sort)+`
 		LIMIT `+limPlace+` OFFSET `+offPlace, pageArgs...)
 	if err != nil {
@@ -164,10 +175,16 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 	var txns []model.Transaction
 	for rows.Next() {
 		var t model.Transaction
+		var splitsJSON []byte
 		if err := rows.Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
 			&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared,
-			&t.ExchangeRate); err != nil {
+			&t.ExchangeRate, &t.Reconciled, &splitsJSON); err != nil {
 			return nil, 0, summary, fmt.Errorf("scan transaction: %w", err)
+		}
+		if len(splitsJSON) > 0 {
+			if err := json.Unmarshal(splitsJSON, &t.Splits); err != nil {
+				return nil, 0, summary, fmt.Errorf("unmarshal splits: %w", err)
+			}
 		}
 		txns = append(txns, t)
 	}
@@ -176,23 +193,39 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 
 func (r *TransactionRepo) Get(ctx context.Context, id string) (model.Transaction, error) {
 	var t model.Transaction
+	var splitsJSON []byte
 	err := r.pool.QueryRow(ctx, `
 		SELECT t.id::text, t.account_id::text,
 		       COALESCE(t.category_id::text,''), COALESCE(c.name,''),
 		       t.date::text, t.amount, t.currency,
 		       COALESCE(t.payee,''), COALESCE(t.memo,''), t.cleared,
-		       t.exchange_rate
+		       t.exchange_rate, t.reconciled,
+		       COALESCE(
+		         json_agg(
+		           json_build_object('category', c2.name, 'amount', s.amount)
+		           ORDER BY s.created_at
+		         ) FILTER (WHERE s.id IS NOT NULL),
+		         '[]'::json
+		       ) AS splits
 		FROM transactions t
 		LEFT JOIN categories c ON c.id = t.category_id
+		LEFT JOIN transaction_splits s ON s.transaction_id = t.id
+		LEFT JOIN categories c2 ON c2.id = s.category_id
 		WHERE t.id = $1
+		GROUP BY t.id, c.name
 	`, id).Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
 		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared,
-		&t.ExchangeRate)
+		&t.ExchangeRate, &t.Reconciled, &splitsJSON)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return t, ErrNotFound
 		}
 		return t, fmt.Errorf("get transaction %s: %w", id, err)
+	}
+	if len(splitsJSON) > 0 {
+		if err := json.Unmarshal(splitsJSON, &t.Splits); err != nil {
+			return t, fmt.Errorf("unmarshal splits: %w", err)
+		}
 	}
 	return t, nil
 }

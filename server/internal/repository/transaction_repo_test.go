@@ -295,6 +295,38 @@ func TestTransactionRepo_UpdateSplits_StoresAndClearsRows(t *testing.T) {
 	}
 }
 
+func TestTransactionRepo_ListWithSplits(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat1 := testutil.SeedCategory(t, pool)
+	cat2 := testutil.SeedCategory(t, pool)
+	txnID := testutil.SeedTransactionFull(t, pool, acc, cat1, "2026-04-01", -5000, "SUPER", "", false)
+
+	// Insert splits directly to test the read path independently
+	if _, err := pool.Exec(context.Background(), `
+		INSERT INTO transaction_splits (transaction_id, category_id, amount)
+		VALUES ($1::uuid, $2::uuid, 3000), ($1::uuid, $3::uuid, 2000)
+	`, txnID, cat1, cat2); err != nil {
+		t.Fatalf("seed splits: %v", err)
+	}
+
+	repo := repository.NewTransactionRepo(pool)
+	txns, _, _, err := repo.ListByAccount(context.Background(), acc, repository.TxnFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(txns) == 0 {
+		t.Fatal("expected at least one transaction")
+	}
+	if len(txns[0].Splits) != 2 {
+		t.Errorf("want 2 splits, got %d", len(txns[0].Splits))
+	}
+	total := txns[0].Splits[0].Amount + txns[0].Splits[1].Amount
+	if total != 5000 {
+		t.Errorf("want split total 5000, got %d", total)
+	}
+}
+
 func TestTransactionRepo_IncomeExpenseByMonth(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	acc := testutil.SeedOnBudgetAccount(t, pool)
