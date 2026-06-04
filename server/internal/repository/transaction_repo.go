@@ -484,3 +484,41 @@ func (r *TransactionRepo) IncomeExpenseByMonth(ctx context.Context, from, to str
 	}
 	return out, rows.Err()
 }
+
+// NetWorthRow is the running net worth (sum of all transaction amounts) at end of a month.
+type NetWorthRow struct {
+	Month    string
+	NetWorth int64
+}
+
+// NetWorthByMonth returns the cumulative net worth at the end of each month in
+// the inclusive YYYY-MM range. Every month in range appears (via generate_series).
+func (r *TransactionRepo) NetWorthByMonth(ctx context.Context, from, to string) ([]NetWorthRow, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT to_char(m, 'YYYY-MM') AS month,
+		       COALESCE((
+		         SELECT SUM(t.amount)
+		         FROM transactions t
+		         WHERE t.date < (m + INTERVAL '1 month')
+		       ), 0)::bigint AS net_worth
+		FROM generate_series(
+		       ($1 || '-01')::date,
+		       ($2 || '-01')::date,
+		       INTERVAL '1 month'
+		     ) AS m
+		ORDER BY m
+	`, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("net worth by month: %w", err)
+	}
+	defer rows.Close()
+	var out []NetWorthRow
+	for rows.Next() {
+		var row NetWorthRow
+		if err := rows.Scan(&row.Month, &row.NetWorth); err != nil {
+			return nil, fmt.Errorf("scan net worth row: %w", err)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}

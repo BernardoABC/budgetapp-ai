@@ -207,6 +207,42 @@ func TestTransactionRepo_BatchUnknownAction(t *testing.T) {
 	}
 }
 
+func TestTransactionRepo_NetWorthByMonth(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	// Starting balance equivalent: +500000 in Jan
+	testutil.SeedTransaction(t, pool, acc, cat, "2026-01-01", 500000)
+	// Spend in Jan: -100000
+	testutil.SeedTransaction(t, pool, acc, cat, "2026-01-15", -100000)
+	// Income in Feb: +200000
+	testutil.SeedTransaction(t, pool, acc, cat, "2026-02-10", 200000)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+	rows, err := repo.NetWorthByMonth(ctx, "2026-01", "2026-02")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows got %d", len(rows))
+	}
+	// End of Jan: 500000 - 100000 = 400000
+	if rows[0].Month != "2026-01" {
+		t.Errorf("want month 2026-01 got %s", rows[0].Month)
+	}
+	if rows[0].NetWorth != 400000 {
+		t.Errorf("want net_worth 400000 got %d", rows[0].NetWorth)
+	}
+	// End of Feb: 400000 + 200000 = 600000
+	if rows[1].Month != "2026-02" {
+		t.Errorf("want month 2026-02 got %s", rows[1].Month)
+	}
+	if rows[1].NetWorth != 600000 {
+		t.Errorf("want net_worth 600000 got %d", rows[1].NetWorth)
+	}
+}
+
 func TestTransactionRepo_IncomeExpenseByMonth(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	acc := testutil.SeedOnBudgetAccount(t, pool)
