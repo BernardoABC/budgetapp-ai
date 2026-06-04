@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { T, ACCENTS, applyAccent } from './theme';
 import type { AccentKey } from './theme';
-import { AppData } from './data';
 import { fetchAccounts, fetchCategoryGroupsRaw, fetchCurrentRate } from './api';
 import { AccountFormModal } from './components/AccountFormModal';
 import type { Account, CategoryGroup } from './data';
@@ -66,15 +65,12 @@ function App() {
   const [currency, setCurrency] = useState<string>(saved.currency ?? 'USD');
   const [page, setPage] = useState<string>(saved.page ?? 'dashboard');
   // Live data — fetched from API
-  const [accounts, setAccounts] = useState<{ budget: Account[]; tracking: Account[] }>({
-    budget:   AppData.accounts.budget,
-    tracking: AppData.accounts.tracking,
-  });
-  const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>(AppData.categoryGroups);
+  const [accounts, setAccounts] = useState<{ budget: Account[]; tracking: Account[] }>({ budget: [], tracking: [] });
+  const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
   const [categoryIdByName, setCategoryIdByName] = useState<Record<string, string>>({});
   const [showAddAccount, setShowAddAccount] = useState(false);
-  const [exchangeRate, setExchangeRate] = useState<number>(AppData.exchangeRate);
-  const [exchangeRateDate, setExchangeRateDate] = useState<string>(AppData.exchangeRateDate);
+  const [exchangeRate, setExchangeRate] = useState<number>(1);
+  const [exchangeRateDate, setExchangeRateDate] = useState<string>('');
 
   const reloadCategories = useCallback(() => {
     fetchCategoryGroupsRaw()
@@ -118,7 +114,7 @@ function App() {
   }, []);
 
 
-  const [accountId, setAccountId] = useState<string>(saved.accountId ?? AppData.accounts.budget[0].id);
+  const [accountId, setAccountId] = useState<string>(saved.accountId ?? '');
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [tweaks, setTweaks] = useState<Tweaks>(TWEAK_DEFAULTS);
 

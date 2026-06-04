@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { updateTransaction, deleteTransaction, createTransaction, fetchTransactionsPage, batchTransactions, type TxnPage, type TxnFilterParams } from '../api';
 import { useToast } from './Toast';
 import { T, GROUP_COLORS } from '../theme';
-import { AppData } from '../data';
 import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
 import type { Transaction, Account, CategoryGroup, PayeeRule } from '../data';
 
@@ -127,8 +126,9 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   const [sort, setSort] = useState('date_desc');
   const [filter, setFilter] = useState({ payee: '', category: '', from: '', to: '' });
   const [pageNum, setPageNum] = useState(1);
-  const [rules, setRules] = useState<PayeeRule[]>([...AppData.payeeRules]);
+  const [rules, setRules] = useState<PayeeRule[]>([]);
   const [modal, setModal] = useState<null | 'reconcile' | 'rules' | { split: Transaction }>(null);
+
 
   const txns = page?.transactions ?? [];
 
