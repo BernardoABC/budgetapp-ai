@@ -6,25 +6,37 @@ The database schema is the foundation of the entire application. It must support
 ## Entity Relationship Diagram
 
 ```
-┌──────────────┐       ┌──────────────────┐       ┌──────────────┐
-│   accounts   │       │   transactions   │       │  categories  │
-├──────────────┤       ├──────────────────┤       ├──────────────┤
-│ id (PK)      │──1:N──│ id (PK)          │──N:1──│ id (PK)      │
-│ name         │       │ account_id (FK)  │       │ name         │
-│ currency     │       │ category_id (FK) │       │ group_id(FK) │
-│ balance      │       │ date             │       │ hidden       │
-│ type         │       │ amount           │       └──────┬───────┘
-│ closed       │       │ currency         │              │ N:1
-│ on_budget    │       │ payee            │       ┌──────▼───────┐
-│ note         │       │ memo             │       │cat_groups    │
-│ sort_order   │       │ check_number     │       ├──────────────┤
-│ created_at   │       │ exchange_rate    │       │ id (PK)      │
-│ updated_at   │       │ cleared          │       │ name         │
-└──────────────┘       │ import_id        │       │ sort_order   │
-                       │ created_at       │       │ hidden       │
-                       │ updated_at       │       └──────────────┘
-                       └──────────────────┘
-                       
+┌──────────────┐       ┌──────────────────────┐       ┌──────────────┐
+│   accounts   │       │     transactions     │       │  categories  │
+├──────────────┤       ├──────────────────────┤       ├──────────────┤
+│ id (PK)      │──1:N──│ id (PK)              │──N:1──│ id (PK)      │
+│ name         │       │ account_id (FK)      │       │ name         │
+│ currency     │       │ category_id (FK)     │       │ group_id(FK) │
+│ balance      │       │ date                 │       │ hidden       │
+│ type         │       │ amount               │       └──────┬───────┘
+│ closed       │       │ currency             │              │ N:1
+│ on_budget    │       │ payee                │       ┌──────▼───────┐
+│ note         │       │ memo                 │       │cat_groups    │
+│ sort_order   │       │ check_number         │       ├──────────────┤
+│ created_at   │       │ exchange_rate        │       │ id (PK)      │
+│ updated_at   │       │ cleared              │       │ name         │
+└──────────────┘       │ reconciled           │       │ sort_order   │
+                       │ transfer_peer_id(FK) │──┐    │ hidden       │
+                       │ import_id (FK)       │  │    └──────────────┘
+                       │ created_at           │  │self
+                       │ updated_at           │◄─┘
+                       └──────────────────────┘
+                                │ 1:N
+                       ┌────────▼─────────────┐
+                       │  transaction_splits  │
+                       ├──────────────────────┤
+                       │ id (PK)              │
+                       │ transaction_id (FK)  │
+                       │ category_id (FK)     │
+                       │ amount               │
+                       │ created_at           │
+                       └──────────────────────┘
+
 ┌──────────────────┐       ┌──────────────────┐
 │  payee_rules     │       │  exchange_rates  │
 ├──────────────────┤       ├──────────────────┤
@@ -37,16 +49,16 @@ The database schema is the foundation of the entire application. It must support
 │ updated_at       │
 └──────────────────┘
 
-┌──────────────────┐       ┌──────────────────┐
-│  budgets         │       │  imports         │
-├──────────────────┤       ├──────────────────┤
-│ id (PK)          │       │ id (PK)          │
-│ category_id (FK) │       │ account_id (FK)  │
-│ month (YYYY-MM)  │       │ filename         │
-│ assigned         │       │ imported_at      │
-│ created_at       │       │ transaction_count│
-│ updated_at       │       │ status           │
-└──────────────────┘       └──────────────────┘
+┌──────────────────┐       ┌──────────────────┐       ┌──────────────────┐
+│  budgets         │       │  imports         │       │ category_targets │
+├──────────────────┤       ├──────────────────┤       ├──────────────────┤
+│ id (PK)          │       │ id (PK)          │       │ category_id (PK) │
+│ category_id (FK) │       │ account_id (FK)  │       │ type             │
+│ month (YYYY-MM)  │       │ filename         │       │ amount           │
+│ assigned         │       │ imported_at      │       │ deadline         │
+│ created_at       │       │ transaction_count│       │ created_at       │
+│ updated_at       │       │ status           │       │ updated_at       │
+└──────────────────┘       └──────────────────┘       └──────────────────┘
 ```
 
 ## Detailed Table Definitions
@@ -86,15 +98,20 @@ The core table. Every financial event is a row here.
 | check_number | VARCHAR(50) | | Reference number from bank CSV export |
 | exchange_rate | NUMERIC(12,4) | | USD→CRC rate at time of transaction. NULL if same currency as account |
 | cleared | BOOLEAN | NOT NULL, DEFAULT false | Whether user has confirmed this transaction |
+| reconciled | BOOLEAN | NOT NULL, DEFAULT false | Locked after account reconciliation |
+| transfer_peer_id | UUID | FK → transactions(id) ON DELETE SET NULL, NULLABLE | Links the two legs of an account-to-account transfer |
 | import_id | UUID | FK → imports, NULLABLE | Which import batch brought this in (NULL if manual entry) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
 | updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
+
+**Transfer semantics:** When a user transfers money between two accounts, two transaction rows are created atomically — one outflow (negative amount) on the source account, one inflow (positive amount) on the destination account. Each row's `transfer_peer_id` points at the other. Deleting one leg deletes both; editing the amount on one mirrors the sign-flipped amount to the peer.
 
 **Indexes:**
 - `idx_transactions_account_date` on (account_id, date DESC)
 - `idx_transactions_category` on (category_id)
 - `idx_transactions_payee` on (payee) — for auto-categorization lookups
 - `idx_transactions_import` on (import_id)
+- `idx_transactions_transfer_peer` on (transfer_peer_id) WHERE transfer_peer_id IS NOT NULL
 
 ### categories
 Individual budget categories (e.g., "Groceries", "Restaurants", "Transportation").
@@ -167,6 +184,31 @@ Monthly budget allocations per category. One row per category per month.
 - **Activity** = SUM of transaction amounts for this category in this month
 - **Available** = assigned + activity + rollover from previous month (if implementing rollover)
 
+### transaction_splits
+Breaks a single transaction into multiple category buckets. When splits are present, the parent transaction's `category_id` is ignored for budgeting purposes; the splits are used instead. All split amounts must sum to the parent transaction's amount.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | UUID | PK | |
+| transaction_id | UUID | FK → transactions, NOT NULL, ON DELETE CASCADE | Parent transaction |
+| category_id | UUID | FK → categories, NULLABLE | Category for this portion |
+| amount | BIGINT | NOT NULL | Signed minor units (same sign convention as transactions.amount) |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
+
+**Index:** `idx_splits_transaction` on (transaction_id)
+
+### category_targets
+Optional savings/spending targets per category. Drives the "underfunded" indicator on the budget page.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| category_id | UUID | PK, FK → categories ON DELETE CASCADE | One row per category |
+| type | VARCHAR(20) | NOT NULL, CHECK | `monthly` (spend this much/month), `refill` (refill to amount), `savings` (save by deadline) |
+| amount | BIGINT | NOT NULL, CHECK >= 0 | Target amount in minor units |
+| deadline | DATE | NULLABLE | For `savings` targets: goal date |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
+| updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
+
 ### imports
 Tracks CSV file import history for auditing and duplicate detection.
 
@@ -198,9 +240,17 @@ read-time computation — never written back to storage.
   date, enabling display in the other currency without re-deriving it.
 
 ## Migration Strategy
-- Migrations are managed as numbered SQL files: `001_initial_schema.sql`, `002_seed_categories.sql`, etc.
-- Applied via a simple Go migration runner on server startup
+- Migrations are managed as numbered SQL files in `server/internal/database/migrations/`
+- Applied via a Go migration runner on server startup (`migrations.Run`); tracks applied files in `schema_migrations` table
 - All migrations are idempotent (use `IF NOT EXISTS` etc.)
+
+| File | Contents |
+|------|----------|
+| `001_initial_schema.sql` | All core tables (accounts, transactions, categories, payee_rules, exchange_rates, budgets, imports) |
+| `002_seed_categories.sql` | Default category groups and categories for Costa Rica |
+| `003_category_targets.sql` | `category_targets` table |
+| `004_splits_reconcile.sql` | `transaction_splits` table; `reconciled` column on transactions |
+| `005_transfers.sql` | `transfer_peer_id` self-referential FK on transactions |
 
 ## Seed Data
 The initial migration should seed default category groups and categories relevant to Costa Rica:
