@@ -7,3 +7,4 @@
 {"source":"user-event","type":"click","text":"A\n    \n      Tab inside Import page\n      Import page gets two tabs: \"Import\" and \"Rules\". Rules management is co-located with the feature it powers.\n      \n        ProsContextually logicalNo new nav item\n        ConsRules buried inside Import flow","choice":"a","id":null,"timestamp":1780516112785}
 {"type":"screen-added","file":"/home/Berny/budgetapp-ai/.superpowers/brainstorm/2151740-1780516057/content/rules-mockup.html"}
 {"type":"screen-added","file":"/home/Berny/budgetapp-ai/.superpowers/brainstorm/2151740-1780516057/content/waiting.html"}
+{"type":"server-stopped","reason":"idle timeout"}

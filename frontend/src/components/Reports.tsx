@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { T, GROUP_COLORS } from '../theme';
-import type { MonthlySpendingRow } from '../data';
+import type { MonthlySpendingRow } from '../api';
 import { fetchSpendingReport, groupKey, fetchIncomeExpense, fetchNetWorth, fetchAgeOfMoney } from '../api';
 
 function LineChart({ data }: { data: MonthlySpendingRow[] }) {

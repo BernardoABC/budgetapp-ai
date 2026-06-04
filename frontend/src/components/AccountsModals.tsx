@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { T } from '../theme';
-import type { Account, Transaction, PayeeRule } from '../data';
+import type { Account, Transaction } from '../api';
+
+export interface PayeeRule { id: string; match: string; category: string; }
 
 // ── Reconcile ──────────────────────────────────────────────
 

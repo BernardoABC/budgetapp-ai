@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { T } from '../theme';
-import type { Account } from '../data';
+import type { Account } from '../api';
 
 interface SidebarProps {
   currentPage: string;

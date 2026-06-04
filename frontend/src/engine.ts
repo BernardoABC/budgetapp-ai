@@ -1,4 +1,4 @@
-import type { CategoryGroup, Target, PayeeRule } from './data';
+import type { CategoryGroup, Target } from './api';
 
 export interface CatState {
   cat: string;
@@ -127,13 +127,6 @@ export function quickAssign(
     else if (strategy === 'lastMonth' && prevState) out[c.cat] = (prevState.cats[c.cat]?.assigned) ?? 0;
   });
   return out;
-}
-
-export function categorize(payee: string, rules: PayeeRule[]): string | null {
-  if (!payee || !rules) return null;
-  const p = payee.toLowerCase();
-  const hit = rules.find(r => p.includes(r.match.toLowerCase()));
-  return hit ? hit.category : null;
 }
 
 export function targetLabel(t: Target | null, fmt: (n: number) => string): string | null {

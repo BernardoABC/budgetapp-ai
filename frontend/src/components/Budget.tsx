@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { T, GROUP_COLORS } from '../theme';
 import { compute, quickAssign as engineQuickAssign, targetLabel } from '../engine';
 import { MoveMoneyModal, CategoryInspector } from './BudgetModals';
-import type { CategoryGroup, Target } from '../data';
+import type { CategoryGroup, Target } from '../api';
 import type { CatState, MonthState } from '../engine';
 import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate } from '../api';
 import type { ExchangeRate } from '../api';

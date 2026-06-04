@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { T, GROUP_COLORS } from '../theme';
-import type { Transaction, CategoryGroup } from '../data';
+import type { Transaction, CategoryGroup } from '../api';
 import { fetchRecentTransactions, fetchAccounts, fetchBudget } from '../api';
 
 interface Props {

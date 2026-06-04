@@ -3,7 +3,8 @@ import { updateTransaction, deleteTransaction, createTransaction, fetchTransacti
 import { useToast } from './Toast';
 import { T, GROUP_COLORS } from '../theme';
 import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
-import type { Transaction, Account, CategoryGroup, PayeeRule } from '../data';
+import type { PayeeRule } from './AccountsModals';
+import type { Transaction, Account, CategoryGroup } from '../api';
 
 function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string; sortDir: string }) {
   const on = sortCol === col;

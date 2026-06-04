@@ -1,11 +1,69 @@
-import type {
-  Account,
-  Transaction,
-  CategoryGroup,
-  CategoryGroupAPI,
-  CategoryItemAPI,
-  MonthlySpendingRow,
-} from './data';
+// ─── Shared Types ─────────────────────────────────────────────────────────────
+
+export interface Account {
+  id: string;
+  name: string;
+  balance: number;        // major units (converted ÷100 from minor units at the boundary)
+  type?: string;
+  currency?: string;
+  on_budget?: boolean;
+  closed?: boolean;
+  note?: string;
+  sort_order?: number;
+}
+
+export interface CategoryGroup {
+  id: string;
+  name: string;
+  categories: string[];
+}
+
+export interface Transaction {
+  id: string;
+  date: string;
+  payee: string;
+  category: string | null;
+  memo: string;
+  outflow: number;
+  inflow: number;
+  cleared: boolean;
+  account: string;
+  currency?: string;
+  exchange_rate?: number | null;
+  splits?: { category: string; amount: number }[];
+}
+
+export interface MonthlySpendingRow {
+  [key: string]: string | number;
+  month: string;
+  housing: number;
+  food: number;
+  transport: number;
+  entertainment: number;
+  health: number;
+  savings: number;
+}
+
+export interface Target {
+  type: 'monthly' | 'refill' | 'savings';
+  amount: number;
+  by?: string;
+}
+
+export interface CategoryItemAPI {
+  id: string;
+  name: string;
+  hidden: boolean;
+  sort_order: number;
+}
+
+export interface CategoryGroupAPI {
+  id: string;
+  name: string;
+  sort_order: number;
+  hidden: boolean;
+  categories: CategoryItemAPI[];
+}
 
 const BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080') + '/api';
 

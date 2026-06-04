@@ -3,7 +3,7 @@ import { T, ACCENTS, applyAccent } from './theme';
 import type { AccentKey } from './theme';
 import { fetchAccounts, fetchCategoryGroupsRaw, fetchCurrentRate } from './api';
 import { AccountFormModal } from './components/AccountFormModal';
-import type { Account, CategoryGroup } from './data';
+import type { Account, CategoryGroup } from './api';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Budget } from './components/Budget';

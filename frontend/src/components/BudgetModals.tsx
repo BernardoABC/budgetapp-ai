@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { T } from '../theme';
 import { targetLabel } from '../engine';
 import type { CatState, MonthState } from '../engine';
-import type { Target } from '../data';
+import type { Target } from '../api';
 
 // ── Move Money ─────────────────────────────────────────────
 

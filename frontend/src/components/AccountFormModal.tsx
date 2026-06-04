@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { T } from '../theme';
 import { createAccount } from '../api';
-import type { Account } from '../data';
+import type { Account } from '../api';
 
 interface Props {
   onClose: () => void;

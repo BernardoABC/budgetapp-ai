@@ -1,7 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { T } from '../theme';
-import type { CategoryGroup } from '../data';
-import type { Account } from '../data';
+import type { CategoryGroup, Account } from '../api';
 import {
   fetchImportHistory, fetchAccounts, fetchPayeeRules,
   createPayeeRule, updatePayeeRule, deletePayeeRule,
