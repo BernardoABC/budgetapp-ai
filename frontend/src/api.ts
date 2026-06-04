@@ -423,6 +423,88 @@ export async function fetchImportHistory(): Promise<ImportRecord[]> {
   return apiFetch<ImportRecord[]>('/imports');
 }
 
+// ─── Import Preview / Confirm ──────────────────────────────────────────────────
+// Amounts are centimos (minor units) end-to-end — callers divide by 100 for display.
+
+export interface ImportPreviewTxn {
+  temp_id: string;
+  date: string;
+  amount: number;
+  description_raw: string;
+  description_normalized: string;
+  reference: string;
+  transaction_code: string;
+  balance: number;
+  suggested_category_id: string | null;
+  suggested_confidence: string;
+  duplicate_of: string | null;
+  is_transfer: boolean;
+}
+
+export interface ImportFileInfo {
+  filename: string;
+  currency: string;
+  iban: string;
+  opening_balance: number;
+  available_balance: number;
+  statement_date: string;
+  transaction_count: number;
+  date_range: { from: string; to: string };
+  total_inflow: number;
+  total_outflow: number;
+  currency_mismatch: boolean;
+}
+
+export interface ImportPreviewResponse {
+  file_info: ImportFileInfo;
+  transactions: ImportPreviewTxn[];
+}
+
+export interface ConfirmTxn {
+  include: boolean;
+  date: string;
+  amount: number;
+  description_raw: string;
+  reference: string;
+  category_id: string | null;
+  payee_override: string | null;
+  memo: string | null;
+}
+
+export interface ImportConfirmResponse {
+  import_id: string;
+  imported_count: number;
+  skipped_count: number;
+  new_rules_created: number;
+  rules_updated: number;
+}
+
+// importPreview uploads the file as multipart/form-data. It does NOT use apiFetch
+// because apiFetch forces Content-Type: application/json, which would corrupt the
+// multipart boundary — the browser must set it from the FormData.
+export async function importPreview(file: File, accountId: string): Promise<ImportPreviewResponse> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('account_id', accountId);
+  const res = await fetch(BASE + '/imports/preview', { method: 'POST', body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: { message: res.statusText } }));
+    throw new Error(err?.error?.message ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function importConfirm(
+  accountId: string,
+  filename: string,
+  transactions: ConfirmTxn[],
+): Promise<ImportConfirmResponse> {
+  return apiFetch<ImportConfirmResponse>('/imports/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ account_id: accountId, filename, transactions }),
+  });
+}
+
 // ─── Payee Rules ──────────────────────────────────────────────────────────────
 
 export interface PayeeRule {
