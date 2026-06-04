@@ -352,6 +352,49 @@ export async function fetchSpendingReport(from: string, to: string): Promise<Mon
   });
 }
 
+// fetchIncomeExpense returns raw centimos — callers divide by 100 before display.
+export async function fetchIncomeExpense(
+  from: string,
+  to: string,
+): Promise<{ month: string; income: number; expense: number }[]> {
+  const data = await apiFetch<{ month: string; income: number; expense: number }[]>(
+    `/reports/income-expense?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+  );
+  return data ?? [];
+}
+
+// fetchNetWorth returns raw centimos — callers divide by 100 before display.
+export async function fetchNetWorth(
+  from: string,
+  to: string,
+): Promise<{ month: string; net_worth: number }[]> {
+  const data = await apiFetch<{ month: string; net_worth: number }[]>(
+    `/reports/net-worth?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+  );
+  return data ?? [];
+}
+
+// fetchAgeOfMoney calls fetchBudget for the trailing `months` months in parallel
+// and extracts age_of_money. Months where age_of_money is null are omitted.
+export async function fetchAgeOfMoney(
+  months: number,
+): Promise<{ month: string; days: number }[]> {
+  const now = new Date();
+  const monthStrings: string[] = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    monthStrings.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    );
+  }
+  const budgets = await Promise.all(
+    monthStrings.map(m => fetchBudget(m).catch(() => null))
+  );
+  return budgets
+    .map((b, i) => ({ month: monthStrings[i], days: b?.age_of_money ?? null }))
+    .filter((r): r is { month: string; days: number } => r.days !== null);
+}
+
 // ─── Recent Transactions ──────────────────────────────────────────────────────
 
 export async function fetchRecentTransactions(limit: number): Promise<Transaction[]> {
