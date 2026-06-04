@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { updateTransaction, deleteTransaction, createTransaction, fetchTransactionsPage, batchTransactions, reconcileAccount, type TxnPage, type TxnFilterParams } from '../api';
+import { updateTransaction, deleteTransaction, createTransaction, createTransfer, fetchTransactionsPage, batchTransactions, reconcileAccount, type TxnPage, type TxnFilterParams } from '../api';
 import { useToast } from './Toast';
 import { T, GROUP_COLORS } from '../theme';
 import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
@@ -66,11 +66,14 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
       <td style={{ ...st.td, padding: rowPad + ' 12px', fontFamily: T.mono, fontSize: 12, color: T.textDim }}>{fmtDate(t.date)}</td>
       <td style={{ ...st.td, padding: rowPad + ' 12px', fontWeight: 600, color: T.text }}>{t.payee}</td>
       <td style={{ ...st.td, padding: rowPad + ' 12px' }}>
-        {t.splits && t.splits.length > 0
-          ? <span style={st.splitChip} title={t.splits.map(s => s.category + ' ' + fmt(s.amount)).join('  ·  ')}>⑂ Split · {t.splits.length}</span>
-          : t.category
-            ? <span style={{ ...st.catTag, color: catColor(t.category) }}><span style={{ width: 6, height: 6, borderRadius: 2, background: 'currentColor' }} />{t.category}</span>
-            : <span style={{ color: T.textFaint, fontSize: 12 }}>uncategorized</span>}
+        {t.transfer_peer_id
+          ? <span style={{ fontSize: 10, fontWeight: 700, color: '#6C8EBF', background: 'rgba(108,142,191,0.12)', borderRadius: 4, padding: '2px 6px' }}>⇄ Transfer</span>
+          : t.splits && t.splits.length > 0
+            ? <span style={st.splitChip} title={t.splits.map(s => s.category + ' ' + fmt(s.amount)).join('  ·  ')}>⑂ Split · {t.splits.length}</span>
+            : t.category
+              ? <span style={{ ...st.catTag, color: catColor(t.category) }}><span style={{ width: 6, height: 6, borderRadius: 2, background: 'currentColor' }} />{t.category}</span>
+              : null
+        }
       </td>
       <td style={{ ...st.td, padding: rowPad + ' 12px', color: T.textDim, fontSize: 12 }}>{t.memo || '—'}</td>
       <td style={{ ...st.td, padding: rowPad + ' 12px', textAlign: 'right', fontFamily: T.mono, fontSize: 12.5, color: T.textMid }}>{t.outflow > 0 ? fmt(t.outflow) : ''}</td>
@@ -120,6 +123,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   const [addForm, setAddForm] = useState({
     date: new Date().toISOString().slice(0, 10),
     payee: '', category: '', outflow: '', inflow: '', memo: '', cleared: false,
+    isTransfer: false, transferToAccountId: '',
   });
   const [addSaving, setAddSaving] = useState(false);
 
@@ -231,25 +235,28 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
 
   const handleAddTxn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAddSaving(true);
-    const amount = parseFloat(addForm.inflow) > 0 ? parseFloat(addForm.inflow) : -(parseFloat(addForm.outflow) || 0);
-    const category_id = addForm.category ? (categoryIdByName[addForm.category] ?? undefined) : undefined;
-    try {
+    if (addForm.isTransfer) {
+      if (!addForm.transferToAccountId) return;
+      const amount = parseFloat(addForm.outflow) || parseFloat(addForm.inflow) || 0;
+      if (amount <= 0) return;
+      await createTransfer({
+        from_account_id: accountId,
+        to_account_id: addForm.transferToAccountId,
+        date: addForm.date,
+        amount,
+        memo: addForm.memo,
+        cleared: addForm.cleared,
+      });
+    } else {
+      const amount = parseFloat(addForm.inflow) > 0 ? parseFloat(addForm.inflow) : -(parseFloat(addForm.outflow) || 0);
+      const category_id = addForm.category ? (categoryIdByName[addForm.category] ?? undefined) : undefined;
       await createTransaction(accountId, {
         date: addForm.date, payee: addForm.payee, category_id, amount,
         memo: addForm.memo, cleared: addForm.cleared,
       });
-      setShowAddTxn(false);
-      setAddForm({ date: new Date().toISOString().slice(0, 10), payee: '', category: '', outflow: '', inflow: '', memo: '', cleared: false });
-      toast.success('Transaction added');
-      onAccountsChanged();
-      reload();
-    } catch (err) {
-      console.error('create transaction failed:', err);
-      toast.error('Add failed: ' + (err as Error).message);
-    } finally {
-      setAddSaving(false);
     }
+    reload();
+    setAddForm({ date: new Date().toISOString().slice(0, 10), payee: '', category: '', outflow: '', inflow: '', memo: '', cleared: false, isTransfer: false, transferToAccountId: '' });
   };
 
   const [bulkCat, setBulkCat] = useState('');
@@ -414,6 +421,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                     onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))}
                     style={stModal.input} />
                 </div>
+                {!addForm.isTransfer && (
                 <div style={stModal.field}>
                   <label style={stModal.label}>Category</label>
                   <select value={addForm.category}
@@ -423,7 +431,34 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
+                )}
               </div>
+              {/* Transfer toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  id="addIsTransfer"
+                  checked={addForm.isTransfer}
+                  onChange={e => setAddForm(f => ({ ...f, isTransfer: e.target.checked, category: '', transferToAccountId: '' }))}
+                />
+                <label htmlFor="addIsTransfer" style={{ fontSize: 12, color: T.textMid, fontWeight: 600 }}>Transfer to another account</label>
+              </div>
+              {addForm.isTransfer && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={stModal.label}>To Account</label>
+                  <select
+                    value={addForm.transferToAccountId}
+                    onChange={e => setAddForm(f => ({ ...f, transferToAccountId: e.target.value }))}
+                    style={st.inlineSelect}
+                    required
+                  >
+                    <option value="">Select account…</option>
+                    {[...(accounts.budget ?? []), ...(accounts.tracking ?? [])].filter(a => a.id !== accountId).map(a => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div style={stModal.field}>
                 <label style={stModal.label}>Payee</label>
                 <input autoFocus value={addForm.payee}
