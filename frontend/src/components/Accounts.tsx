@@ -625,7 +625,11 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                 }
               </>
             )}
-            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between' }}>
+              {linkModal.step === 2
+                ? <button onClick={() => setLinkModal(m => m ? { ...m, step: 1, candidates: [] } : null)} style={st.cancelBtn}>← Back</button>
+                : <span />
+              }
               <button onClick={() => setLinkModal(null)} style={st.cancelBtn}>Cancel</button>
             </div>
           </div>
