@@ -22,7 +22,7 @@ func TestTransactionRepo_FilterSearch(t *testing.T) {
 	ctx := context.Background()
 
 	// search matches payee (ZARA) and memo (ZARA-brand socks) -> 2 rows
-	txns, total, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{Search: "zara"})
+	txns, total, _, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{Search: "zara"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestTransactionRepo_FilterDateRange(t *testing.T) {
 	repo := repository.NewTransactionRepo(pool)
 	ctx := context.Background()
 
-	_, total, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{FromDate: "2026-04-10", ToDate: "2026-04-30"})
+	_, total, _, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{FromDate: "2026-04-10", ToDate: "2026-04-30"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestTransactionRepo_FilterCleared(t *testing.T) {
 	ctx := context.Background()
 	cleared := true
 
-	_, total, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{Cleared: &cleared})
+	_, total, _, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{Cleared: &cleared})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestTransactionRepo_FilterUncategorized(t *testing.T) {
 	repo := repository.NewTransactionRepo(pool)
 	ctx := context.Background()
 
-	_, total, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{CategoryID: "none"})
+	_, total, _, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{CategoryID: "none"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestTransactionRepo_SortAndSummary(t *testing.T) {
 	repo := repository.NewTransactionRepo(pool)
 	ctx := context.Background()
 
-	txns, total, summary, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{Sort: "amount_asc"})
+	txns, total, summary, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{Sort: "amount_asc"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestTransactionRepo_BatchCategorize(t *testing.T) {
 	if n != 2 {
 		t.Errorf("want 2 affected got %d", n)
 	}
-	_, total, _, _ := repo.ListByAccount(ctx, acc, repository.TxnFilter{CategoryID: cat})
+	_, total, _, _, _ := repo.ListByAccount(ctx, acc, repository.TxnFilter{CategoryID: cat})
 	if total != 2 {
 		t.Errorf("want 2 in category got %d", total)
 	}
@@ -160,7 +160,7 @@ func TestTransactionRepo_BatchClear(t *testing.T) {
 		t.Fatal(err)
 	}
 	cleared := true
-	_, total, _, _ := repo.ListByAccount(ctx, acc, repository.TxnFilter{Cleared: &cleared})
+	_, total, _, _, _ := repo.ListByAccount(ctx, acc, repository.TxnFilter{Cleared: &cleared})
 	if total != 1 {
 		t.Errorf("want 1 cleared got %d", total)
 	}
@@ -184,7 +184,7 @@ func TestTransactionRepo_BatchDeleteReversesBalance(t *testing.T) {
 		t.Errorf("want 2 deleted got %d", n)
 	}
 	// rows gone
-	_, total, _, _ := repo.ListByAccount(ctx, acc, repository.TxnFilter{})
+	_, total, _, _, _ := repo.ListByAccount(ctx, acc, repository.TxnFilter{})
 	if total != 0 {
 		t.Errorf("want 0 remaining got %d", total)
 	}
@@ -311,7 +311,7 @@ func TestTransactionRepo_ListWithSplits(t *testing.T) {
 	}
 
 	repo := repository.NewTransactionRepo(pool)
-	txns, _, _, err := repo.ListByAccount(context.Background(), acc, repository.TxnFilter{})
+	txns, _, _, _, err := repo.ListByAccount(context.Background(), acc, repository.TxnFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -677,6 +677,41 @@ func TestTransactionRepo_LinkTransferBatch(t *testing.T) {
 	if a1.TransferPeerID != idB1 {
 		t.Errorf("a1 peer want %q got %q", idB1, a1.TransferPeerID)
 	}
+}
+
+func TestTransactionRepo_TransferPeerAccountID(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	accA := testutil.SeedOnBudgetAccount(t, pool)
+	accB := testutil.SeedOnBudgetAccount(t, pool)
+	idA, idB := testutil.SeedLinkedPair(t, pool, accA, accB, "2026-05-01", 5000)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	// ListByAccount returns peer account id
+	txns, _, _, _, err := repo.ListByAccount(ctx, accA, repository.TxnFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	for _, tx := range txns {
+		if tx.ID == idA {
+			got = tx.TransferPeerAccountID
+		}
+	}
+	if got != accB {
+		t.Errorf("ListByAccount: want peer account %s got %q", accB, got)
+	}
+
+	// Get returns peer account id
+	txA, err := repo.Get(ctx, idA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if txA.TransferPeerAccountID != accB {
+		t.Errorf("Get: want peer account %s got %q", accB, txA.TransferPeerAccountID)
+	}
+	_ = idB
 }
 
 func TestTransactionRepo_LinkTransferBatch_RollbackOnError(t *testing.T) {

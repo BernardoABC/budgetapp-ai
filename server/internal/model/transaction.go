@@ -20,7 +20,8 @@ type Transaction struct {
 	Reconciled     bool
 	ExchangeRate   *float64 // nil if not stamped
 	Splits         []SplitRow
-	TransferPeerID string   // empty if not a transfer
+	TransferPeerID        string // empty if not a transfer
+	TransferPeerAccountID string // empty if not a transfer
 }
 
 type CreateTransactionReq struct {

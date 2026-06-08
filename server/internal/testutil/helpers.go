@@ -135,6 +135,49 @@ func SeedTransactionFull(t *testing.T, pool *pgxpool.Pool, accountID, categoryID
 	return id
 }
 
+// SeedLinkedPair inserts two linked transfer transactions: accA gets -amount,
+// accB gets +amount, both pointing at each other via transfer_peer_id.
+// Returns (idA, idB).
+func SeedLinkedPair(t *testing.T, pool *pgxpool.Pool, accA, accB, date string, amount int64) (string, string) {
+	t.Helper()
+	ctx := context.Background()
+	var idA, idB string
+	err := pool.QueryRow(ctx,
+		`INSERT INTO transactions (account_id, date, amount, currency)
+		 VALUES ($1::uuid, $2::date, $3, 'CRC') RETURNING id::text`,
+		accA, date, -amount,
+	).Scan(&idA)
+	if err != nil {
+		t.Fatalf("SeedLinkedPair A: %v", err)
+	}
+	err = pool.QueryRow(ctx,
+		`INSERT INTO transactions (account_id, date, amount, currency)
+		 VALUES ($1::uuid, $2::date, $3, 'CRC') RETURNING id::text`,
+		accB, date, amount,
+	).Scan(&idB)
+	if err != nil {
+		t.Fatalf("SeedLinkedPair B: %v", err)
+	}
+	_, err = pool.Exec(ctx,
+		`UPDATE transactions SET transfer_peer_id = $2::uuid WHERE id = $1::uuid`,
+		idA, idB,
+	)
+	if err != nil {
+		t.Fatalf("SeedLinkedPair link A: %v", err)
+	}
+	_, err = pool.Exec(ctx,
+		`UPDATE transactions SET transfer_peer_id = $2::uuid WHERE id = $1::uuid`,
+		idB, idA,
+	)
+	if err != nil {
+		t.Fatalf("SeedLinkedPair link B: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM transactions WHERE id IN ($1::uuid, $2::uuid)`, idA, idB)
+	})
+	return idA, idB
+}
+
 var idCounter int64
 
 func randomID() int64 {

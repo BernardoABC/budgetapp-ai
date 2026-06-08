@@ -110,7 +110,7 @@ func sortClause(sort string) string {
 	}
 }
 
-func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f TxnFilter) ([]model.Transaction, int64, TxnSummary, error) {
+func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f TxnFilter) ([]model.Transaction, int64, TxnSummary, int, error) {
 	page := f.Page
 	if page < 1 {
 		page = 1
@@ -128,7 +128,7 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 	if err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM transactions t WHERE `+where, args...,
 	).Scan(&total); err != nil {
-		return nil, 0, summary, fmt.Errorf("count transactions: %w", err)
+		return nil, 0, summary, 0, fmt.Errorf("count transactions: %w", err)
 	}
 
 	if err := r.pool.QueryRow(ctx, `
@@ -140,7 +140,7 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 		FROM transactions t
 		WHERE `+where, args...,
 	).Scan(&summary.TotalInflow, &summary.TotalOutflow, &summary.ClearedBalance, &summary.UnclearedBalance); err != nil {
-		return nil, 0, summary, fmt.Errorf("summary transactions: %w", err)
+		return nil, 0, summary, 0, fmt.Errorf("summary transactions: %w", err)
 	}
 
 	pageArgs := append(append([]any{}, args...), perPage, offset)
@@ -153,6 +153,7 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 		       COALESCE(t.payee,''), COALESCE(t.memo,''), t.cleared,
 		       t.exchange_rate, t.reconciled,
 		       COALESCE(t.transfer_peer_id::text,''),
+		       COALESCE(peer.account_id::text,''),
 		       COALESCE(
 		         json_agg(
 		           json_build_object('category', c2.name, 'amount', s.amount)
@@ -164,12 +165,13 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 		LEFT JOIN categories c ON c.id = t.category_id
 		LEFT JOIN transaction_splits s ON s.transaction_id = t.id
 		LEFT JOIN categories c2 ON c2.id = s.category_id
+		LEFT JOIN transactions peer ON peer.id = t.transfer_peer_id
 		WHERE `+where+`
-		GROUP BY t.id, c.name
+		GROUP BY t.id, c.name, peer.account_id
 		ORDER BY `+sortClause(f.Sort)+`
 		LIMIT `+limPlace+` OFFSET `+offPlace, pageArgs...)
 	if err != nil {
-		return nil, 0, summary, fmt.Errorf("list transactions: %w", err)
+		return nil, 0, summary, 0, fmt.Errorf("list transactions: %w", err)
 	}
 	defer rows.Close()
 
@@ -179,17 +181,18 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 		var splitsJSON []byte
 		if err := rows.Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
 			&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared,
-			&t.ExchangeRate, &t.Reconciled, &t.TransferPeerID, &splitsJSON); err != nil {
-			return nil, 0, summary, fmt.Errorf("scan transaction: %w", err)
+			&t.ExchangeRate, &t.Reconciled, &t.TransferPeerID, &t.TransferPeerAccountID,
+			&splitsJSON); err != nil {
+			return nil, 0, summary, 0, fmt.Errorf("scan transaction: %w", err)
 		}
 		if len(splitsJSON) > 0 {
 			if err := json.Unmarshal(splitsJSON, &t.Splits); err != nil {
-				return nil, 0, summary, fmt.Errorf("unmarshal splits: %w", err)
+				return nil, 0, summary, 0, fmt.Errorf("unmarshal splits: %w", err)
 			}
 		}
 		txns = append(txns, t)
 	}
-	return txns, total, summary, rows.Err()
+	return txns, total, summary, 0, rows.Err()
 }
 
 func (r *TransactionRepo) Get(ctx context.Context, id string) (model.Transaction, error) {
@@ -202,6 +205,7 @@ func (r *TransactionRepo) Get(ctx context.Context, id string) (model.Transaction
 		       COALESCE(t.payee,''), COALESCE(t.memo,''), t.cleared,
 		       t.exchange_rate, t.reconciled,
 		       COALESCE(t.transfer_peer_id::text,''),
+		       COALESCE(peer.account_id::text,''),
 		       COALESCE(
 		         json_agg(
 		           json_build_object('category', c2.name, 'amount', s.amount)
@@ -213,11 +217,13 @@ func (r *TransactionRepo) Get(ctx context.Context, id string) (model.Transaction
 		LEFT JOIN categories c ON c.id = t.category_id
 		LEFT JOIN transaction_splits s ON s.transaction_id = t.id
 		LEFT JOIN categories c2 ON c2.id = s.category_id
+		LEFT JOIN transactions peer ON peer.id = t.transfer_peer_id
 		WHERE t.id = $1
-		GROUP BY t.id, c.name
+		GROUP BY t.id, c.name, peer.account_id
 	`, id).Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
 		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared,
-		&t.ExchangeRate, &t.Reconciled, &t.TransferPeerID, &splitsJSON)
+		&t.ExchangeRate, &t.Reconciled, &t.TransferPeerID, &t.TransferPeerAccountID,
+		&splitsJSON)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return t, ErrNotFound

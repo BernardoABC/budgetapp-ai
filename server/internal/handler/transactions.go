@@ -32,25 +32,30 @@ func (h *TransactionHandler) toResponse(t model.Transaction) map[string]any {
 	if t.TransferPeerID != "" {
 		transferPeerID = t.TransferPeerID
 	}
+	var transferPeerAccountID any = nil
+	if t.TransferPeerAccountID != "" {
+		transferPeerAccountID = t.TransferPeerAccountID
+	}
 	splits := make([]map[string]any, len(t.Splits))
 	for i, s := range t.Splits {
 		splits[i] = map[string]any{"category": s.CategoryName, "amount": s.Amount}
 	}
 	return map[string]any{
-		"id":               t.ID,
-		"account":          t.AccountID,
-		"date":             t.Date,
-		"payee":            t.Payee,
-		"category":         category,
-		"category_id":      categoryID,
-		"memo":             t.Memo,
-		"amount":           t.Amount,
-		"currency":         t.Currency,
-		"cleared":          t.Cleared,
-		"reconciled":       t.Reconciled,
-		"exchange_rate":    t.ExchangeRate,
-		"splits":           splits,
-		"transfer_peer_id": transferPeerID,
+		"id":                       t.ID,
+		"account":                  t.AccountID,
+		"date":                     t.Date,
+		"payee":                    t.Payee,
+		"category":                 category,
+		"category_id":              categoryID,
+		"memo":                     t.Memo,
+		"amount":                   t.Amount,
+		"currency":                 t.Currency,
+		"cleared":                  t.Cleared,
+		"reconciled":               t.Reconciled,
+		"exchange_rate":            t.ExchangeRate,
+		"splits":                   splits,
+		"transfer_peer_id":         transferPeerID,
+		"transfer_peer_account_id": transferPeerAccountID,
 	}
 }
 
@@ -90,7 +95,7 @@ func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Reques
 		f.Cleared = &v
 	}
 
-	txns, total, summary, err := h.repo.ListByAccount(r.Context(), accountID, f)
+	txns, total, summary, highlightPage, err := h.repo.ListByAccount(r.Context(), accountID, f)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
@@ -111,7 +116,8 @@ func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Reques
 	}
 	totalPages := int((total + int64(pp) - 1) / int64(pp))
 	writeJSON(w, http.StatusOK, map[string]any{
-		"transactions": resp,
+		"transactions":   resp,
+		"highlight_page": highlightPage,
 		"pagination": map[string]any{
 			"page":        p,
 			"per_page":    pp,
