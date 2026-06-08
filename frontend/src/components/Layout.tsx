@@ -59,6 +59,7 @@ function Sidebar({ currentPage, currentAccountId, onNavigate, accounts, exchange
         {active && <span style={st.navBar} />}
         <span style={{ ...st.dot, background: active ? 'var(--accent)' : T.textFaint }} />
         <span style={{ ...st.accName, color: active ? T.text : T.textMid }}>{acc.name}</span>
+        {acc.currency && <span style={st.currBadge}>{acc.currency}</span>}
         <span style={{ ...st.accBal, color: acc.balance < 0 ? T.neg : active ? T.text : T.textDim }}>{fmt(acc.balance)}</span>
       </button>
     );
@@ -179,6 +180,7 @@ const st = {
   dot:         { width: 6, height: 6, borderRadius: '50%', flexShrink: 0, transition: 'background 0.12s' },
   accName:     { fontSize: 12.5, fontWeight: 500, whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 },
   accBal:      { fontSize: 11, fontFamily: T.mono, fontWeight: 500, flexShrink: 0 },
+  currBadge:   { fontSize: 9.5, fontWeight: 600, color: T.textFaint, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 4, padding: '1px 5px', letterSpacing: '0.04em', flexShrink: 0 },
   addBtn:      { display: 'block', width: 'calc(100% - 24px)', margin: '8px 12px 0', padding: '8px 12px', background: 'none', border: `1px dashed ${T.border}`, borderRadius: 9, fontSize: 12.5, cursor: 'pointer', textAlign: 'center' as const, fontWeight: 600, transition: 'all 0.13s' },
   footer:      { display: 'flex', alignItems: 'center', gap: 9, padding: '13px 20px', borderTop: `1px solid ${T.border}`, fontSize: 11, fontFamily: T.mono },
   fxDot:       { width: 7, height: 7, borderRadius: '50%', background: T.pos, boxShadow: `0 0 8px ${T.pos}`, flexShrink: 0 },
