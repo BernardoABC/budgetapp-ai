@@ -64,16 +64,18 @@ func (r *ImportRepo) InsertImportedTxn(
 	ctx context.Context, tx pgx.Tx,
 	accountID, importID, date string, amount int64, currency, payee, reference string,
 	categoryID *string, memo *string, exchangeRate *float64,
-) error {
-	_, err := tx.Exec(ctx, `
+) (string, error) {
+	var id string
+	err := tx.QueryRow(ctx, `
 		INSERT INTO transactions
 			(account_id, category_id, date, amount, currency, payee, check_number, memo, import_id, cleared, exchange_rate)
 		VALUES ($1, $2, $3, $4, $5, NULLIF($6,''), NULLIF($7,''), $8, $9, false, $10)
-	`, accountID, categoryID, date, amount, currency, payee, reference, memo, importID, exchangeRate)
+		RETURNING id::text
+	`, accountID, categoryID, date, amount, currency, payee, reference, memo, importID, exchangeRate).Scan(&id)
 	if err != nil {
-		return fmt.Errorf("insert imported txn: %w", err)
+		return "", fmt.Errorf("insert imported txn: %w", err)
 	}
-	return nil
+	return id, nil
 }
 
 // List returns import history, newest first.

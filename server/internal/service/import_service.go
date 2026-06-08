@@ -177,6 +177,7 @@ func (s *ImportService) Confirm(ctx context.Context, req model.ConfirmReq) (mode
 
 	var balanceDelta int64
 	var newRules, updatedRules int
+	var transferTxnIDs []string
 
 	for _, t := range included {
 		payee := strings.TrimSpace(t.DescriptionRaw)
@@ -190,13 +191,18 @@ func (s *ImportService) Confirm(ctx context.Context, req model.ConfirmReq) (mode
 			rate = &r
 		}
 
-		if err := s.importRepo.InsertImportedTxn(
+		txnID, err := s.importRepo.InsertImportedTxn(
 			ctx, tx, req.AccountID, importID, t.Date, t.Amount,
 			account.Currency, payee, t.Reference, t.CategoryID, t.Memo, rate,
-		); err != nil {
+		)
+		if err != nil {
 			return model.ConfirmResponse{}, err
 		}
 		balanceDelta += t.Amount
+
+		if t.IsTransfer {
+			transferTxnIDs = append(transferTxnIDs, txnID)
+		}
 
 		if t.CategoryID != nil && *t.CategoryID != "" {
 			created, err := s.ruleRepo.Learn(ctx, tx, importer.Normalize(t.DescriptionRaw), *t.CategoryID)
@@ -225,10 +231,11 @@ func (s *ImportService) Confirm(ctx context.Context, req model.ConfirmReq) (mode
 	}
 
 	return model.ConfirmResponse{
-		ImportID:        importID,
-		ImportedCount:   len(included),
-		SkippedCount:    len(req.Transactions) - len(included),
-		NewRulesCreated: newRules,
-		RulesUpdated:    updatedRules,
+		ImportID:               importID,
+		ImportedCount:          len(included),
+		SkippedCount:           len(req.Transactions) - len(included),
+		NewRulesCreated:        newRules,
+		RulesUpdated:           updatedRules,
+		TransferTransactionIDs: transferTxnIDs,
 	}, nil
 }

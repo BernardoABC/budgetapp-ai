@@ -48,6 +48,7 @@ type ConfirmTxnReq struct {
 	CategoryID     *string `json:"category_id"`
 	PayeeOverride  *string `json:"payee_override"`
 	Memo           *string `json:"memo"`
+	IsTransfer     bool    `json:"is_transfer"`
 }
 
 type ConfirmReq struct {
@@ -57,11 +58,12 @@ type ConfirmReq struct {
 }
 
 type ConfirmResponse struct {
-	ImportID        string `json:"import_id"`
-	ImportedCount   int    `json:"imported_count"`
-	SkippedCount    int    `json:"skipped_count"`
-	NewRulesCreated int    `json:"new_rules_created"`
-	RulesUpdated    int    `json:"rules_updated"`
+	ImportID               string   `json:"import_id"`
+	ImportedCount          int      `json:"imported_count"`
+	SkippedCount           int      `json:"skipped_count"`
+	NewRulesCreated        int      `json:"new_rules_created"`
+	RulesUpdated           int      `json:"rules_updated"`
+	TransferTransactionIDs []string `json:"transfer_transaction_ids"`
 }
 
 type ImportRecord struct {
