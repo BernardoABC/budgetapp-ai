@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { T, ACCENTS, applyAccent } from './theme';
 import type { AccentKey } from './theme';
-import { fetchAccounts, fetchCategoryGroupsRaw, fetchCurrentRate } from './api';
+import { fetchAccounts, fetchCategoryGroupsRaw, fetchCurrentRate, fetchServerVersion } from './api';
 import { AccountFormModal } from './components/AccountFormModal';
 import type { Account, CategoryGroup } from './api';
 import { Layout } from './components/Layout';
@@ -71,6 +71,7 @@ function App() {
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [exchangeRateDate, setExchangeRateDate] = useState<string>('');
+  const [serverSha, setServerSha] = useState<string>('…');
 
   const reloadCategories = useCallback(() => {
     fetchCategoryGroupsRaw()
@@ -111,6 +112,7 @@ function App() {
         })));
       })
       .catch(err => console.warn('API unavailable, using static data:', err.message));
+    fetchServerVersion().then(setServerSha);
   }, []);
 
 
@@ -173,6 +175,10 @@ function App() {
       </button>
 
       {tweaksOpen && <TweaksPanel tweaks={tweaks} updateTweak={updateTweak} onClose={() => setTweaksOpen(false)} />}
+
+      <span style={{ position: 'fixed', bottom: 7, right: 10, fontSize: 10, color: T.textDim, opacity: 0.45, pointerEvents: 'none', fontFamily: 'monospace', zIndex: 9997 }}>
+        fe:{__GIT_SHA__} be:{serverSha}
+      </span>
 
       {showAddAccount && (
         <AccountFormModal

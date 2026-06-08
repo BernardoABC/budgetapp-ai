@@ -27,8 +27,10 @@ help: ## Show this help
 
 # ─── Dev ───────────────────────────────────────────────────────────────────────
 
+GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
+
 server: ## Run Go server against local dev DB
-	cd server && DATABASE_URL="$(DB_URL)" go run .
+	cd server && DATABASE_URL="$(DB_URL)" go run -ldflags "-X main.version=$(GIT_SHA)" .
 
 frontend: ## Run Vite dev server (http://localhost:5173)
 	cd frontend && npm run dev
@@ -38,7 +40,7 @@ frontend: ## Run Vite dev server (http://localhost:5173)
 build: build-server build-frontend ## Build server binary + frontend
 
 build-server: ## Build Go binary → server/bin/server
-	cd server && go build -o bin/server .
+	cd server && go build -ldflags "-X main.version=$(GIT_SHA)" -o bin/server .
 
 build-frontend: ## Build frontend for production → frontend/dist/
 	cd frontend && npm run build

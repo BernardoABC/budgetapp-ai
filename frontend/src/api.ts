@@ -670,3 +670,12 @@ export async function updatePayeeRule(id: string, pattern: string, categoryId: s
 export async function deletePayeeRule(id: string): Promise<void> {
   return apiFetch(`/payee-rules/${id}`, { method: 'DELETE' });
 }
+
+export async function fetchServerVersion(): Promise<string> {
+  try {
+    const r = await apiFetch<{ sha: string }>('/version');
+    return r.sha;
+  } catch {
+    return '?';
+  }
+}
