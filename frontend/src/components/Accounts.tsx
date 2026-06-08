@@ -24,9 +24,11 @@ interface EditableRowProps {
   onToggleCleared: (t: Transaction) => void;
   onDelete: (id: string) => void;
   onLink: (t: Transaction) => void;
+  onNavigateToTransfer: (peerId: string, peerAccountId: string) => void;
+  accountNameById: Record<string, string>;
 }
 
-function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared, onDelete, onLink }: EditableRowProps) {
+function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared, onDelete, onLink, onNavigateToTransfer, accountNameById }: EditableRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(t);
   const commit = () => { onSave(draft); setEditing(false); };
@@ -40,22 +42,37 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
         <td style={st.td}><input value={draft.date} onChange={e => setDraft(d => ({ ...d, date: e.target.value }))} style={st.inlineInput} /></td>
         <td style={st.td}><input value={draft.payee} onChange={e => setDraft(d => ({ ...d, payee: e.target.value }))} style={{ ...st.inlineInput, width: 150 }} /></td>
         <td style={st.td}>
-          <select
-            value={draft.category ?? ''}
-            onChange={e => {
-              if (e.target.value === '__transfer__') {
-                setDraft(d => ({ ...d, category: null }));
-                onLink(t);
-              } else {
-                setDraft(d => ({ ...d, category: e.target.value || null }));
-              }
-            }}
-            style={st.inlineSelect}
-          >
-            <option value="">—</option>
-            <option value="__transfer__" style={{ color: 'var(--text-faint, #666)' }}>↔ Transfer to account…</option>
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          {t.transfer_peer_id
+            ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#6C8EBF', background: 'rgba(108,142,191,0.12)', borderRadius: 4, padding: '2px 6px' }}>
+                  ⇄ {accountNameById[t.transfer_peer_account_id ?? ''] ?? 'Transfer'}
+                </span>
+                <button
+                  onClick={e => { e.stopPropagation(); onNavigateToTransfer(t.transfer_peer_id!, t.transfer_peer_account_id!); }}
+                  style={{ fontSize: 10, color: T.textFaint, background: 'none', border: `1px solid ${T.border}`, borderRadius: 4, padding: '1px 6px', cursor: 'pointer' }}
+                >→ View</button>
+              </div>
+            )
+            : (
+              <select
+                value={draft.category ?? ''}
+                onChange={e => {
+                  if (e.target.value === '__transfer__') {
+                    setDraft(d => ({ ...d, category: null }));
+                    onLink(t);
+                  } else {
+                    setDraft(d => ({ ...d, category: e.target.value || null }));
+                  }
+                }}
+                style={st.inlineSelect}
+              >
+                <option value="">—</option>
+                <option value="__transfer__" style={{ color: 'var(--text-faint, #666)' }}>↔ Transfer to account…</option>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )
+          }
         </td>
         <td style={st.td}><input value={draft.memo} onChange={e => setDraft(d => ({ ...d, memo: e.target.value }))} style={{ ...st.inlineInput, width: 130 }} /></td>
         <td style={{ ...st.td, textAlign: 'right' }}><input value={draft.outflow || ''} onChange={e => setDraft(d => ({ ...d, outflow: Number(e.target.value) }))} style={{ ...st.inlineInput, width: 84, textAlign: 'right' }} /></td>
@@ -80,7 +97,15 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
       <td style={{ ...st.td, padding: rowPad + ' 12px', fontWeight: 600, color: T.text }}>{t.payee}</td>
       <td style={{ ...st.td, padding: rowPad + ' 12px' }}>
         {t.transfer_peer_id
-          ? <span style={{ fontSize: 10, fontWeight: 700, color: '#6C8EBF', background: 'rgba(108,142,191,0.12)', borderRadius: 4, padding: '2px 6px' }}>⇄ Transfer</span>
+          ? (
+            <button
+              onClick={e => { e.stopPropagation(); onNavigateToTransfer(t.transfer_peer_id!, t.transfer_peer_account_id!); }}
+              style={{ fontSize: 10, fontWeight: 700, color: '#6C8EBF', background: 'rgba(108,142,191,0.12)', border: 'none', borderRadius: 4, padding: '2px 6px', cursor: 'pointer' }}
+              title={`Go to ${accountNameById[t.transfer_peer_account_id ?? ''] ?? 'linked account'}`}
+            >
+              ⇄ {accountNameById[t.transfer_peer_account_id ?? ''] ?? 'Transfer'}
+            </button>
+          )
           : <>
               {t.splits && t.splits.length > 0
                 ? <span style={st.splitChip} title={t.splits.map(s => s.category + ' ' + fmt(s.amount)).join('  ·  ')}>⑂ Split · {t.splits.length}</span>
@@ -126,6 +151,10 @@ interface Props {
 
 export function Accounts({ accounts, accountId, categoryGroups, fmt, density, categoryIdByName, onAccountsChanged, onDeleted, highlightTxnId, onHighlightConsumed, onNavigateToTransfer }: Props) {
   const allAccounts = [...accounts.budget, ...accounts.tracking];
+  const accountNameById = useMemo(
+    () => Object.fromEntries(allAccounts.map(a => [a.id, a.name])),
+    [allAccounts]
+  );
   const account = allAccounts.find(a => a.id === accountId) ?? allAccounts[0];
   const categories = categoryGroups.flatMap(g => g.categories);
   const catColor = (cat: string) => GROUP_COLORS[categoryGroups.find(g => g.categories.includes(cat))?.name ?? ''] ?? T.textMid;
@@ -537,7 +566,25 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                 {hasFilter ? 'No transactions match your filters' : 'No transactions yet'}
               </td></tr>
             )}
-            {txns.map(t => <EditableRow key={t.id} t={t} categories={categories} catColor={catColor} onSave={handleSave} onToggleSelect={toggleSelect} selected={selected.has(t.id)} fmt={fmt} rowPad={rowPad} onSplit={tx => setModal({ split: tx })} onToggleCleared={toggleCleared} onDelete={handleSingleDelete} onLink={openLinkModal} />)}
+            {txns.map(t => (
+              <EditableRow
+                key={t.id}
+                t={t}
+                categories={categories}
+                catColor={catColor}
+                onSave={handleSave}
+                onToggleSelect={toggleSelect}
+                selected={selected.has(t.id)}
+                fmt={fmt}
+                rowPad={rowPad}
+                onSplit={tx => setModal({ split: tx })}
+                onToggleCleared={toggleCleared}
+                onDelete={handleSingleDelete}
+                onLink={openLinkModal}
+                onNavigateToTransfer={onNavigateToTransfer}
+                accountNameById={accountNameById}
+              />
+            ))}
           </tbody>
         </table>
       </div>
