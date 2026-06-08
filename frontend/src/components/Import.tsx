@@ -1,10 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { T } from '../theme';
-import type { CategoryGroup, Account } from '../api';
+import type { CategoryGroup, Account, Transaction } from '../api';
 import {
   fetchImportHistory, fetchAccounts, fetchPayeeRules,
   createPayeeRule, updatePayeeRule, deletePayeeRule,
   importPreview, importConfirm,
+  fetchTransferCandidates, linkTransfer,
 } from '../api';
 import type { ImportRecord, PayeeRule as ApiPayeeRule, ConfirmTxn } from '../api';
 import { useToast } from './Toast';
@@ -22,10 +23,11 @@ interface ParsedRow {
   autoCat: boolean;
   duplicateOf: string | null;
   include: boolean;
+  isTransfer: boolean;
 }
 
 function StepIndicator({ step }: { step: number }) {
-  const steps = ['Upload', 'Review', 'Confirm'];
+  const steps = ['Upload', 'Review', 'Confirm', 'Link'];
   return (
     <div style={st.stepRow}>
       {steps.map((s, i) => (
@@ -125,6 +127,7 @@ function Step2({ parsed, allCategoryNames, categoryIdByName, onSetCategory, onTo
                   <span style={{ fontWeight: 600, color: T.text }}>{row.descriptionRaw}</span>
                   {row.autoCat && <span style={st.autoTag}>auto</span>}
                   {row.duplicateOf != null && <span style={st.dupTag}>duplicate</span>}
+                  {row.isTransfer && <span style={{ fontSize: 9, fontWeight: 700, color: '#6C8EBF', background: 'rgba(108,142,191,0.12)', borderRadius: 4, padding: '1px 5px', marginLeft: 4 }}>⇄</span>}
                 </td>
                 <td style={st.td}>
                   <select
@@ -218,6 +221,17 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
   const [done, setDone] = useState(false);
+  const [pendingTransferIds, setPendingTransferIds] = useState<string[]>([]);
+  const [linkState, setLinkState] = useState<{
+    id: string;
+    date: string;
+    amount: number;
+    description: string;
+    step: 1 | 2;
+    targetAccountId: string;
+    candidates: Transaction[];
+    loading: boolean;
+  } | null>(null);
 
   const idToName = Object.fromEntries(Object.entries(categoryIdByName).map(([name, id]) => [id, name]));
   const allCategoryNames = categoryGroups.flatMap(g => g.categories);
@@ -242,6 +256,7 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
           autoCat: t.suggested_category_id != null,
           duplicateOf: t.duplicate_of,
           include: t.duplicate_of == null, // duplicates default to excluded
+          isTransfer: t.is_transfer ?? false,
         }));
         setParsed(rows);
         setStep(1);
@@ -262,11 +277,17 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
       category_id: r.categoryId,
       payee_override: null,
       memo: null,
+      is_transfer: r.isTransfer,
     }));
     importConfirm(uploadInfo.accountId, uploadInfo.file.name, payload)
       .then(resp => {
         setResult({ imported: resp.imported_count, skipped: resp.skipped_count });
-        setDone(true);
+        if (resp.transfer_transaction_ids && resp.transfer_transaction_ids.length > 0) {
+          setPendingTransferIds(resp.transfer_transaction_ids);
+          setStep(3);
+        } else {
+          setDone(true);
+        }
       })
       .catch(err => toast.error('Import failed: ' + err.message))
       .finally(() => setConfirming(false));
@@ -331,6 +352,106 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
               onBack={() => setStep(1)}
               onConfirm={runConfirm}
             />}
+            {step === 3 && (
+              <div style={st.stepCard}>
+                <h3 style={st.stepTitle}>Link Transfer Transactions</h3>
+                <p style={st.stepSub}>
+                  {pendingTransferIds.length} imported transaction{pendingTransferIds.length > 1 ? 's were' : ' was'} flagged as a bank transfer.
+                  Link each one to its counterpart in another account, or skip.
+                </p>
+                {pendingTransferIds.map((txnId, i) => {
+                  const row = parsed.filter(r => r.include && r.isTransfer)[i];
+                  return (
+                    <div key={txnId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${T.border}` }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: T.text }}>{row?.descriptionRaw ?? txnId}</div>
+                        <div style={{ fontSize: 11, color: T.textDim }}>{row?.date} · {row ? (row.amount > 0 ? '+' : '−') + fmt(Math.abs(row.amount) / 100) : ''}</div>
+                      </div>
+                      <button
+                        onClick={() => setLinkState({
+                          id: txnId,
+                          date: row?.date ?? '',
+                          amount: row?.amount ?? 0,
+                          description: row?.descriptionRaw ?? '',
+                          step: 1,
+                          targetAccountId: '',
+                          candidates: [],
+                          loading: false,
+                        })}
+                        style={{ padding: '6px 14px', borderRadius: 7, background: 'var(--accent)', color: '#06140d', border: 'none', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                      >
+                        Link…
+                      </button>
+                    </div>
+                  );
+                })}
+                <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setDone(true)} style={st.ghostBtn}>Done</button>
+                </div>
+              </div>
+            )}
+            {linkState && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                onClick={() => setLinkState(null)}>
+                <div style={{ background: T.surface, borderRadius: 12, padding: 28, width: 460, maxHeight: '80vh', overflowY: 'auto' }}
+                  onClick={e => e.stopPropagation()}>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: T.text, marginBottom: 16 }}>Link Transfer</div>
+                  {linkState.step === 1 && (
+                    <>
+                      <div style={{ fontSize: 13, color: T.textDim, marginBottom: 12 }}>
+                        <b style={{ color: T.text }}>{linkState.description}</b><br />
+                        {linkState.date} · {linkState.amount > 0 ? '+' : '−'}{fmt(Math.abs(linkState.amount) / 100)}
+                      </div>
+                      <label style={st.label}>Target account</label>
+                      <select
+                        style={st.select}
+                        value={linkState.targetAccountId}
+                        onChange={async e => {
+                          const tgtId = e.target.value;
+                          setLinkState(s => s ? { ...s, targetAccountId: tgtId, loading: true } : null);
+                          const cands = await fetchTransferCandidates(tgtId, linkState.amount / 100).catch(() => [] as Transaction[]);
+                          setLinkState(s => s ? { ...s, step: 2, candidates: cands, loading: false } : null);
+                        }}
+                      >
+                        <option value="">Select account…</option>
+                        {[...accounts.budget, ...accounts.tracking].map(a => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </select>
+                      {linkState.loading && <div style={{ marginTop: 10, color: T.textDim, fontSize: 13 }}>Loading…</div>}
+                    </>
+                  )}
+                  {linkState.step === 2 && (
+                    <>
+                      <div style={{ fontSize: 13, color: T.textDim, marginBottom: 12 }}>Select the matching transaction:</div>
+                      {linkState.candidates.length === 0
+                        ? <div style={{ color: T.textDim, fontSize: 13 }}>No unlinked matching transactions found.</div>
+                        : linkState.candidates.map(c => (
+                          <div key={c.id}
+                            onClick={async () => {
+                              try {
+                                await linkTransfer(linkState.id, c.id);
+                                setPendingTransferIds(ids => ids.filter(id => id !== linkState.id));
+                                setLinkState(null);
+                              } catch (e: any) { alert('Link failed: ' + e.message); }
+                            }}
+                            style={{ padding: '10px 12px', borderRadius: 8, border: `1px solid ${T.border}`, marginBottom: 8, cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: T.text }}>{c.payee}</div>
+                              <div style={{ fontSize: 11, color: T.textDim }}>{c.date}</div>
+                            </div>
+                            <div style={{ fontFamily: T.mono, fontSize: 13, color: T.textMid }}>{c.inflow > 0 ? '+' : '−'}{fmt(c.inflow || c.outflow)}</div>
+                          </div>
+                        ))
+                      }
+                    </>
+                  )}
+                  <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+                    <button onClick={() => setLinkState(null)} style={st.ghostBtn}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <ImportHistory />
