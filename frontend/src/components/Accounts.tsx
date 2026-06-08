@@ -442,7 +442,10 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
               style={st.renameInput}
             />
           ) : (
-            <h2 style={{ ...st.pageTitle, cursor: 'text' }} onClick={() => setRenamingName(account.name)} title="Click to rename">{account.name}</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h2 style={{ ...st.pageTitle, cursor: 'text' }} onClick={() => setRenamingName(account.name)} title="Click to rename">{account.name}</h2>
+              {account.currency && <span style={st.currBadge}>{account.currency}</span>}
+            </div>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16 }}>
@@ -792,6 +795,7 @@ const st = {
   head:            { display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 18 },
   acctType:        { fontSize: 11, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 4 },
   pageTitle:       { fontSize: 24, fontWeight: 800, color: T.text, margin: 0, letterSpacing: '-0.03em' },
+  currBadge:       { fontSize: 9.5, fontWeight: 600, color: T.textFaint, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 4, padding: '1px 5px', letterSpacing: '0.04em', flexShrink: 0 },
   renameInput:     { fontSize: 24, fontWeight: 800, color: T.text, margin: 0, letterSpacing: '-0.03em', background: 'transparent', border: 'none', borderBottom: `2px solid var(--accent)`, outline: 'none', padding: '0 2px', width: 280 },
   balCard:         { display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-end' },
   balLabel:        { fontSize: 11, fontWeight: 600, color: T.textDim, letterSpacing: '0.04em' },
