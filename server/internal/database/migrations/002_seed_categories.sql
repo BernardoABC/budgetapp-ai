@@ -1,42 +1,41 @@
 INSERT INTO category_groups (name, sort_order) VALUES
     ('Immediate Obligations', 1),
-    ('Food & Drink',          2),
-    ('Transportation',        3),
-    ('Personal',              4),
-    ('Entertainment',         5),
-    ('Savings Goals',         6),
-    ('Debt Payments',         7)
+    ('Expenses',              2),
+    ('Just for Fun',          3)
 ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO categories (group_id, name, sort_order)
 SELECT g.id, v.cat_name, v.sort_order
 FROM category_groups g
 JOIN (VALUES
-    ('Immediate Obligations', 'Rent/Mortgage',    1),
-    ('Immediate Obligations', 'Electricity (ICE)',2),
-    ('Immediate Obligations', 'Water (AyA)',      3),
-    ('Immediate Obligations', 'Internet',         4),
-    ('Immediate Obligations', 'Phone',            5),
-    ('Immediate Obligations', 'Insurance (INS)',  6),
-    ('Food & Drink',          'Groceries',        1),
-    ('Food & Drink',          'Restaurants',      2),
-    ('Food & Drink',          'Coffee Shops',     3),
-    ('Food & Drink',          'Fast Food',        4),
-    ('Transportation',        'Gas',              1),
-    ('Transportation',        'Parking',          2),
-    ('Transportation',        'Tolls (GLOBALVIA)',3),
-    ('Transportation',        'Public Transit',   4),
-    ('Transportation',        'Uber/DiDi',        5),
-    ('Personal',              'Clothing',         1),
-    ('Personal',              'Personal Care',    2),
-    ('Personal',              'Medical/Pharmacy', 3),
-    ('Entertainment',         'Subscriptions',    1),
-    ('Entertainment',         'Entertainment',    2),
-    ('Entertainment',         'Hobbies',          3),
-    ('Savings Goals',         'Emergency Fund',   1),
-    ('Savings Goals',         'Travel',           2),
-    ('Savings Goals',         'Investments',      3),
-    ('Debt Payments',         'Credit Card Payment', 1),
-    ('Debt Payments',         'Loans',            2)
+    ('Immediate Obligations', 'yelp',                    1),
+    ('Immediate Obligations', 'Groceries',               2),
+    ('Immediate Obligations', 'Pricesmart',              3),
+    ('Immediate Obligations', 'Gas',                     4),
+    ('Immediate Obligations', 'Electric',                5),
+    ('Immediate Obligations', 'Water',                   6),
+    ('Immediate Obligations', 'Internet',                7),
+    ('Immediate Obligations', 'Telefono',                8),
+    ('Immediate Obligations', 'Chuchis',                 9),
+    ('Immediate Obligations', 'Transportation',         10),
+    ('Immediate Obligations', 'Seguridad',              11),
+    ('Immediate Obligations', 'Interest & Fees',        12),
+    ('Expenses',              'Cleaning',                1),
+    ('Expenses',              'Medical',                 2),
+    ('Expenses',              'Auto Maintenance',        3),
+    ('Expenses',              'Home Maintenance',        4),
+    ('Expenses',              'Fitness',                 5),
+    ('Expenses',              'Beauty',                  6),
+    ('Expenses',              'Computer Replacement',    7),
+    ('Expenses',              'Software Subscriptions',  8),
+    ('Expenses',              'Gifts',                   9),
+    ('Expenses',              'Clothing',               10),
+    ('Expenses',              'Stuff I Forgot to Budget For', 11),
+    ('Just for Fun',          'Trips',                   1),
+    ('Just for Fun',          'Gaming',                  2),
+    ('Just for Fun',          'Dining Out',              3),
+    ('Just for Fun',          'Fun Money',               4),
+    ('Just for Fun',          'Ubereats',                5),
+    ('Just for Fun',          'Treat yo self',           6)
 ) AS v(group_name, cat_name, sort_order) ON g.name = v.group_name
 ON CONFLICT (group_id, name) DO NOTHING;

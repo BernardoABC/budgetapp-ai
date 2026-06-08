@@ -52,8 +52,9 @@ type ConfirmTxnReq struct {
 }
 
 type ConfirmReq struct {
-	AccountID    string          `json:"account_id"`
-	Filename     string          `json:"filename"`
+	AccountID   string          `json:"account_id"`
+	Filename    string          `json:"filename"`
+	CsvCurrency string          `json:"csv_currency"`
 	Transactions []ConfirmTxnReq `json:"transactions"`
 }
 

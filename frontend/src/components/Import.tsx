@@ -216,6 +216,8 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
   const [tab, setTab] = useState<'import' | 'rules'>('import');
   const [step, setStep] = useState(0);
   const [uploadInfo, setUploadInfo] = useState<{ file: File; accountId: string } | null>(null);
+  const [csvCurrency, setCsvCurrency] = useState<string>('');
+  const [currencyMismatch, setCurrencyMismatch] = useState(false);
   const [parsed, setParsed] = useState<ParsedRow[]>([]);
   const [previewing, setPreviewing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -258,6 +260,8 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
           include: t.duplicate_of == null, // duplicates default to excluded
           isTransfer: t.is_transfer ?? false,
         }));
+        setCsvCurrency(resp.file_info.currency);
+        setCurrencyMismatch(resp.file_info.currency_mismatch);
         setParsed(rows);
         setStep(1);
       })
@@ -279,7 +283,7 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
       memo: null,
       is_transfer: r.isTransfer,
     }));
-    importConfirm(uploadInfo.accountId, uploadInfo.file.name, payload)
+    importConfirm(uploadInfo.accountId, uploadInfo.file.name, payload, csvCurrency)
       .then(resp => {
         setResult({ imported: resp.imported_count, skipped: resp.skipped_count });
         if (resp.transfer_transaction_ids && resp.transfer_transaction_ids.length > 0) {
@@ -334,24 +338,38 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
                 {previewing && <div style={{ marginTop: 14, textAlign: 'center', color: T.textDim, fontSize: 13 }}>Parsing statement…</div>}
               </>
             )}
-            {step === 1 && <Step2
-              parsed={parsed}
-              allCategoryNames={allCategoryNames}
-              categoryIdByName={categoryIdByName}
-              onSetCategory={handleSetCategory}
-              onToggleInclude={handleToggleInclude}
-              fmt={fmt}
-              onNext={() => setStep(2)}
-              onBack={() => setStep(0)}
-            />}
-            {step === 2 && <Step3
-              parsed={parsed}
-              filename={uploadInfo?.file.name ?? ''}
-              fmt={fmt}
-              confirming={confirming}
-              onBack={() => setStep(1)}
-              onConfirm={runConfirm}
-            />}
+            {step === 1 && <>
+              {currencyMismatch && (
+                <div style={{ marginBottom: 16, padding: '11px 16px', background: 'rgba(246,196,90,0.1)', border: `1px solid ${T.warn}44`, borderRadius: T.radius, color: T.warn, fontSize: 13, fontWeight: 600 }}>
+                  ⚠ Currency mismatch: the CSV is <b>{csvCurrency}</b> but the account is a different currency. Importing will tag these transactions with the wrong currency.
+                </div>
+              )}
+              <Step2
+                parsed={parsed}
+                allCategoryNames={allCategoryNames}
+                categoryIdByName={categoryIdByName}
+                onSetCategory={handleSetCategory}
+                onToggleInclude={handleToggleInclude}
+                fmt={fmt}
+                onNext={() => setStep(2)}
+                onBack={() => setStep(0)}
+              />
+            </>}
+            {step === 2 && <>
+              {currencyMismatch && (
+                <div style={{ marginBottom: 16, padding: '11px 16px', background: 'rgba(246,196,90,0.1)', border: `1px solid ${T.warn}44`, borderRadius: T.radius, color: T.warn, fontSize: 13, fontWeight: 600 }}>
+                  ⚠ Currency mismatch: the CSV is <b>{csvCurrency}</b> but the account uses a different currency. Go back and change the account or create a new one with the correct currency.
+                </div>
+              )}
+              <Step3
+                parsed={parsed}
+                filename={uploadInfo?.file.name ?? ''}
+                fmt={fmt}
+                confirming={confirming}
+                onBack={() => setStep(1)}
+                onConfirm={runConfirm}
+              />
+            </>}
             {step === 3 && (
               <div style={st.stepCard}>
                 <h3 style={st.stepTitle}>Link Transfer Transactions</h3>

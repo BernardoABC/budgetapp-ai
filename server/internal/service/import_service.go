@@ -147,6 +147,10 @@ func (s *ImportService) Confirm(ctx context.Context, req model.ConfirmReq) (mode
 		return model.ConfirmResponse{}, err
 	}
 
+	if req.CsvCurrency != "" && account.Currency != "" && req.CsvCurrency != account.Currency {
+		return model.ConfirmResponse{}, fmt.Errorf("currency mismatch: CSV is %s but account is %s", req.CsvCurrency, account.Currency)
+	}
+
 	included := make([]model.ConfirmTxnReq, 0, len(req.Transactions))
 	for _, t := range req.Transactions {
 		if t.Include {

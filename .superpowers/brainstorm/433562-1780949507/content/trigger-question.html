@@ -1,0 +1,84 @@
+<h2>Where should "link as transfer" live?</h2>
+<p class="subtitle">Currently you click a "Link" button on the category cell of a non-transfer row to open the link modal. The question is: should linking also be triggerable from inside the inline row editor?</p>
+
+<div class="split" style="margin-top: 24px;">
+
+  <div class="mockup">
+    <div class="mockup-header">Current flow</div>
+    <div class="mockup-body">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead>
+          <tr style="border-bottom:1px solid #333;">
+            <th style="padding:6px 8px;text-align:left;color:#888;">Category</th>
+            <th style="padding:6px 8px;text-align:right;color:#888;">Outflow</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="background:rgba(255,255,255,0.03)">
+            <td style="padding:8px;">
+              <span style="font-size:10px;font-weight:700;color:#6C8EBF;background:rgba(108,142,191,0.12);border-radius:4px;padding:2px 6px;">⇄ Transfer</span>
+            </td>
+            <td style="padding:8px;text-align:right;font-family:monospace;">€42.00</td>
+          </tr>
+          <tr>
+            <td style="padding:8px;">
+              <span style="font-size:11px;color:#aaa;">🔴 Groceries</span>
+              <button style="font-size:10px;color:#555;background:none;border:1px solid #333;border-radius:4px;padding:1px 6px;margin-left:6px;cursor:pointer;">Link</button>
+            </td>
+            <td style="padding:8px;text-align:right;font-family:monospace;">€18.50</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-size:11px;color:#666;margin-top:12px;">→ Click "Link" to open a 2-step modal (pick account, then pick matching transaction)</p>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">What would change</div>
+    <div class="mockup-body">
+      <p style="font-size:12px;color:#aaa;margin-bottom:12px;">When you click a row to edit it inline, the category field would gain a "Transfer to…" option at the top of the dropdown:</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tbody>
+          <tr style="background:rgba(100,149,237,0.1);">
+            <td style="padding:8px;">
+              <select style="background:#1a1a2e;color:#eee;border:1px solid #444;border-radius:4px;padding:4px;font-size:12px;width:100%;">
+                <option>↔ Transfer to account…</option>
+                <option>— Uncategorized —</option>
+                <option>Groceries</option>
+                <option>Rent</option>
+                <option>Transport</option>
+              </select>
+            </td>
+            <td style="padding:8px;text-align:right;font-family:monospace;">€18.50</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-size:11px;color:#666;margin-top:12px;">→ Choosing "Transfer to account…" opens the same 2-step link flow inline</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="options" style="margin-top:28px;">
+  <div class="option" data-choice="both" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Add it to the inline editor too</h3>
+      <p>Keep the existing "Link" button AND add a "Transfer to…" option in the category dropdown while editing a row</p>
+    </div>
+  </div>
+  <div class="option" data-choice="replace" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Replace the "Link" button</h3>
+      <p>Remove the "Link" button from read mode; the only way to link is to click the row to edit it and choose "Transfer to…" in the dropdown</p>
+    </div>
+  </div>
+  <div class="option" data-choice="addonly" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Inline editor only, keep "Link" button</h3>
+      <p>Same as A — both entry points exist, let the user decide how they prefer to initiate linking</p>
+    </div>
+  </div>
+</div>

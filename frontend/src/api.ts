@@ -629,10 +629,11 @@ export async function importConfirm(
   accountId: string,
   filename: string,
   transactions: ConfirmTxn[],
+  csvCurrency?: string,
 ): Promise<ImportConfirmResponse> {
   return apiFetch<ImportConfirmResponse>('/imports/confirm', {
     method: 'POST',
-    body: JSON.stringify({ account_id: accountId, filename, transactions }),
+    body: JSON.stringify({ account_id: accountId, filename, csv_currency: csvCurrency ?? '', transactions }),
   });
 }
 

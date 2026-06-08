@@ -14,6 +14,7 @@ TAG         ?= latest
         test test-v test-run \
         fmt vet lint-fe check \
         db-reset db-psql db-dump \
+        k3s-db-reset \
         test-db-create test-db-reset \
         up up-all down logs \
         tidy
@@ -59,6 +60,11 @@ deploy: ## Apply k3s manifests (assumes images already pushed)
 
 ship: build-images push-images deploy ## Build, push, and deploy in one shot
 	kubectl rollout restart deployment/budgetapp-server deployment/budgetapp-frontend -n homelab
+
+k3s-db-reset: ## ⚠ Wipe k3s DB data — server restarts and re-applies migrations
+	kubectl exec deployment/budgetapp-db -n homelab -- psql -U budgetapp -d budgetapp -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO PUBLIC;"
+	kubectl rollout restart deployment/budgetapp-server -n homelab
+	@echo "✓ k3s DB wiped. Server is restarting to re-apply migrations."
 
 # ─── Test ──────────────────────────────────────────────────────────────────────
 
