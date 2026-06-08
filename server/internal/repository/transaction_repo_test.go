@@ -650,3 +650,58 @@ func TestTransactionRepo_LinkTransfer_Validations(t *testing.T) {
 		}
 	})
 }
+
+func TestTransactionRepo_LinkTransferBatch(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	accA := testutil.SeedOnBudgetAccount(t, pool)
+	accB := testutil.SeedOnBudgetAccount(t, pool)
+	cat  := testutil.SeedCategory(t, pool)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx  := context.Background()
+
+	idA1 := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-01", -5000, "T", "", false)
+	idB1 := testutil.SeedTransactionFull(t, pool, accB, cat, "2026-06-01", 5000, "T", "", false)
+	idA2 := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-02", -3000, "T", "", false)
+	idB2 := testutil.SeedTransactionFull(t, pool, accB, cat, "2026-06-02", 3000, "T", "", false)
+
+	linked, err := repo.LinkTransferBatch(ctx, [][2]string{{idA1, idB1}, {idA2, idB2}})
+	if err != nil {
+		t.Fatalf("LinkTransferBatch: %v", err)
+	}
+	if linked != 2 {
+		t.Errorf("want linked=2 got %d", linked)
+	}
+
+	a1, _ := repo.Get(ctx, idA1)
+	if a1.TransferPeerID != idB1 {
+		t.Errorf("a1 peer want %q got %q", idB1, a1.TransferPeerID)
+	}
+}
+
+func TestTransactionRepo_LinkTransferBatch_RollbackOnError(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	accA := testutil.SeedOnBudgetAccount(t, pool)
+	accB := testutil.SeedOnBudgetAccount(t, pool)
+	cat  := testutil.SeedCategory(t, pool)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx  := context.Background()
+
+	idA1 := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-01", -5000, "T", "", false)
+	idB1 := testutil.SeedTransactionFull(t, pool, accB, cat, "2026-06-01", 5000, "T", "", false)
+	// Second pair has mismatched amounts — should cause rollback.
+	idA2 := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-02", -3000, "T", "", false)
+	idB2 := testutil.SeedTransactionFull(t, pool, accB, cat, "2026-06-02", 9999, "T", "", false)
+
+	_, err := repo.LinkTransferBatch(ctx, [][2]string{{idA1, idB1}, {idA2, idB2}})
+	if err == nil {
+		t.Fatal("expected error from batch with invalid pair, got nil")
+	}
+
+	// First pair must NOT be linked (rolled back).
+	a1, _ := repo.Get(ctx, idA1)
+	if a1.TransferPeerID != "" {
+		t.Errorf("pair 1 should not be linked after rollback, got peer %q", a1.TransferPeerID)
+	}
+}

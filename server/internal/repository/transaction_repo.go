@@ -825,3 +825,71 @@ func (r *TransactionRepo) LinkTransfer(ctx context.Context, idA, idB string) err
 	}
 	return tx.Commit(ctx)
 }
+
+// LinkTransferBatch atomically links multiple transaction pairs as transfers.
+// All pairs are validated and linked in a single DB transaction — any failure
+// rolls back the entire batch.
+func (r *TransactionRepo) LinkTransferBatch(ctx context.Context, pairs [][2]string) (int, error) {
+	if len(pairs) == 0 {
+		return 0, nil
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	for _, pair := range pairs {
+		idA, idB := pair[0], pair[1]
+
+		type row struct {
+			accountID string
+			amount    int64
+			peerID    *string
+		}
+		var a, b row
+
+		if err := tx.QueryRow(ctx,
+			`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, idA,
+		).Scan(&a.accountID, &a.amount, &a.peerID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return 0, ErrNotFound
+			}
+			return 0, fmt.Errorf("get txn A %s: %w", idA, err)
+		}
+		if err := tx.QueryRow(ctx,
+			`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, idB,
+		).Scan(&b.accountID, &b.amount, &b.peerID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return 0, ErrNotFound
+			}
+			return 0, fmt.Errorf("get txn B %s: %w", idB, err)
+		}
+
+		if a.peerID != nil {
+			return 0, fmt.Errorf("transaction %s is already linked", idA)
+		}
+		if b.peerID != nil {
+			return 0, fmt.Errorf("transaction %s is already linked", idB)
+		}
+		if a.accountID == b.accountID {
+			return 0, fmt.Errorf("transactions %s and %s belong to the same account", idA, idB)
+		}
+		if a.amount+b.amount != 0 {
+			return 0, fmt.Errorf("amounts do not sum to zero for pair (%s, %s)", idA, idB)
+		}
+
+		if _, err := tx.Exec(ctx,
+			`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+			idB, idA); err != nil {
+			return 0, fmt.Errorf("link A %s: %w", idA, err)
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+			idA, idB); err != nil {
+			return 0, fmt.Errorf("link B %s: %w", idB, err)
+		}
+	}
+
+	return len(pairs), tx.Commit(ctx)
+}
