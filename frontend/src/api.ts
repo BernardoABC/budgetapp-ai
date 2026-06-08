@@ -33,6 +33,7 @@ export interface Transaction {
   exchange_rate?: number | null;
   splits?: { category: string; amount: number }[];
   transfer_peer_id?: string | null;
+  transfer_peer_account_id?: string | null;
 }
 
 export interface MonthlySpendingRow {
@@ -121,6 +122,7 @@ export interface TxnPage {
   transactions: Transaction[];
   pagination: { page: number; per_page: number; total: number; total_pages: number };
   summary: { total_inflow: number; total_outflow: number; cleared_balance: number; uncleared_balance: number };
+  highlight_page?: number | null;
 }
 
 export interface TxnFilterParams {
@@ -132,6 +134,7 @@ export interface TxnFilterParams {
   sort?: string;          // date_desc | date_asc | amount_asc | amount_desc | payee_asc | ...
   page?: number;
   per_page?: number;
+  highlight_id?: string;
 }
 
 function mapApiTxn(t: {
@@ -140,6 +143,7 @@ function mapApiTxn(t: {
   exchange_rate?: number | null; reconciled?: boolean;
   splits?: { category: string; amount: number }[];
   transfer_peer_id?: string | null;
+  transfer_peer_account_id?: string | null;
 }): Transaction {
   const major = t.amount / 100;
   return {
@@ -151,6 +155,7 @@ function mapApiTxn(t: {
     reconciled: t.reconciled ?? false,
     splits: (t.splits ?? []).map(s => ({ category: s.category, amount: s.amount / 100 })),
     transfer_peer_id: t.transfer_peer_id ?? null,
+    transfer_peer_account_id: t.transfer_peer_account_id ?? null,
   };
 }
 
@@ -165,6 +170,7 @@ export async function fetchTransactionsPage(
   if (filter.category_id) params.set('category_id', filter.category_id);
   if (filter.cleared !== undefined) params.set('cleared', String(filter.cleared));
   if (filter.sort) params.set('sort', filter.sort);
+  if (filter.highlight_id) params.set('highlight_id', filter.highlight_id);
   params.set('page', String(filter.page ?? 1));
   params.set('per_page', String(filter.per_page ?? 50));
 
@@ -173,11 +179,13 @@ export async function fetchTransactionsPage(
     transactions: ApiTxn[];
     pagination: TxnPage['pagination'];
     summary: { total_inflow: number; total_outflow: number; cleared_balance: number; uncleared_balance: number };
+    highlight_page?: number | null;
   }>(`/accounts/${accountId}/transactions?${params}`);
 
   return {
     transactions: (data.transactions ?? []).map(mapApiTxn),
     pagination: data.pagination,
+    highlight_page: data.highlight_page ?? null,
     summary: {
       total_inflow: data.summary.total_inflow / 100,
       total_outflow: data.summary.total_outflow / 100,
