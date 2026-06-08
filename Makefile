@@ -2,12 +2,15 @@
 
 DB_URL      ?= postgres://budgetapp:budgetapp@localhost:5432/budgetapp?sslmode=disable
 TEST_DB_URL ?= postgres://postgres:postgres@localhost:5432/budgetapp_test?sslmode=disable
+REGISTRY    ?= localhost:5000
+TAG         ?= latest
 
 .DEFAULT_GOAL := help
 
 .PHONY: help \
         server frontend \
         build build-server build-frontend \
+        build-images push-images deploy ship \
         test test-v test-run \
         fmt vet lint-fe check \
         db-reset db-psql db-dump \
@@ -38,6 +41,24 @@ build-server: ## Build Go binary → server/bin/server
 
 build-frontend: ## Build frontend for production → frontend/dist/
 	cd frontend && npm run build
+
+# ─── Container images ──────────────────────────────────────────────────────────
+
+build-images: ## Build server + frontend container images
+	podman build -t $(REGISTRY)/budgetapp-server:$(TAG) -f server/Containerfile server/
+	podman build -t $(REGISTRY)/budgetapp-frontend:$(TAG) --build-arg VITE_API_URL="" -f frontend/Containerfile frontend/
+
+push-images: ## Push images to local registry (requires registry pod running)
+	podman push $(REGISTRY)/budgetapp-server:$(TAG)
+	podman push $(REGISTRY)/budgetapp-frontend:$(TAG)
+
+deploy: ## Apply k3s manifests (assumes images already pushed)
+	kubectl apply -f $(HOME)/homelab/k3s/budgetapp/
+	kubectl apply -f $(HOME)/homelab/k3s/caddy/configmap.yaml
+	kubectl rollout restart deployment/caddy -n homelab
+
+ship: build-images push-images deploy ## Build, push, and deploy in one shot
+	kubectl rollout restart deployment/budgetapp-server deployment/budgetapp-frontend -n homelab
 
 # ─── Test ──────────────────────────────────────────────────────────────────────
 
