@@ -238,6 +238,37 @@ export async function deleteTransaction(id: string): Promise<void> {
   return apiFetch(`/transactions/${id}`, { method: 'DELETE' });
 }
 
+export async function fetchTransferCandidates(
+  accountId: string,
+  amount: number, // major units; converted to centimos
+): Promise<Transaction[]> {
+  const centimos = Math.round(amount * 100);
+  const data = await apiFetch<{ transactions: Parameters<typeof mapApiTxn>[0][] }>(
+    `/accounts/${accountId}/transfer-candidates?amount=${centimos}`
+  );
+  return (data.transactions ?? []).map(mapApiTxn);
+}
+
+export async function linkTransfer(
+  transactionAId: string,
+  transactionBId: string,
+): Promise<{ from: Transaction; to: Transaction }> {
+  const raw = await apiFetch<{ from: Parameters<typeof mapApiTxn>[0]; to: Parameters<typeof mapApiTxn>[0] }>(
+    '/transfers/link',
+    { method: 'POST', body: JSON.stringify({ transaction_a_id: transactionAId, transaction_b_id: transactionBId }) },
+  );
+  return { from: mapApiTxn(raw.from), to: mapApiTxn(raw.to) };
+}
+
+export async function linkTransferBatch(
+  pairs: [string, string][],
+): Promise<{ linked: number }> {
+  return apiFetch('/transfers/link-batch', {
+    method: 'POST',
+    body: JSON.stringify({ pairs }),
+  });
+}
+
 export async function batchTransactions(
   ids: string[],
   action: 'categorize' | 'clear' | 'unclear' | 'delete',
@@ -567,6 +598,7 @@ export interface ConfirmTxn {
   category_id: string | null;
   payee_override: string | null;
   memo: string | null;
+  is_transfer: boolean;
 }
 
 export interface ImportConfirmResponse {
@@ -575,6 +607,7 @@ export interface ImportConfirmResponse {
   skipped_count: number;
   new_rules_created: number;
   rules_updated: number;
+  transfer_transaction_ids: string[];
 }
 
 // importPreview uploads the file as multipart/form-data. It does NOT use apiFetch
