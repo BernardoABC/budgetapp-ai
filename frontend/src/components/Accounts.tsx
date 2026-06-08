@@ -119,9 +119,12 @@ interface Props {
   categoryIdByName: Record<string, string>;
   onAccountsChanged: () => void;
   onDeleted: (deletedId: string) => void;
+  highlightTxnId?: string | null;
+  onHighlightConsumed: () => void;
+  onNavigateToTransfer: (peerId: string, peerAccountId: string) => void;
 }
 
-export function Accounts({ accounts, accountId, categoryGroups, fmt, density, categoryIdByName, onAccountsChanged, onDeleted }: Props) {
+export function Accounts({ accounts, accountId, categoryGroups, fmt, density, categoryIdByName, onAccountsChanged, onDeleted, highlightTxnId, onHighlightConsumed, onNavigateToTransfer }: Props) {
   const allAccounts = [...accounts.budget, ...accounts.tracking];
   const account = allAccounts.find(a => a.id === accountId) ?? allAccounts[0];
   const categories = categoryGroups.flatMap(g => g.categories);

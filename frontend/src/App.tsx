@@ -117,6 +117,7 @@ function App() {
 
 
   const [accountId, setAccountId] = useState<string>(saved.accountId ?? '');
+  const [highlightTxnId, setHighlightTxnId] = useState<string | null>(null);
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [tweaks, setTweaks] = useState<Tweaks>(TWEAK_DEFAULTS);
 
@@ -125,6 +126,11 @@ function App() {
     if (aid) setAccountId(aid);
     localStorage.setItem('budgetapp-nav', JSON.stringify({ page: p, accountId: aid ?? accountId, currency }));
   }, [accountId, currency]);
+
+  const handleNavigateToTransfer = useCallback((peerId: string, peerAccountId: string) => {
+    setHighlightTxnId(peerId);
+    navigate('accounts', peerAccountId);
+  }, [navigate]);
 
   const handleCurrencyChange = (c: string) => {
     setCurrency(c);
@@ -163,6 +169,9 @@ function App() {
                 navigate('accounts', remaining[0]?.id ?? '');
                 reloadAccounts();
               }}
+              highlightTxnId={highlightTxnId}
+              onHighlightConsumed={() => setHighlightTxnId(null)}
+              onNavigateToTransfer={handleNavigateToTransfer}
             />
           )}
           {page === 'import' && <ImportWizard accounts={accounts} categoryGroups={categoryGroups} categoryIdByName={categoryIdByName} fmt={fmtBound} onNavigate={navigate} />}
