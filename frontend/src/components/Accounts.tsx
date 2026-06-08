@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { updateTransaction, deleteTransaction, createTransaction, createTransfer, fetchTransactionsPage, batchTransactions, reconcileAccount, fetchTransferCandidates, linkTransfer, linkTransferBatch, updateAccount, type TxnPage, type TxnFilterParams } from '../api';
+import { updateTransaction, deleteTransaction, createTransaction, createTransfer, fetchTransactionsPage, batchTransactions, reconcileAccount, fetchTransferCandidates, linkTransfer, linkTransferBatch, updateAccount, deleteAccount, type TxnPage, type TxnFilterParams } from '../api';
 import { useToast } from './Toast';
 import { T, GROUP_COLORS } from '../theme';
 import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
@@ -153,6 +153,8 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   } | null>(null);
 
   const [renamingName, setRenamingName] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [batchReview, setBatchReview] = useState<{
     payee: string;
@@ -257,6 +259,20 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     reconcileAccount(accountId, diff)
       .then(() => { setModal(null); toast.success('Reconciled'); onAccountsChanged(); reload(); })
       .catch(err => { console.error('reconcile failed:', err); toast.error('Reconcile failed: ' + (err as Error).message); reload(); });
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!account) return;
+    setDeleting(true);
+    try {
+      await deleteAccount(account.id);
+      setDeleteConfirm(false);
+      onDeleted(account.id);
+    } catch (err: unknown) {
+      toast.error('Delete failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleAddTxn = async (e: React.FormEvent) => {
@@ -419,6 +435,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16 }}>
           <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setDeleteConfirm(true)} style={st.headerBtnNeg}>Delete</button>
             <button onClick={() => setModal('rules')} style={st.headerBtn}>Rules</button>
             <button onClick={() => setModal('reconcile')} style={st.headerBtnAccent}>Reconcile</button>
           </div>
@@ -520,6 +537,32 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
       {modal === 'reconcile' && <ReconcileModal account={account} clearedBalance={page?.summary.cleared_balance ?? 0} fmt={fmt} onClose={() => setModal(null)} onReconcile={reconcile} />}
       {modal === 'rules' && <RulesManager rules={rules} categories={categories} onClose={() => setModal(null)} onAdd={r => setRules(rs => [...rs, r])} onDelete={id => setRules(rs => rs.filter(x => x.id !== id))} />}
       {modal && typeof modal === 'object' && 'split' in modal && <SplitModal txn={modal.split} categories={categories} fmt={fmt} onClose={() => setModal(null)} onSave={(id, splits) => saveSplit(id, splits)} />}
+      {deleteConfirm && (
+        <div style={stModal.overlay} onClick={e => { if (e.target === e.currentTarget) setDeleteConfirm(false); }}>
+          <div style={{ ...stModal.panel, width: 400 }}>
+            <div style={stModal.header}>
+              <span style={stModal.title}>Delete Account</span>
+              <button onClick={() => setDeleteConfirm(false)} style={stModal.closeBtn}>✕</button>
+            </div>
+            <p style={{ fontSize: 13.5, color: T.textMid, margin: '0 0 8px' }}>
+              Delete <strong style={{ color: T.text }}>{account.name}</strong>?
+            </p>
+            <p style={{ fontSize: 12.5, color: T.textFaint, margin: '0 0 22px' }}>
+              This will permanently delete all transactions for this account and cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setDeleteConfirm(false)} style={stModal.cancelBtn} disabled={deleting}>Cancel</button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleting}
+                style={{ ...stModal.submitBtn, background: T.neg, color: '#fff', opacity: deleting ? 0.6 : 1 }}
+              >
+                {deleting ? 'Deleting…' : 'Delete Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Link modal */}
       {linkModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -758,6 +801,7 @@ const st = {
   splitBtn:        { width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, color: T.textDim, cursor: 'pointer', fontSize: 13, lineHeight: 1 },
   headerBtn:       { padding: '8px 14px', fontSize: 12.5, fontWeight: 600, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textMid, cursor: 'pointer' },
   headerBtnAccent: { padding: '8px 14px', fontSize: 12.5, fontWeight: 700, background: T.accentDim, border: `1px solid var(--accent)`, borderRadius: 8, color: 'var(--accent)', cursor: 'pointer' },
+  headerBtnNeg:    { padding: '8px 14px', fontSize: 12.5, fontWeight: 600, background: T.negDim, border: `1px solid ${T.neg}`, borderRadius: 8, color: T.neg, cursor: 'pointer' },
   check:           { accentColor: 'var(--accent)', width: 14, height: 14, cursor: 'pointer' },
   inlineInput:     { padding: '5px 8px', fontSize: 12.5, border: `1px solid var(--accent)`, borderRadius: 6, fontFamily: T.mono, background: T.surface2, color: T.text, width: 96 },
   inlineSelect:    { padding: '5px 8px', fontSize: 12, border: `1px solid var(--accent)`, borderRadius: 6, background: T.surface2, color: T.text },
