@@ -152,6 +152,7 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 		       t.date::text, t.amount, t.currency,
 		       COALESCE(t.payee,''), COALESCE(t.memo,''), t.cleared,
 		       t.exchange_rate, t.reconciled,
+		       COALESCE(t.transfer_peer_id::text,''),
 		       COALESCE(
 		         json_agg(
 		           json_build_object('category', c2.name, 'amount', s.amount)
@@ -178,7 +179,7 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 		var splitsJSON []byte
 		if err := rows.Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
 			&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared,
-			&t.ExchangeRate, &t.Reconciled, &splitsJSON); err != nil {
+			&t.ExchangeRate, &t.Reconciled, &t.TransferPeerID, &splitsJSON); err != nil {
 			return nil, 0, summary, fmt.Errorf("scan transaction: %w", err)
 		}
 		if len(splitsJSON) > 0 {
@@ -200,6 +201,7 @@ func (r *TransactionRepo) Get(ctx context.Context, id string) (model.Transaction
 		       t.date::text, t.amount, t.currency,
 		       COALESCE(t.payee,''), COALESCE(t.memo,''), t.cleared,
 		       t.exchange_rate, t.reconciled,
+		       COALESCE(t.transfer_peer_id::text,''),
 		       COALESCE(
 		         json_agg(
 		           json_build_object('category', c2.name, 'amount', s.amount)
@@ -215,7 +217,7 @@ func (r *TransactionRepo) Get(ctx context.Context, id string) (model.Transaction
 		GROUP BY t.id, c.name
 	`, id).Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
 		&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared,
-		&t.ExchangeRate, &t.Reconciled, &splitsJSON)
+		&t.ExchangeRate, &t.Reconciled, &t.TransferPeerID, &splitsJSON)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return t, ErrNotFound
