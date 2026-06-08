@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { updateTransaction, deleteTransaction, createTransaction, createTransfer, fetchTransactionsPage, batchTransactions, reconcileAccount, type TxnPage, type TxnFilterParams } from '../api';
+import { updateTransaction, deleteTransaction, createTransaction, createTransfer, fetchTransactionsPage, batchTransactions, reconcileAccount, fetchTransferCandidates, linkTransfer, linkTransferBatch, type TxnPage, type TxnFilterParams } from '../api';
 import { useToast } from './Toast';
 import { T, GROUP_COLORS } from '../theme';
 import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
@@ -23,9 +23,10 @@ interface EditableRowProps {
   onSplit: (t: Transaction) => void;
   onToggleCleared: (t: Transaction) => void;
   onDelete: (id: string) => void;
+  onLink: (t: Transaction) => void;
 }
 
-function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared, onDelete }: EditableRowProps) {
+function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared, onDelete, onLink }: EditableRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(t);
   const commit = () => { onSave(draft); setEditing(false); };
@@ -68,11 +69,19 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
       <td style={{ ...st.td, padding: rowPad + ' 12px' }}>
         {t.transfer_peer_id
           ? <span style={{ fontSize: 10, fontWeight: 700, color: '#6C8EBF', background: 'rgba(108,142,191,0.12)', borderRadius: 4, padding: '2px 6px' }}>⇄ Transfer</span>
-          : t.splits && t.splits.length > 0
-            ? <span style={st.splitChip} title={t.splits.map(s => s.category + ' ' + fmt(s.amount)).join('  ·  ')}>⑂ Split · {t.splits.length}</span>
-            : t.category
-              ? <span style={{ ...st.catTag, color: catColor(t.category) }}><span style={{ width: 6, height: 6, borderRadius: 2, background: 'currentColor' }} />{t.category}</span>
-              : null
+          : <>
+              {t.splits && t.splits.length > 0
+                ? <span style={st.splitChip} title={t.splits.map(s => s.category + ' ' + fmt(s.amount)).join('  ·  ')}>⑂ Split · {t.splits.length}</span>
+                : t.category
+                  ? <span style={{ ...st.catTag, color: catColor(t.category) }}><span style={{ width: 6, height: 6, borderRadius: 2, background: 'currentColor' }} />{t.category}</span>
+                  : null
+              }
+              <button
+                onClick={e => { e.stopPropagation(); onLink(t); }}
+                style={{ fontSize: 10, color: T.textFaint, background: 'none', border: `1px solid ${T.border}`, borderRadius: 4, padding: '1px 6px', cursor: 'pointer', marginLeft: 4 }}
+                title="Link as transfer"
+              >Link</button>
+            </>
         }
       </td>
       <td style={{ ...st.td, padding: rowPad + ' 12px', color: T.textDim, fontSize: 12 }}>{t.memo || '—'}</td>
@@ -125,7 +134,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     payee: '', category: '', outflow: '', inflow: '', memo: '', cleared: false,
     isTransfer: false, transferToAccountId: '',
   });
-  const [addSaving, setAddSaving] = useState(false);
+  const [addSaving, _setAddSaving] = useState(false);
 
   const [selected, setSelected] = useState(new Set<string>());
   const [sort, setSort] = useState('date_desc');
@@ -134,6 +143,19 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   const [rules, setRules] = useState<PayeeRule[]>([]);
   const [modal, setModal] = useState<null | 'reconcile' | 'rules' | { split: Transaction }>(null);
 
+  const [linkModal, setLinkModal] = useState<{
+    txn: Transaction;
+    step: 1 | 2;
+    targetAccountId: string;
+    candidates: Transaction[];
+    loading: boolean;
+  } | null>(null);
+
+  const [batchReview, setBatchReview] = useState<{
+    payee: string;
+    targetAccountId: string;
+    pairs: Array<{ source: Transaction; candidate: Transaction | null; include: boolean }>;
+  } | null>(null);
 
   const txns = page?.transactions ?? [];
 
@@ -257,6 +279,65 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     }
     reload();
     setAddForm({ date: new Date().toISOString().slice(0, 10), payee: '', category: '', outflow: '', inflow: '', memo: '', cleared: false, isTransfer: false, transferToAccountId: '' });
+  };
+
+  const openLinkModal = (txn: Transaction) => {
+    setLinkModal({ txn, step: 1, targetAccountId: '', candidates: [], loading: false });
+  };
+
+  const handleLinkSelectAccount = async (targetAccountId: string) => {
+    if (!linkModal) return;
+    setLinkModal(m => m ? { ...m, targetAccountId, loading: true } : null);
+    const amount = linkModal.txn.outflow > 0 ? -linkModal.txn.outflow : linkModal.txn.inflow;
+    const cands = await fetchTransferCandidates(targetAccountId, amount).catch(() => []);
+    setLinkModal(m => m ? { ...m, step: 2, candidates: cands, loading: false } : null);
+  };
+
+  const handleLinkConfirm = async (candidateId: string) => {
+    if (!linkModal) return;
+    try {
+      await linkTransfer(linkModal.txn.id, candidateId);
+      reload();
+      const savedModal = linkModal;
+      setLinkModal(null);
+
+      // Check for other unlinked rows with the same payee.
+      const samePay = page?.transactions.filter(
+        t => t.payee === savedModal.txn.payee && !t.transfer_peer_id && t.id !== savedModal.txn.id
+      ) ?? [];
+      if (samePay.length > 0) {
+        const tgtAccId = savedModal.targetAccountId;
+        const amount = savedModal.txn.outflow > 0 ? -savedModal.txn.outflow : savedModal.txn.inflow;
+        const allCands = await fetchTransferCandidates(tgtAccId, amount).catch(() => []);
+        const pairs = samePay.map(src => {
+          const best = allCands
+            .filter(c => !c.transfer_peer_id)
+            .sort((a, b) =>
+              Math.abs(new Date(a.date).getTime() - new Date(src.date).getTime()) -
+              Math.abs(new Date(b.date).getTime() - new Date(src.date).getTime())
+            )[0] ?? null;
+          return { source: src, candidate: best, include: best !== null };
+        });
+        setBatchReview({ payee: savedModal.txn.payee, targetAccountId: tgtAccId, pairs });
+      }
+    } catch (e: any) {
+      alert('Link failed: ' + e.message);
+    }
+  };
+
+  const handleBatchLink = async () => {
+    if (!batchReview) return;
+    const pairs: [string, string][] = batchReview.pairs
+      .filter(p => p.include && p.candidate)
+      .map(p => [p.source.id, p.candidate!.id]);
+    if (pairs.length === 0) { setBatchReview(null); return; }
+    try {
+      await linkTransferBatch(pairs);
+      reload();
+      setBatchReview(null);
+    } catch (e: any) {
+      alert('Batch link failed: ' + e.message);
+    }
   };
 
   const [bulkCat, setBulkCat] = useState('');
@@ -388,7 +469,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                 {hasFilter ? 'No transactions match your filters' : 'No transactions yet'}
               </td></tr>
             )}
-            {txns.map(t => <EditableRow key={t.id} t={t} categories={categories} catColor={catColor} onSave={handleSave} onToggleSelect={toggleSelect} selected={selected.has(t.id)} fmt={fmt} rowPad={rowPad} onSplit={tx => setModal({ split: tx })} onToggleCleared={toggleCleared} onDelete={handleSingleDelete} />)}
+            {txns.map(t => <EditableRow key={t.id} t={t} categories={categories} catColor={catColor} onSave={handleSave} onToggleSelect={toggleSelect} selected={selected.has(t.id)} fmt={fmt} rowPad={rowPad} onSplit={tx => setModal({ split: tx })} onToggleCleared={toggleCleared} onDelete={handleSingleDelete} onLink={openLinkModal} />)}
           </tbody>
         </table>
       </div>
@@ -406,6 +487,59 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
       {modal === 'reconcile' && <ReconcileModal account={account} clearedBalance={page?.summary.cleared_balance ?? 0} fmt={fmt} onClose={() => setModal(null)} onReconcile={reconcile} />}
       {modal === 'rules' && <RulesManager rules={rules} categories={categories} onClose={() => setModal(null)} onAdd={r => setRules(rs => [...rs, r])} onDelete={id => setRules(rs => rs.filter(x => x.id !== id))} />}
       {modal && typeof modal === 'object' && 'split' in modal && <SplitModal txn={modal.split} categories={categories} fmt={fmt} onClose={() => setModal(null)} onSave={(id, splits) => saveSplit(id, splits)} />}
+      {/* Link modal */}
+      {linkModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setLinkModal(null)}>
+          <div style={{ background: T.surface, borderRadius: 12, padding: 28, width: 480, maxHeight: '80vh', overflowY: 'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: T.text, marginBottom: 16 }}>Link as Transfer</div>
+            {linkModal.step === 1 && (
+              <>
+                <div style={{ fontSize: 13, color: T.textDim, marginBottom: 12 }}>
+                  Linking: <b style={{ color: T.text }}>{linkModal.txn.payee}</b> · {linkModal.txn.outflow > 0 ? '-' : '+'}{fmt(linkModal.txn.outflow || linkModal.txn.inflow)}
+                </div>
+                <label style={stModal.label}>Target account</label>
+                <select
+                  style={{ ...st.inlineSelect, width: '100%', marginTop: 6 }}
+                  value={linkModal.targetAccountId}
+                  onChange={e => handleLinkSelectAccount(e.target.value)}
+                >
+                  <option value="">Select account…</option>
+                  {[...(accounts.budget ?? []), ...(accounts.tracking ?? [])].filter(a => a.id !== accountId).map(a => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+                {linkModal.loading && <div style={{ marginTop: 12, color: T.textDim, fontSize: 13 }}>Loading candidates…</div>}
+              </>
+            )}
+            {linkModal.step === 2 && (
+              <>
+                <div style={{ fontSize: 13, color: T.textDim, marginBottom: 12 }}>Select the matching transaction:</div>
+                {linkModal.candidates.length === 0
+                  ? <div style={{ color: T.textFaint, fontSize: 13 }}>No unlinked transactions with matching amount found.</div>
+                  : linkModal.candidates.map(c => (
+                    <div key={c.id}
+                      onClick={() => handleLinkConfirm(c.id)}
+                      style={{ padding: '10px 12px', borderRadius: 8, border: `1px solid ${T.border}`, marginBottom: 8, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, color: T.text, fontSize: 13 }}>{c.payee}</div>
+                        <div style={{ fontSize: 11, color: T.textDim, marginTop: 2 }}>{c.date}</div>
+                      </div>
+                      <div style={{ fontFamily: T.mono, fontSize: 13, color: c.inflow > 0 ? T.pos : T.textMid }}>
+                        {c.inflow > 0 ? '+' : '-'}{fmt(c.inflow || c.outflow)}
+                      </div>
+                    </div>
+                  ))
+                }
+              </>
+            )}
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setLinkModal(null)} style={st.cancelBtn}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showAddTxn && (
         <div style={stModal.overlay} onClick={e => e.target === e.currentTarget && setShowAddTxn(false)}>
           <div style={stModal.panel}>
