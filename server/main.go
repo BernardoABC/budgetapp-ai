@@ -110,6 +110,9 @@ func main() {
 	mux.HandleFunc("DELETE /api/transactions/{id}", txns.Delete)
 	mux.HandleFunc("PATCH /api/transactions/batch", txns.Batch)
 	mux.HandleFunc("POST /api/transfers", txns.CreateTransfer)
+	mux.HandleFunc("GET /api/accounts/{id}/transfer-candidates", txns.TransferCandidates)
+	mux.HandleFunc("POST /api/transfers/link", txns.Link)
+	mux.HandleFunc("POST /api/transfers/link-batch", txns.LinkBatch)
 
 	// Categories
 	mux.HandleFunc("GET /api/category-groups", cats.ListGroups)

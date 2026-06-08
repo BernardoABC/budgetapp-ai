@@ -280,3 +280,80 @@ func (h *TransactionHandler) Reconcile(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"reconciled_count": count})
 }
+
+func (h *TransactionHandler) TransferCandidates(w http.ResponseWriter, r *http.Request) {
+	accountID := r.PathValue("id")
+	amountStr := r.URL.Query().Get("amount")
+	if amountStr == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "amount query param is required")
+		return
+	}
+	amount, err := strconv.ParseInt(amountStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "amount must be an integer (centimos)")
+		return
+	}
+	txns, err := h.repo.TransferCandidates(r.Context(), accountID, amount)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+	resp := make([]map[string]any, len(txns))
+	for i, t := range txns {
+		resp[i] = h.toResponse(t)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"transactions": resp})
+}
+
+func (h *TransactionHandler) Link(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TransactionAID string `json:"transaction_a_id"`
+		TransactionBID string `json:"transaction_b_id"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+	if req.TransactionAID == "" || req.TransactionBID == "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "transaction_a_id and transaction_b_id are required")
+		return
+	}
+	if err := h.repo.LinkTransfer(r.Context(), req.TransactionAID, req.TransactionBID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "Transaction not found")
+			return
+		}
+		writeError(w, http.StatusUnprocessableEntity, "LINK_ERROR", err.Error())
+		return
+	}
+	a, _ := h.repo.Get(r.Context(), req.TransactionAID)
+	b, _ := h.repo.Get(r.Context(), req.TransactionBID)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"from": h.toResponse(a),
+		"to":   h.toResponse(b),
+	})
+}
+
+func (h *TransactionHandler) LinkBatch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Pairs [][2]string `json:"pairs"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+	if len(req.Pairs) == 0 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "pairs must be a non-empty array")
+		return
+	}
+	linked, err := h.repo.LinkTransferBatch(r.Context(), req.Pairs)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "Transaction not found")
+			return
+		}
+		writeError(w, http.StatusUnprocessableEntity, "LINK_ERROR", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"linked": linked})
+}
