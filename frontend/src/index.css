@@ -38,3 +38,11 @@ input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cu
   from { transform: translateX(24px); opacity: 0; }
   to   { transform: none; opacity: 1; }
 }
+
+@keyframes txnFlash {
+  0%   { background: rgba(255, 220, 50, 0.28); }
+  100% { background: transparent; }
+}
+.txn-flash {
+  animation: txnFlash 1.6s ease-out forwards;
+}

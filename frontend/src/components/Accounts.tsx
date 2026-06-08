@@ -26,9 +26,10 @@ interface EditableRowProps {
   onLink: (t: Transaction) => void;
   onNavigateToTransfer: (peerId: string, peerAccountId: string) => void;
   accountNameById: Record<string, string>;
+  highlightId?: string;
 }
 
-function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared, onDelete, onLink, onNavigateToTransfer, accountNameById }: EditableRowProps) {
+function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared, onDelete, onLink, onNavigateToTransfer, accountNameById, highlightId }: EditableRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(t);
   const commit = () => { onSave(draft); setEditing(false); };
@@ -37,7 +38,7 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
 
   if (editing) {
     return (
-      <tr style={{ background: T.accentDim }}>
+      <tr data-txn-id={t.id} style={{ background: T.accentDim }}>
         <td style={st.td}><input type="checkbox" checked={selected} onChange={() => onToggleSelect(t.id)} style={st.check} /></td>
         <td style={st.td}><input value={draft.date} onChange={e => setDraft(d => ({ ...d, date: e.target.value }))} style={st.inlineInput} /></td>
         <td style={st.td}><input value={draft.payee} onChange={e => setDraft(d => ({ ...d, payee: e.target.value }))} style={{ ...st.inlineInput, width: 150 }} /></td>
@@ -89,9 +90,14 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
   }
 
   return (
-    <tr onClick={() => setEditing(true)} style={{ cursor: 'pointer', background: selected ? T.accentDim : 'transparent', transition: 'background 0.1s' }}
+    <tr
+      data-txn-id={t.id}
+      className={highlightId === t.id ? 'txn-flash' : undefined}
+      onClick={() => setEditing(true)}
+      style={{ cursor: 'pointer', background: selected ? T.accentDim : 'transparent', transition: 'background 0.1s' }}
       onMouseEnter={e => { if (!selected) e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; }}
-      onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'transparent'; }}>
+      onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
+    >
       <td style={{ ...st.td, padding: rowPad + ' 12px' }} onClick={e => e.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => onToggleSelect(t.id)} style={st.check} /></td>
       <td style={{ ...st.td, padding: rowPad + ' 12px', fontFamily: T.mono, fontSize: 12, color: T.textDim }}>{fmtDate(t.date)}</td>
       <td style={{ ...st.td, padding: rowPad + ' 12px', fontWeight: 600, color: T.text }}>{t.payee}</td>
@@ -208,6 +214,8 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
 
   const txns = page?.transactions ?? [];
 
+  const highlightRef = useRef<string | null>(highlightTxnId ?? null);
+
   const buildParams = useCallback((): TxnFilterParams => {
     const categoryId =
       filter.category === '' ? undefined :
@@ -221,6 +229,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
       sort,
       page: pageNum,
       per_page: 50,
+      ...(highlightRef.current ? { highlight_id: highlightRef.current } : {}),
     };
   }, [filter, sort, pageNum, categoryIdByName]);
 
@@ -228,10 +237,16 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     setLoadingTxns(true);
     setLoadError(null);
     return fetchTransactionsPage(accountId, buildParams())
-      .then(setPage)
+      .then(result => {
+        setPage(result);
+        if (result.highlight_page && result.highlight_page !== pageNum) {
+          setPageNum(result.highlight_page);
+        }
+        highlightRef.current = null;
+      })
       .catch(err => { console.error('fetch transactions:', err); setLoadError(err.message ?? 'Failed to load'); })
       .finally(() => setLoadingTxns(false));
-  }, [accountId, buildParams]);
+  }, [accountId, buildParams, pageNum]);
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAccountId = useRef<string>(accountId);
@@ -252,6 +267,14 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     searchTimer.current = setTimeout(() => { reload(); }, 300);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [reload, accountId]);
+
+  useEffect(() => {
+    if (!highlightTxnId) return;
+    const row = document.querySelector(`[data-txn-id="${highlightTxnId}"]`);
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    onHighlightConsumed();
+  }, [page?.transactions, highlightTxnId, onHighlightConsumed]);
 
   const toggleSelect = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -583,6 +606,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                 onLink={openLinkModal}
                 onNavigateToTransfer={onNavigateToTransfer}
                 accountNameById={accountNameById}
+                highlightId={highlightTxnId ?? undefined}
               />
             ))}
           </tbody>
