@@ -683,7 +683,9 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
             <div style={{ marginTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 12, color: T.textDim }}>{batchReview.pairs.filter(p => p.include).length} pairs selected</span>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={() => setBatchReview(null)} style={st.cancelBtn}>Cancel</button>
+                <button onClick={() => setBatchReview(null)} style={st.cancelBtn}>
+                  {batchReview.pairs.filter(p => p.include).length === 0 ? 'Done' : 'Cancel'}
+                </button>
                 <button
                   onClick={handleBatchLink}
                   disabled={batchReview.pairs.filter(p => p.include).length === 0}
