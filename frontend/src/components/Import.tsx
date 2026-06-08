@@ -238,6 +238,16 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
   const idToName = Object.fromEntries(Object.entries(categoryIdByName).map(([name, id]) => [id, name]));
   const allCategoryNames = categoryGroups.flatMap(g => g.categories);
 
+  // Formats amounts in the CSV's native currency — never converts via exchange rate.
+  const fmtCsv = useCallback((amount: number) => {
+    if (csvCurrency === 'USD') {
+      const sign = amount < 0 ? '-' : '';
+      return sign + '$' + Math.abs(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+    const abs = Math.abs(Math.round(amount));
+    return (amount < 0 ? '-' : '') + '₡' + abs.toLocaleString('en-US');
+  }, [csvCurrency]);
+
   const handleSetCategory = (tempId: string, categoryId: string | null) =>
     setParsed(rows => rows.map(r => r.tempId === tempId ? { ...r, categoryId } : r));
   const handleToggleInclude = (tempId: string) =>
@@ -350,7 +360,7 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
                 categoryIdByName={categoryIdByName}
                 onSetCategory={handleSetCategory}
                 onToggleInclude={handleToggleInclude}
-                fmt={fmt}
+                fmt={fmtCsv}
                 onNext={() => setStep(2)}
                 onBack={() => setStep(0)}
               />
@@ -364,7 +374,7 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
               <Step3
                 parsed={parsed}
                 filename={uploadInfo?.file.name ?? ''}
-                fmt={fmt}
+                fmt={fmtCsv}
                 confirming={confirming}
                 onBack={() => setStep(1)}
                 onConfirm={runConfirm}
@@ -383,7 +393,7 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
                     <div key={txnId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${T.border}` }}>
                       <div>
                         <div style={{ fontWeight: 600, fontSize: 13, color: T.text }}>{row?.descriptionRaw ?? txnId}</div>
-                        <div style={{ fontSize: 11, color: T.textDim }}>{row?.date} · {row ? (row.amount > 0 ? '+' : '−') + fmt(Math.abs(row.amount) / 100) : ''}</div>
+                        <div style={{ fontSize: 11, color: T.textDim }}>{row?.date} · {row ? (row.amount > 0 ? '+' : '−') + fmtCsv(Math.abs(row.amount) / 100) : ''}</div>
                       </div>
                       <button
                         onClick={() => setLinkState({
