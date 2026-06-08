@@ -48,8 +48,8 @@ build-frontend: ## Build frontend for production → frontend/dist/
 # ─── Container images ──────────────────────────────────────────────────────────
 
 build-images: ## Build server + frontend container images
-	podman build -t $(REGISTRY)/budgetapp-server:$(TAG) -f server/Containerfile server/
-	podman build -t $(REGISTRY)/budgetapp-frontend:$(TAG) --build-arg VITE_API_URL="" -f frontend/Containerfile frontend/
+	podman build -t $(REGISTRY)/budgetapp-server:$(TAG) --build-arg GIT_SHA=$(GIT_SHA) -f server/Containerfile server/
+	podman build -t $(REGISTRY)/budgetapp-frontend:$(TAG) --build-arg VITE_API_URL="" --build-arg GIT_SHA=$(GIT_SHA) -f frontend/Containerfile frontend/
 
 push-images: ## Push images to local registry (requires registry pod running)
 	podman push $(REGISTRY)/budgetapp-server:$(TAG)

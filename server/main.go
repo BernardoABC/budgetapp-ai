@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,6 +18,8 @@ import (
 	"budgetapp/internal/repository"
 	"budgetapp/internal/service"
 )
+
+var version = "dev"
 
 func main() {
 	cfg := config.Load()
@@ -91,6 +94,12 @@ func main() {
 	// Health
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
+	})
+
+	// Version
+	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"sha": version})
 	})
 
 	// Accounts

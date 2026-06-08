@@ -5,6 +5,8 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 ARG VITE_API_URL=""
+ARG GIT_SHA=dev
+ENV GIT_SHA=${GIT_SHA}
 RUN npm run build
 
 # Serve stage

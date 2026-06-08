@@ -3,7 +3,7 @@ import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import { execSync } from 'child_process'
 
-const gitSha = (() => {
+const gitSha = process.env.GIT_SHA || (() => {
   try { return execSync('git rev-parse --short HEAD').toString().trim(); } catch { return 'dev'; }
 })();
 

@@ -4,7 +4,8 @@ WORKDIR /app
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /server .
+ARG GIT_SHA=dev
+RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${GIT_SHA}" -o /server .
 
 # Runtime stage
 FROM alpine:3.21
