@@ -553,3 +553,37 @@ func TestTransactionRepo_UpdateTransfer_MirrorsPeer(t *testing.T) {
 		t.Errorf("to balance want 4000 got %d", toBal)
 	}
 }
+
+func TestTransactionRepo_TransferCandidates(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	accA := testutil.SeedOnBudgetAccount(t, pool)
+	accB := testutil.SeedOnBudgetAccount(t, pool)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx  := context.Background()
+
+	// One candidate: opposite amount, no peer.
+	testutil.SeedTransactionFull(t, pool, accB, "", "2026-06-01", 5000, "Salary", "", false)
+	// Not a candidate: same amount sign.
+	testutil.SeedTransactionFull(t, pool, accB, "", "2026-06-01", -5000, "Other", "", false)
+
+	// Create a linked pair so we can verify already-linked rows are excluded.
+	_, _, err := repo.CreateTransfer(ctx, model.CreateTransferReq{
+		FromAccountID: accA, ToAccountID: accB, Date: "2026-06-02", Amount: 3000, Cleared: false,
+	})
+	if err != nil {
+		t.Fatalf("CreateTransfer: %v", err)
+	}
+
+	// accA outflow = -5000; candidates in accB should have amount = +5000, no peer.
+	cands, err := repo.TransferCandidates(ctx, accB, -5000)
+	if err != nil {
+		t.Fatalf("TransferCandidates: %v", err)
+	}
+	if len(cands) != 1 {
+		t.Fatalf("want 1 candidate got %d", len(cands))
+	}
+	if cands[0].Payee != "Salary" {
+		t.Errorf("want payee Salary got %q", cands[0].Payee)
+	}
+}

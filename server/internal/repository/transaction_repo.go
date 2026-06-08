@@ -729,3 +729,39 @@ func (r *TransactionRepo) CreateTransfer(ctx context.Context, req model.CreateTr
 
 	return from, to, tx.Commit(ctx)
 }
+
+// TransferCandidates returns unlinked transactions in accountID whose amount equals
+// -amount (the sign-opposite of the given amount), ordered newest first.
+// Used to populate the candidate picker when linking a transfer.
+func (r *TransactionRepo) TransferCandidates(ctx context.Context, accountID string, amount int64) ([]model.Transaction, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT t.id::text, t.account_id::text,
+		       COALESCE(t.category_id::text,''), COALESCE(c.name,''),
+		       t.date::text, t.amount, t.currency,
+		       COALESCE(t.payee,''), COALESCE(t.memo,''), t.cleared,
+		       t.exchange_rate, t.reconciled,
+		       COALESCE(t.transfer_peer_id::text,'')
+		FROM transactions t
+		LEFT JOIN categories c ON c.id = t.category_id
+		WHERE t.account_id = $1::uuid
+		  AND t.amount = $2
+		  AND t.transfer_peer_id IS NULL
+		ORDER BY t.date DESC, t.created_at DESC
+		LIMIT 50
+	`, accountID, -amount)
+	if err != nil {
+		return nil, fmt.Errorf("transfer candidates: %w", err)
+	}
+	defer rows.Close()
+	var txns []model.Transaction
+	for rows.Next() {
+		var t model.Transaction
+		if err := rows.Scan(&t.ID, &t.AccountID, &t.CategoryID, &t.CategoryName,
+			&t.Date, &t.Amount, &t.Currency, &t.Payee, &t.Memo, &t.Cleared,
+			&t.ExchangeRate, &t.Reconciled, &t.TransferPeerID); err != nil {
+			return nil, fmt.Errorf("scan candidate: %w", err)
+		}
+		txns = append(txns, t)
+	}
+	return txns, rows.Err()
+}
