@@ -40,8 +40,20 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
         <td style={st.td}><input value={draft.date} onChange={e => setDraft(d => ({ ...d, date: e.target.value }))} style={st.inlineInput} /></td>
         <td style={st.td}><input value={draft.payee} onChange={e => setDraft(d => ({ ...d, payee: e.target.value }))} style={{ ...st.inlineInput, width: 150 }} /></td>
         <td style={st.td}>
-          <select value={draft.category ?? ''} onChange={e => setDraft(d => ({ ...d, category: e.target.value || null }))} style={st.inlineSelect}>
+          <select
+            value={draft.category ?? ''}
+            onChange={e => {
+              if (e.target.value === '__transfer__') {
+                setDraft(d => ({ ...d, category: null }));
+                onLink(t);
+              } else {
+                setDraft(d => ({ ...d, category: e.target.value || null }));
+              }
+            }}
+            style={st.inlineSelect}
+          >
             <option value="">—</option>
+            <option value="__transfer__" style={{ color: 'var(--text-faint, #666)' }}>↔ Transfer to account…</option>
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </td>
