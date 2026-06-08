@@ -587,3 +587,66 @@ func TestTransactionRepo_TransferCandidates(t *testing.T) {
 		t.Errorf("want payee Salary got %q", cands[0].Payee)
 	}
 }
+
+func TestTransactionRepo_LinkTransfer(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	accA := testutil.SeedOnBudgetAccount(t, pool)
+	accB := testutil.SeedOnBudgetAccount(t, pool)
+	cat  := testutil.SeedCategory(t, pool)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx  := context.Background()
+
+	idA := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-01", -5000, "Transfer", "", false)
+	idB := testutil.SeedTransactionFull(t, pool, accB, cat, "2026-06-01", 5000, "Transfer", "", false)
+
+	if err := repo.LinkTransfer(ctx, idA, idB); err != nil {
+		t.Fatalf("LinkTransfer: %v", err)
+	}
+
+	a, _ := repo.Get(ctx, idA)
+	b, _ := repo.Get(ctx, idB)
+
+	if a.TransferPeerID != idB {
+		t.Errorf("a.TransferPeerID want %q got %q", idB, a.TransferPeerID)
+	}
+	if b.TransferPeerID != idA {
+		t.Errorf("b.TransferPeerID want %q got %q", idA, b.TransferPeerID)
+	}
+}
+
+func TestTransactionRepo_LinkTransfer_Validations(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	accA := testutil.SeedOnBudgetAccount(t, pool)
+	accB := testutil.SeedOnBudgetAccount(t, pool)
+	cat  := testutil.SeedCategory(t, pool)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx  := context.Background()
+
+	t.Run("same account", func(t *testing.T) {
+		idA := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-01", -5000, "T", "", false)
+		idB := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-01", 5000, "T", "", false)
+		if err := repo.LinkTransfer(ctx, idA, idB); err == nil {
+			t.Error("expected error for same account, got nil")
+		}
+	})
+	t.Run("amounts don't sum to zero", func(t *testing.T) {
+		idA := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-02", -5000, "T", "", false)
+		idB := testutil.SeedTransactionFull(t, pool, accB, cat, "2026-06-02", 3000, "T", "", false)
+		if err := repo.LinkTransfer(ctx, idA, idB); err == nil {
+			t.Error("expected error for mismatched amounts, got nil")
+		}
+	})
+	t.Run("already linked", func(t *testing.T) {
+		idA := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-03", -5000, "T", "", false)
+		idB := testutil.SeedTransactionFull(t, pool, accB, cat, "2026-06-03", 5000, "T", "", false)
+		idC := testutil.SeedTransactionFull(t, pool, accB, cat, "2026-06-03", 5000, "T", "", false)
+		if err := repo.LinkTransfer(ctx, idA, idB); err != nil {
+			t.Fatalf("first link: %v", err)
+		}
+		if err := repo.LinkTransfer(ctx, idA, idC); err == nil {
+			t.Error("expected error linking already-linked transaction, got nil")
+		}
+	})
+}

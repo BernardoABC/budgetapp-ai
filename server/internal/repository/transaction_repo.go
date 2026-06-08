@@ -765,3 +765,63 @@ func (r *TransactionRepo) TransferCandidates(ctx context.Context, accountID stri
 	}
 	return txns, rows.Err()
 }
+
+// LinkTransfer atomically sets transfer_peer_id on two existing transactions,
+// making them a linked transfer pair. Returns an error if either is already linked,
+// both belong to the same account, or their amounts don't sum to zero.
+func (r *TransactionRepo) LinkTransfer(ctx context.Context, idA, idB string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	type row struct {
+		accountID string
+		amount    int64
+		peerID    *string
+	}
+	var a, b row
+
+	if err := tx.QueryRow(ctx,
+		`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, idA,
+	).Scan(&a.accountID, &a.amount, &a.peerID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("get txn A: %w", err)
+	}
+	if err := tx.QueryRow(ctx,
+		`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, idB,
+	).Scan(&b.accountID, &b.amount, &b.peerID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("get txn B: %w", err)
+	}
+
+	if a.peerID != nil {
+		return fmt.Errorf("transaction %s is already linked to a transfer", idA)
+	}
+	if b.peerID != nil {
+		return fmt.Errorf("transaction %s is already linked to a transfer", idB)
+	}
+	if a.accountID == b.accountID {
+		return fmt.Errorf("both transactions belong to the same account")
+	}
+	if a.amount+b.amount != 0 {
+		return fmt.Errorf("amounts do not sum to zero (%d + %d = %d)", a.amount, b.amount, a.amount+b.amount)
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+		idB, idA); err != nil {
+		return fmt.Errorf("link A: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+		idA, idB); err != nil {
+		return fmt.Errorf("link B: %w", err)
+	}
+	return tx.Commit(ctx)
+}
