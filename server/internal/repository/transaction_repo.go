@@ -29,9 +29,10 @@ type TxnFilter struct {
 	Cleared    *bool  // nil = all
 	MinAmount  *int64 // centimos, compared against ABS(amount)
 	MaxAmount  *int64 // centimos, compared against ABS(amount)
-	Sort       string // see sortClause; default date_desc
-	Page       int    // 1-based, default 1
-	PerPage    int    // default 50, max 200
+	Sort        string // see sortClause; default date_desc
+	Page        int    // 1-based, default 1
+	PerPage     int    // default 50, max 200
+	HighlightID string // UUID; when set, returns the page containing this transaction
 }
 
 // TxnSummary aggregates the full filtered set (not just one page), in centimos.
@@ -121,6 +122,27 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 	}
 	offset := (page - 1) * perPage
 
+	highlightPage := 0
+	if f.HighlightID != "" {
+		var pos int64
+		err := r.pool.QueryRow(ctx, `
+			WITH target AS (
+				SELECT date, created_at
+				FROM transactions
+				WHERE id = $1::uuid AND account_id = $2::uuid
+			)
+			SELECT COUNT(*) + 1
+			FROM transactions t, target
+			WHERE t.account_id = $2::uuid
+			  AND (t.date > target.date
+			       OR (t.date = target.date AND t.created_at > target.created_at))
+		`, f.HighlightID, accountID).Scan(&pos)
+		if err == nil && pos > 0 {
+			highlightPage = int((pos-1)/int64(perPage)) + 1
+			offset = (highlightPage - 1) * perPage
+		}
+	}
+
 	where, args := f.whereClause(accountID)
 	var summary TxnSummary
 
@@ -192,7 +214,7 @@ func (r *TransactionRepo) ListByAccount(ctx context.Context, accountID string, f
 		}
 		txns = append(txns, t)
 	}
-	return txns, total, summary, 0, rows.Err()
+	return txns, total, summary, highlightPage, rows.Err()
 }
 
 func (r *TransactionRepo) Get(ctx context.Context, id string) (model.Transaction, error) {

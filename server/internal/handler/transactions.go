@@ -77,15 +77,16 @@ func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Reques
 	perPage, _ := strconv.Atoi(q.Get("per_page"))
 
 	f := repository.TxnFilter{
-		Search:     q.Get("search"),
-		FromDate:   q.Get("from_date"),
-		ToDate:     q.Get("to_date"),
-		CategoryID: q.Get("category_id"),
-		Sort:       q.Get("sort"),
-		Page:       page,
-		PerPage:    perPage,
-		MinAmount:  parseAmountParam(q.Get("min_amount")),
-		MaxAmount:  parseAmountParam(q.Get("max_amount")),
+		Search:      q.Get("search"),
+		FromDate:    q.Get("from_date"),
+		ToDate:      q.Get("to_date"),
+		CategoryID:  q.Get("category_id"),
+		Sort:        q.Get("sort"),
+		Page:        page,
+		PerPage:     perPage,
+		MinAmount:   parseAmountParam(q.Get("min_amount")),
+		MaxAmount:   parseAmountParam(q.Get("max_amount")),
+		HighlightID: q.Get("highlight_id"),
 	}
 	if c := q.Get("cleared"); c == "true" {
 		v := true

@@ -3,6 +3,7 @@ package repository_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"budgetapp/internal/model"
@@ -712,6 +713,42 @@ func TestTransactionRepo_TransferPeerAccountID(t *testing.T) {
 		t.Errorf("Get: want peer account %s got %q", accB, txA.TransferPeerAccountID)
 	}
 	_ = idB
+}
+
+func TestTransactionRepo_HighlightPage(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	// Seed 7 transactions on different dates (newest first in date_desc order)
+	for i := 7; i >= 1; i-- {
+		testutil.SeedTransactionFull(t, pool, acc, "", fmt.Sprintf("2026-05-%02d", i), -int64(i*100), "P", "", false)
+	}
+	// Seed the target on 2026-05-03 — it's the 5th row in date_desc order (rows 1-7: May 7,6,5,4,3,2,1)
+	target := testutil.SeedTransactionFull(t, pool, acc, "", "2026-05-03", -999, "TARGET", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	// per_page=3: target is at position 5 → page 2 (rows 4-6 in date_desc)
+	txns, _, _, hlPage, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{
+		HighlightID: target,
+		PerPage:     3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hlPage != 2 {
+		t.Errorf("want highlight_page 2 got %d", hlPage)
+	}
+	// The returned transactions should be the page containing the target
+	found := false
+	for _, tx := range txns {
+		if tx.ID == target {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("target transaction not found in returned page")
+	}
 }
 
 func TestTransactionRepo_LinkTransferBatch_RollbackOnError(t *testing.T) {
