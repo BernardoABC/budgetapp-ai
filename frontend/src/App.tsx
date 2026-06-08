@@ -144,7 +144,25 @@ function App() {
         <div key={page + accountId} style={{ animation: 'fadeUp 0.32s cubic-bezier(0.22, 1, 0.36, 1)' }}>
           {page === 'dashboard' && <Dashboard categoryGroups={categoryGroups} fmt={fmtBound} onNavigate={navigate} />}
           {page === 'budget' && <Budget categoryGroups={categoryGroups} fmt={fmtBound} currency={currency} density={tweaks.density} categoryIdByName={categoryIdByName} onCategoriesChanged={reloadCategories} />}
-          {page === 'accounts' && <Accounts accounts={accounts} accountId={accountId} categoryGroups={categoryGroups} fmt={fmtBound} density={tweaks.density} categoryIdByName={categoryIdByName} onAccountsChanged={reloadAccounts} />}
+          {page === 'accounts' && (
+            <Accounts
+              accounts={accounts}
+              accountId={accountId}
+              categoryGroups={categoryGroups}
+              fmt={fmtBound}
+              density={tweaks.density}
+              categoryIdByName={categoryIdByName}
+              onAccountsChanged={reloadAccounts}
+              onDeleted={(id) => {
+                const remaining = [
+                  ...(accounts.budget ?? []),
+                  ...(accounts.tracking ?? []),
+                ].filter(a => a.id !== id);
+                navigate('accounts', remaining[0]?.id ?? '');
+                reloadAccounts();
+              }}
+            />
+          )}
           {page === 'import' && <ImportWizard accounts={accounts} categoryGroups={categoryGroups} categoryIdByName={categoryIdByName} fmt={fmtBound} onNavigate={navigate} />}
           {page === 'reports' && <Reports fmt={fmtBound} />}
         </div>

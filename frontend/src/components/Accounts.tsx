@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { updateTransaction, deleteTransaction, createTransaction, createTransfer, fetchTransactionsPage, batchTransactions, reconcileAccount, fetchTransferCandidates, linkTransfer, linkTransferBatch, type TxnPage, type TxnFilterParams } from '../api';
+import { updateTransaction, deleteTransaction, createTransaction, createTransfer, fetchTransactionsPage, batchTransactions, reconcileAccount, fetchTransferCandidates, linkTransfer, linkTransferBatch, updateAccount, type TxnPage, type TxnFilterParams } from '../api';
 import { useToast } from './Toast';
 import { T, GROUP_COLORS } from '../theme';
 import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
@@ -106,9 +106,10 @@ interface Props {
   density: string;
   categoryIdByName: Record<string, string>;
   onAccountsChanged: () => void;
+  onDeleted: (deletedId: string) => void;
 }
 
-export function Accounts({ accounts, accountId, categoryGroups, fmt, density, categoryIdByName, onAccountsChanged }: Props) {
+export function Accounts({ accounts, accountId, categoryGroups, fmt, density, categoryIdByName, onAccountsChanged, onDeleted }: Props) {
   const allAccounts = [...accounts.budget, ...accounts.tracking];
   const account = allAccounts.find(a => a.id === accountId) ?? allAccounts[0];
   const categories = categoryGroups.flatMap(g => g.categories);
@@ -150,6 +151,8 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     candidates: Transaction[];
     loading: boolean;
   } | null>(null);
+
+  const [renamingName, setRenamingName] = useState<string | null>(null);
 
   const [batchReview, setBatchReview] = useState<{
     payee: string;
@@ -194,6 +197,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
       setFilter({ payee: '', category: '', from: '', to: '' });
       setPageNum(1);
       setSelected(new Set());
+      setRenamingName(null);
       // Don't schedule a debounced reload here — the state changes above will
       // trigger this effect again with the reset values
       return;
@@ -377,12 +381,41 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   ];
   const hasFilter = filter.payee || filter.category || filter.from || filter.to;
 
+  if (!account) return <div style={{ padding: 40, color: T.textDim, fontSize: 14 }}>Loading…</div>;
+
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1180, margin: '0 auto' }}>
       <div style={st.head}>
         <div>
           <div style={st.acctType}>{accounts.budget.find(a => a.id === account.id) ? 'Budget Account' : 'Tracking Account'}</div>
-          <h2 style={st.pageTitle}>{account.name}</h2>
+          {renamingName !== null ? (
+            <input
+              autoFocus
+              value={renamingName}
+              onChange={e => setRenamingName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  const trimmed = renamingName.trim();
+                  if (!trimmed) { setRenamingName(null); return; }
+                  updateAccount(account.id, { name: trimmed })
+                    .then(() => { setRenamingName(null); onAccountsChanged(); })
+                    .catch(() => { toast.error('Failed to rename account'); setRenamingName(null); });
+                } else if (e.key === 'Escape') {
+                  setRenamingName(null);
+                }
+              }}
+              onBlur={() => {
+                const trimmed = renamingName.trim();
+                if (!trimmed) { setRenamingName(null); return; }
+                updateAccount(account.id, { name: trimmed })
+                  .then(() => { setRenamingName(null); onAccountsChanged(); })
+                  .catch(() => { toast.error('Failed to rename account'); setRenamingName(null); });
+              }}
+              style={st.renameInput}
+            />
+          ) : (
+            <h2 style={{ ...st.pageTitle, cursor: 'text' }} onClick={() => setRenamingName(account.name)} title="Click to rename">{account.name}</h2>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16 }}>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -704,6 +737,7 @@ const st = {
   head:            { display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 18 },
   acctType:        { fontSize: 11, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 4 },
   pageTitle:       { fontSize: 24, fontWeight: 800, color: T.text, margin: 0, letterSpacing: '-0.03em' },
+  renameInput:     { fontSize: 24, fontWeight: 800, color: T.text, margin: 0, letterSpacing: '-0.03em', background: 'transparent', border: 'none', borderBottom: `2px solid var(--accent)`, outline: 'none', padding: '0 2px', width: 280 },
   balCard:         { display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-end' },
   balLabel:        { fontSize: 11, fontWeight: 600, color: T.textDim, letterSpacing: '0.04em' },
   balance:         { fontSize: 24, fontFamily: T.mono, fontWeight: 700, letterSpacing: '-0.02em' },
