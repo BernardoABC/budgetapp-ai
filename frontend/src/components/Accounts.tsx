@@ -540,6 +540,67 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
           </div>
         </div>
       )}
+      {/* Batch review table */}
+      {batchReview && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setBatchReview(null)}>
+          <div style={{ background: T.surface, borderRadius: 12, padding: 28, width: 640, maxHeight: '80vh', overflowY: 'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: T.text, marginBottom: 4 }}>Match All "{batchReview.payee}" Transfers</div>
+            <div style={{ fontSize: 13, color: T.textDim, marginBottom: 18 }}>Review auto-proposed matches. Uncheck any you want to skip.</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['', 'This account', '', 'Target account'].map((h, i) => (
+                    <th key={i} style={{ fontSize: 10.5, fontWeight: 700, color: T.textDim, textAlign: 'left', padding: '6px 8px', borderBottom: `1px solid ${T.border}` }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {batchReview.pairs.map((pair, i) => (
+                  <tr key={pair.source.id} style={{ borderBottom: `1px solid ${T.border}`, opacity: pair.include ? 1 : 0.45 }}>
+                    <td style={{ padding: '8px 8px' }}>
+                      <input
+                        type="checkbox"
+                        checked={pair.include}
+                        disabled={!pair.candidate}
+                        onChange={() => setBatchReview(br => br ? {
+                          ...br,
+                          pairs: br.pairs.map((p, j) => j === i ? { ...p, include: !p.include } : p)
+                        } : null)}
+                      />
+                    </td>
+                    <td style={{ padding: '8px 8px', fontSize: 12 }}>
+                      <div style={{ fontWeight: 600, color: T.text }}>{pair.source.date}</div>
+                      <div style={{ color: T.textDim }}>{fmt(pair.source.outflow || pair.source.inflow)}</div>
+                    </td>
+                    <td style={{ padding: '8px 4px', color: T.textDim }}>→</td>
+                    <td style={{ padding: '8px 8px', fontSize: 12 }}>
+                      {pair.candidate
+                        ? <><div style={{ fontWeight: 600, color: T.text }}>{pair.candidate.date}</div><div style={{ color: T.textDim }}>{fmt(pair.candidate.inflow || pair.candidate.outflow)}</div></>
+                        : <span style={{ color: T.textDim, fontStyle: 'italic' }}>No candidate found</span>
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ marginTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 12, color: T.textDim }}>{batchReview.pairs.filter(p => p.include).length} pairs selected</span>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setBatchReview(null)} style={st.cancelBtn}>Cancel</button>
+                <button
+                  onClick={handleBatchLink}
+                  disabled={batchReview.pairs.filter(p => p.include).length === 0}
+                  style={{ padding: '7px 18px', borderRadius: 7, background: 'var(--accent)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: batchReview.pairs.filter(p => p.include).length === 0 ? 0.45 : 1 }}
+                >
+                  Link {batchReview.pairs.filter(p => p.include).length} pairs
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showAddTxn && (
         <div style={stModal.overlay} onClick={e => e.target === e.currentTarget && setShowAddTxn(false)}>
           <div style={stModal.panel}>
