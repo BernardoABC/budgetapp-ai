@@ -711,10 +711,10 @@ func (r *TransactionRepo) CreateTransfer(ctx context.Context, req model.CreateTr
 
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO transactions (account_id, date, amount, currency, payee, memo, cleared)
-		VALUES ($1::uuid, $2::date, $3, (SELECT currency FROM accounts WHERE id=$1::uuid), $4, NULLIF($5,''), $6)
+		VALUES ($1::uuid, $2::date, $3, (SELECT currency FROM accounts WHERE id=$1::uuid), $4, NULLIF($5,''), true)
 		RETURNING id::text, account_id::text, '', '', date::text, amount, currency,
 		          COALESCE(payee,''), COALESCE(memo,''), cleared, reconciled
-	`, req.FromAccountID, req.Date, -req.Amount, "Transfer : "+toName, req.Memo, req.Cleared,
+	`, req.FromAccountID, req.Date, -req.Amount, "Transfer : "+toName, req.Memo,
 	).Scan(&from.ID, &from.AccountID, &from.CategoryID, &from.CategoryName,
 		&from.Date, &from.Amount, &from.Currency, &from.Payee, &from.Memo, &from.Cleared, &from.Reconciled); err != nil {
 		return from, to, fmt.Errorf("insert from leg: %w", err)
@@ -722,10 +722,10 @@ func (r *TransactionRepo) CreateTransfer(ctx context.Context, req model.CreateTr
 
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO transactions (account_id, date, amount, currency, payee, memo, cleared)
-		VALUES ($1::uuid, $2::date, $3, (SELECT currency FROM accounts WHERE id=$1::uuid), $4, NULLIF($5,''), $6)
+		VALUES ($1::uuid, $2::date, $3, (SELECT currency FROM accounts WHERE id=$1::uuid), $4, NULLIF($5,''), true)
 		RETURNING id::text, account_id::text, '', '', date::text, amount, currency,
 		          COALESCE(payee,''), COALESCE(memo,''), cleared, reconciled
-	`, req.ToAccountID, req.Date, req.Amount, "Transfer : "+fromName, req.Memo, req.Cleared,
+	`, req.ToAccountID, req.Date, req.Amount, "Transfer : "+fromName, req.Memo,
 	).Scan(&to.ID, &to.AccountID, &to.CategoryID, &to.CategoryName,
 		&to.Date, &to.Amount, &to.Currency, &to.Payee, &to.Memo, &to.Cleared, &to.Reconciled); err != nil {
 		return from, to, fmt.Errorf("insert to leg: %w", err)
@@ -842,12 +842,12 @@ func (r *TransactionRepo) LinkTransfer(ctx context.Context, idA, idB string) err
 	}
 
 	if _, err := tx.Exec(ctx,
-		`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+		`UPDATE transactions SET transfer_peer_id = $1::uuid, cleared = true, updated_at = NOW() WHERE id = $2::uuid`,
 		idB, idA); err != nil {
 		return fmt.Errorf("link A: %w", err)
 	}
 	if _, err := tx.Exec(ctx,
-		`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+		`UPDATE transactions SET transfer_peer_id = $1::uuid, cleared = true, updated_at = NOW() WHERE id = $2::uuid`,
 		idA, idB); err != nil {
 		return fmt.Errorf("link B: %w", err)
 	}
@@ -908,12 +908,12 @@ func (r *TransactionRepo) LinkTransferBatch(ctx context.Context, pairs [][2]stri
 		}
 
 		if _, err := tx.Exec(ctx,
-			`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+			`UPDATE transactions SET transfer_peer_id = $1::uuid, cleared = true, updated_at = NOW() WHERE id = $2::uuid`,
 			idB, idA); err != nil {
 			return 0, fmt.Errorf("link A %s: %w", idA, err)
 		}
 		if _, err := tx.Exec(ctx,
-			`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+			`UPDATE transactions SET transfer_peer_id = $1::uuid, cleared = true, updated_at = NOW() WHERE id = $2::uuid`,
 			idA, idB); err != nil {
 			return 0, fmt.Errorf("link B %s: %w", idB, err)
 		}
@@ -975,12 +975,12 @@ func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.L
 				return 0, 0, fmt.Errorf("amounts do not sum to zero for pair (%s, %s)", pair.SourceID, pair.TargetID)
 			}
 			if _, err := tx.Exec(ctx,
-				`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+				`UPDATE transactions SET transfer_peer_id = $1::uuid, cleared = true, updated_at = NOW() WHERE id = $2::uuid`,
 				pair.TargetID, pair.SourceID); err != nil {
 				return 0, 0, fmt.Errorf("link source %s: %w", pair.SourceID, err)
 			}
 			if _, err := tx.Exec(ctx,
-				`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+				`UPDATE transactions SET transfer_peer_id = $1::uuid, cleared = true, updated_at = NOW() WHERE id = $2::uuid`,
 				pair.SourceID, pair.TargetID); err != nil {
 				return 0, 0, fmt.Errorf("link target %s: %w", pair.TargetID, err)
 			}
@@ -1049,12 +1049,12 @@ func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.L
 
 			// Link both directions.
 			if _, err := tx.Exec(ctx,
-				`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+				`UPDATE transactions SET transfer_peer_id = $1::uuid, cleared = true, updated_at = NOW() WHERE id = $2::uuid`,
 				targetID, pair.SourceID); err != nil {
 				return 0, 0, fmt.Errorf("link source %s: %w", pair.SourceID, err)
 			}
 			if _, err := tx.Exec(ctx,
-				`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+				`UPDATE transactions SET transfer_peer_id = $1::uuid, cleared = true, updated_at = NOW() WHERE id = $2::uuid`,
 				pair.SourceID, targetID); err != nil {
 				return 0, 0, fmt.Errorf("link target %s: %w", targetID, err)
 			}
