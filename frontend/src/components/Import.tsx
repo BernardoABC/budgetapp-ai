@@ -9,6 +9,7 @@ import {
 } from '../api';
 import type { ImportRecord, PayeeRule as ApiPayeeRule, ConfirmTxn } from '../api';
 import { useToast } from './Toast';
+import { CategorySelect } from './CategorySelect';
 
 type Accounts = { budget: Account[]; tracking: Account[] };
 
@@ -92,7 +93,7 @@ function Step1({ accounts, previewing, onNext }: { accounts: Accounts; previewin
   );
 }
 
-function Step2({ parsed, allCategoryNames, categoryIdByName, rawCategoryGroups, onSetCategory, onToggleInclude, fmt, onNext, onBack }: {
+function Step2({ parsed, allCategoryNames: _allCategoryNames, categoryIdByName: _categoryIdByName, rawCategoryGroups, onSetCategory, onToggleInclude, fmt, onNext, onBack }: {
   parsed: ParsedRow[];
   allCategoryNames: string[];
   categoryIdByName: Record<string, string>;
@@ -131,27 +132,13 @@ function Step2({ parsed, allCategoryNames, categoryIdByName, rawCategoryGroups, 
                   {row.isTransfer && <span style={{ fontSize: 9, fontWeight: 700, color: '#6C8EBF', background: 'rgba(108,142,191,0.12)', borderRadius: 4, padding: '1px 5px', marginLeft: 4 }}>⇄</span>}
                 </td>
                 <td style={st.td}>
-                  <select
+                  <CategorySelect
                     value={row.categoryId ?? ''}
-                    onChange={e => onSetCategory(row.tempId, e.target.value || null)}
+                    onChange={id => onSetCategory(row.tempId, id)}
+                    rawCategoryGroups={rawCategoryGroups}
                     style={{ ...st.inlineSelect, borderColor: row.categoryId ? T.border : T.warn, color: row.categoryId ? T.text : T.warn }}
-                  >
-                    <option value="">— assign —</option>
-                    {rawCategoryGroups.filter(g => g.is_system && !g.hidden).map(g => (
-                      <optgroup key={g.id} label={`━━ ${g.name.toUpperCase()} ━━`}>
-                        {g.categories.filter(c => !c.hidden).map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                    {rawCategoryGroups.filter(g => !g.is_system && !g.hidden).map(g => (
-                      <optgroup key={g.id} label={g.name}>
-                        {g.categories.filter(c => !c.hidden).map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
+                    placeholder="— assign —"
+                  />
                 </td>
                 <td style={{ ...st.td, textAlign: 'right', fontFamily: T.mono, fontSize: 12.5, fontWeight: 600 }}>
                   <span style={{ color: row.amount > 0 ? T.pos : T.textMid }}>{row.amount > 0 ? '+' : '−'}{fmt(Math.abs(row.amount) / 100)}</span>
@@ -628,25 +615,6 @@ function RulesManager({ categoryIdByName, idToName, allCategoryNames, rawCategor
     } catch (err: any) { toast.error(err.message); }
   };
 
-  const CategorySelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
-    <select value={value} onChange={e => onChange(e.target.value)} style={{ ...st.select, padding: '7px 10px', fontSize: 13 }}>
-      {rawCategoryGroups.filter(g => g.is_system && !g.hidden).map(g => (
-        <optgroup key={g.id} label={`━━ ${g.name.toUpperCase()} ━━`}>
-          {g.categories.filter(c => !c.hidden).map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </optgroup>
-      ))}
-      {rawCategoryGroups.filter(g => !g.is_system && !g.hidden).map(g => (
-        <optgroup key={g.id} label={g.name}>
-          {g.categories.filter(c => !c.hidden).map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </optgroup>
-      ))}
-    </select>
-  );
-
   return (
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '24px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -691,7 +659,12 @@ function RulesManager({ categoryIdByName, idToName, allCategoryNames, rawCategor
                   placeholder="payee pattern"
                   autoFocus
                 />
-                <CategorySelect value={form.categoryId} onChange={v => setForm(f => ({ ...f, categoryId: v }))} />
+                <CategorySelect
+                  value={form.categoryId}
+                  onChange={id => setForm(f => ({ ...f, categoryId: id ?? '' }))}
+                  rawCategoryGroups={rawCategoryGroups}
+                  style={st.inlineSelect}
+                />
                 <span style={{ fontSize: 12, color: T.textFaint }}>{rule.match_count}×</span>
                 <span style={{ display: 'flex', gap: 6 }}>
                   <button onClick={saveEdit} style={{ ...st.primaryBtn, padding: '5px 10px', fontSize: 12 }}>Save</button>
@@ -721,7 +694,12 @@ function RulesManager({ categoryIdByName, idToName, allCategoryNames, rawCategor
                   placeholder="e.g. walmart"
                   autoFocus
                 />
-                <CategorySelect value={form.categoryId} onChange={v => setForm(f => ({ ...f, categoryId: v }))} />
+                <CategorySelect
+                  value={form.categoryId}
+                  onChange={id => setForm(f => ({ ...f, categoryId: id ?? '' }))}
+                  rawCategoryGroups={rawCategoryGroups}
+                  style={st.inlineSelect}
+                />
                 <span />
                 <span style={{ display: 'flex', gap: 6 }}>
                   <button onClick={saveAdd} style={{ ...st.primaryBtn, padding: '6px 10px', fontSize: 12 }}>Save</button>
