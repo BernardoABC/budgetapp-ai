@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { T } from '../theme';
-import type { CategoryGroup, Account, Transaction } from '../api';
+import type { CategoryGroup, CategoryGroupAPI, Account, Transaction } from '../api';
 import {
   fetchImportHistory, fetchAccounts, fetchPayeeRules,
   createPayeeRule, updatePayeeRule, deletePayeeRule,
@@ -92,10 +92,11 @@ function Step1({ accounts, previewing, onNext }: { accounts: Accounts; previewin
   );
 }
 
-function Step2({ parsed, allCategoryNames, categoryIdByName, onSetCategory, onToggleInclude, fmt, onNext, onBack }: {
+function Step2({ parsed, allCategoryNames, categoryIdByName, rawCategoryGroups, onSetCategory, onToggleInclude, fmt, onNext, onBack }: {
   parsed: ParsedRow[];
   allCategoryNames: string[];
   categoryIdByName: Record<string, string>;
+  rawCategoryGroups: CategoryGroupAPI[];
   onSetCategory: (tempId: string, categoryId: string | null) => void;
   onToggleInclude: (tempId: string) => void;
   fmt: (n: number) => string;
@@ -136,8 +137,19 @@ function Step2({ parsed, allCategoryNames, categoryIdByName, onSetCategory, onTo
                     style={{ ...st.inlineSelect, borderColor: row.categoryId ? T.border : T.warn, color: row.categoryId ? T.text : T.warn }}
                   >
                     <option value="">— assign —</option>
-                    {allCategoryNames.map(name => (
-                      <option key={name} value={categoryIdByName[name] ?? ''}>{name}</option>
+                    {rawCategoryGroups.filter(g => g.is_system && !g.hidden).map(g => (
+                      <optgroup key={g.id} label={`━━ ${g.name.toUpperCase()} ━━`}>
+                        {g.categories.filter(c => !c.hidden).map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    {rawCategoryGroups.filter(g => !g.is_system && !g.hidden).map(g => (
+                      <optgroup key={g.id} label={g.name}>
+                        {g.categories.filter(c => !c.hidden).map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 </td>
@@ -207,11 +219,12 @@ interface Props {
   accounts: Accounts;
   categoryGroups: CategoryGroup[];
   categoryIdByName: Record<string, string>;
+  rawCategoryGroups: CategoryGroupAPI[];
   fmt: (n: number) => string;
   onNavigate: (page: string) => void;
 }
 
-export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, onNavigate }: Props) {
+export function ImportWizard({ accounts, categoryGroups, categoryIdByName, rawCategoryGroups, fmt, onNavigate }: Props) {
   const toast = useToast();
   const [tab, setTab] = useState<'import' | 'rules'>('import');
   const [step, setStep] = useState(0);
@@ -222,7 +235,6 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
   const [previewing, setPreviewing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
-  const [done, setDone] = useState(false);
   const [pendingTransferIds, setPendingTransferIds] = useState<string[]>([]);
   const [linkState, setLinkState] = useState<{
     id: string;
@@ -300,26 +312,14 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
           setPendingTransferIds(resp.transfer_transaction_ids);
           setStep(3);
         } else {
-          setDone(true);
+          const skipped = resp.skipped_count > 0 ? ` · ${resp.skipped_count} skipped` : '';
+          toast.success(`${resp.imported_count} transaction${resp.imported_count === 1 ? '' : 's'} imported${skipped}`);
+          onNavigate('dashboard');
         }
       })
       .catch(err => toast.error('Import failed: ' + err.message))
       .finally(() => setConfirming(false));
   };
-
-  if (done) {
-    return (
-      <div style={st.doneWrap}>
-        <div style={st.doneCircle}><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="var(--accent)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
-        <h2 style={{ fontSize: 24, fontWeight: 800, color: T.text, margin: 0, letterSpacing: '-0.03em' }}>Import complete</h2>
-        <p style={{ color: T.textDim, margin: 0, fontSize: 14 }}>
-          {result?.imported ?? 0} transaction{(result?.imported ?? 0) === 1 ? '' : 's'} added
-          {result && result.skipped > 0 ? ` · ${result.skipped} skipped` : ''}.
-        </p>
-        <button onClick={() => onNavigate('dashboard')} style={{ ...st.primaryBtn, marginTop: 14 }}>Back to Dashboard</button>
-      </div>
-    );
-  }
 
   return (
     <>
@@ -358,6 +358,7 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
                 parsed={parsed}
                 allCategoryNames={allCategoryNames}
                 categoryIdByName={categoryIdByName}
+                rawCategoryGroups={rawCategoryGroups}
                 onSetCategory={handleSetCategory}
                 onToggleInclude={handleToggleInclude}
                 fmt={fmtCsv}
@@ -414,7 +415,11 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
                   );
                 })}
                 <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
-                  <button onClick={() => setDone(true)} style={st.ghostBtn}>Done</button>
+                  <button onClick={() => {
+                    const skipped = result && result.skipped > 0 ? ` · ${result.skipped} skipped` : '';
+                    toast.success(`${result?.imported ?? 0} transaction${(result?.imported ?? 0) === 1 ? '' : 's'} imported${skipped}`);
+                    onNavigate('dashboard');
+                  }} style={st.ghostBtn}>Done</button>
                 </div>
               </div>
             )}
@@ -490,6 +495,7 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, fmt, 
           categoryIdByName={categoryIdByName}
           idToName={idToName}
           allCategoryNames={allCategoryNames}
+          rawCategoryGroups={rawCategoryGroups}
         />
       </div>
     </>
@@ -566,10 +572,11 @@ function ImportHistory() {
   );
 }
 
-function RulesManager({ categoryIdByName, idToName, allCategoryNames }: {
+function RulesManager({ categoryIdByName, idToName, allCategoryNames, rawCategoryGroups }: {
   categoryIdByName: Record<string, string>;
   idToName: Record<string, string>;
   allCategoryNames: string[];
+  rawCategoryGroups: CategoryGroupAPI[];
 }) {
   const toast = useToast();
   const [rules, setRules] = useState<ApiPayeeRule[]>([]);
@@ -623,8 +630,19 @@ function RulesManager({ categoryIdByName, idToName, allCategoryNames }: {
 
   const CategorySelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
     <select value={value} onChange={e => onChange(e.target.value)} style={{ ...st.select, padding: '7px 10px', fontSize: 13 }}>
-      {allCategoryNames.map(name => (
-        <option key={name} value={categoryIdByName[name] ?? ''}>{name}</option>
+      {rawCategoryGroups.filter(g => g.is_system && !g.hidden).map(g => (
+        <optgroup key={g.id} label={`━━ ${g.name.toUpperCase()} ━━`}>
+          {g.categories.filter(c => !c.hidden).map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </optgroup>
+      ))}
+      {rawCategoryGroups.filter(g => !g.is_system && !g.hidden).map(g => (
+        <optgroup key={g.id} label={g.name}>
+          {g.categories.filter(c => !c.hidden).map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </optgroup>
       ))}
     </select>
   );
@@ -762,6 +780,4 @@ const st = {
   metaKey:     { fontSize: 13, color: T.textDim, fontWeight: 600 },
   metaVal:     { fontSize: 13, color: T.text, fontFamily: T.mono, fontWeight: 500 },
   warnBox:     { marginTop: 14, padding: '11px 14px', background: T.warnDim, border: `1px solid ${T.warn}33`, borderRadius: 9, color: T.warn, fontSize: 12.5, fontWeight: 600 },
-  doneWrap:    { padding: '70px 24px', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 14 },
-  doneCircle:  { width: 76, height: 76, borderRadius: '50%', background: T.accentDim, border: `1px solid ${T.borderHi}`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 36px var(--accent-glow)' },
 };
