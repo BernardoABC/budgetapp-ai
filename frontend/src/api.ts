@@ -58,6 +58,7 @@ export interface CategoryItemAPI {
   name: string;
   hidden: boolean;
   sort_order: number;
+  is_system: boolean;
 }
 
 export interface CategoryGroupAPI {
@@ -65,6 +66,7 @@ export interface CategoryGroupAPI {
   name: string;
   sort_order: number;
   hidden: boolean;
+  is_system: boolean;
   categories: CategoryItemAPI[];
 }
 
