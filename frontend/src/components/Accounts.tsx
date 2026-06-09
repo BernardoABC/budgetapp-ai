@@ -49,10 +49,12 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
                 <span style={{ fontSize: 10, fontWeight: 700, color: '#6C8EBF', background: 'rgba(108,142,191,0.12)', borderRadius: 4, padding: '2px 6px' }}>
                   ⇄ {accountNameById[t.transfer_peer_account_id ?? ''] ?? 'Transfer'}
                 </span>
-                <button
-                  onClick={e => { e.stopPropagation(); onNavigateToTransfer(t.transfer_peer_id!, t.transfer_peer_account_id!); }}
-                  style={{ fontSize: 10, color: T.textFaint, background: 'none', border: `1px solid ${T.border}`, borderRadius: 4, padding: '1px 6px', cursor: 'pointer' }}
-                >→ View</button>
+                {t.transfer_peer_account_id && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onNavigateToTransfer(t.transfer_peer_id!, t.transfer_peer_account_id!); }}
+                    style={{ fontSize: 10, color: T.textFaint, background: 'none', border: `1px solid ${T.border}`, borderRadius: 4, padding: '1px 6px', cursor: 'pointer' }}
+                  >→ View</button>
+                )}
               </div>
             )
             : (
@@ -105,9 +107,9 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
         {t.transfer_peer_id
           ? (
             <button
-              onClick={e => { e.stopPropagation(); onNavigateToTransfer(t.transfer_peer_id!, t.transfer_peer_account_id!); }}
-              style={{ fontSize: 10, fontWeight: 700, color: '#6C8EBF', background: 'rgba(108,142,191,0.12)', border: 'none', borderRadius: 4, padding: '2px 6px', cursor: 'pointer' }}
-              title={`Go to ${accountNameById[t.transfer_peer_account_id ?? ''] ?? 'linked account'}`}
+              onClick={t.transfer_peer_account_id ? (e => { e.stopPropagation(); onNavigateToTransfer(t.transfer_peer_id!, t.transfer_peer_account_id!); }) : undefined}
+              style={{ fontSize: 10, fontWeight: 700, color: '#6C8EBF', background: 'rgba(108,142,191,0.12)', border: 'none', borderRadius: 4, padding: '2px 6px', cursor: t.transfer_peer_account_id ? 'pointer' : 'default' }}
+              title={t.transfer_peer_account_id ? `Go to ${accountNameById[t.transfer_peer_account_id] ?? 'linked account'}` : 'Peer account not found'}
             >
               ⇄ {accountNameById[t.transfer_peer_account_id ?? ''] ?? 'Transfer'}
             </button>
@@ -159,7 +161,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   const allAccounts = [...accounts.budget, ...accounts.tracking];
   const accountNameById = useMemo(
     () => Object.fromEntries(allAccounts.map(a => [a.id, a.name])),
-    [allAccounts]
+    [accounts.budget, accounts.tracking]
   );
   const account = allAccounts.find(a => a.id === accountId) ?? allAccounts[0];
   const categories = categoryGroups.flatMap(g => g.categories);
@@ -273,7 +275,8 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     const row = document.querySelector(`[data-txn-id="${highlightTxnId}"]`);
     if (!row) return;
     row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    onHighlightConsumed();
+    const timer = setTimeout(onHighlightConsumed, 1600);
+    return () => clearTimeout(timer);
   }, [page?.transactions, highlightTxnId, onHighlightConsumed]);
 
   const toggleSelect = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
