@@ -9,7 +9,7 @@ interface SidebarProps {
   accounts: { budget: Account[]; tracking: Account[] };
   exchangeRate: number;
   exchangeRateDate: string;
-  fmt: (n: number) => string;
+  fmt: (n: number, txnCurrency?: string) => string;
   onAddAccount?: () => void;
 }
 
@@ -60,7 +60,7 @@ function Sidebar({ currentPage, currentAccountId, onNavigate, accounts, exchange
         <span style={{ ...st.dot, background: active ? 'var(--accent)' : T.textFaint }} />
         <span style={{ ...st.accName, color: active ? T.text : T.textMid }}>{acc.name}</span>
         {acc.currency && <span style={st.currBadge}>{acc.currency}</span>}
-        <span style={{ ...st.accBal, color: acc.balance < 0 ? T.neg : active ? T.text : T.textDim }}>{fmt(acc.balance)}</span>
+        <span style={{ ...st.accBal, color: acc.balance < 0 ? T.neg : active ? T.text : T.textDim }}>{fmt(acc.balance, acc.currency)}</span>
       </button>
     );
   };
@@ -143,7 +143,7 @@ interface LayoutProps {
   accounts: { budget: Account[]; tracking: Account[] };
   exchangeRate: number;
   exchangeRateDate: string;
-  fmt: (n: number) => string;
+  fmt: (n: number, txnCurrency?: string) => string;
   children: React.ReactNode;
   onAddAccount?: () => void;
 }

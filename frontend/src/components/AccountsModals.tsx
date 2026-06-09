@@ -9,7 +9,7 @@ export interface PayeeRule { id: string; match: string; category: string; }
 interface ReconcileProps {
   account: Account;
   clearedBalance: number;
-  fmt: (n: number) => string;
+  fmt: (n: number, txnCurrency?: string) => string;
   onClose: () => void;
   onReconcile: (diff: number) => void;
 }
@@ -27,7 +27,7 @@ export function ReconcileModal({ account, clearedBalance, fmt, onClose, onReconc
           {stage === 'ask' && (
             <>
               <p style={am.lead}>Your cleared balance in budgetapp is</p>
-              <div style={am.bigNum}>{fmt(clearedBalance)}</div>
+              <div style={am.bigNum}>{fmt(clearedBalance, account.currency)}</div>
               <p style={am.help}>Does this match what your bank shows right now?</p>
               <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
                 <button onClick={() => onReconcile(0)} style={am.primaryBtn}>Yes, it matches</button>
@@ -41,9 +41,9 @@ export function ReconcileModal({ account, clearedBalance, fmt, onClose, onReconc
               <input type="number" value={actual} onChange={e => setActual(e.target.value)} style={am.input} autoFocus />
               <div style={am.diffBox}>
                 <span style={{ color: T.textDim }}>Adjustment needed</span>
-                <span style={{ fontFamily: T.mono, fontWeight: 700, color: diff === 0 ? T.textMid : diff > 0 ? T.pos : T.neg }}>{diff > 0 ? '+' : ''}{fmt(diff)}</span>
+                <span style={{ fontFamily: T.mono, fontWeight: 700, color: diff === 0 ? T.textMid : diff > 0 ? T.pos : T.neg }}>{diff > 0 ? '+' : ''}{fmt(diff, account.currency)}</span>
               </div>
-              {diff !== 0 && <p style={am.help}>We'll create a reconciliation adjustment of {fmt(diff)} and mark everything cleared.</p>}
+              {diff !== 0 && <p style={am.help}>We'll create a reconciliation adjustment of {fmt(diff, account.currency)} and mark everything cleared.</p>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
                 <button onClick={() => setStage('ask')} style={am.ghostBtn}>Back</button>
                 <button onClick={() => onReconcile(diff)} style={am.primaryBtn}>{diff === 0 ? 'Mark cleared' : 'Create adjustment'}</button>
@@ -106,7 +106,7 @@ export function RulesManager({ rules, categories, onClose, onAdd, onDelete }: Ru
 interface SplitProps {
   txn: Transaction;
   categories: string[];
-  fmt: (n: number) => string;
+  fmt: (n: number, txnCurrency?: string) => string;
   onClose: () => void;
   onSave: (id: string, splits: { category: string; amount: number }[]) => void;
 }
@@ -128,7 +128,7 @@ export function SplitModal({ txn, categories, fmt, onClose, onSave }: SplitProps
       <div style={{ ...am.card, width: 480 }} onClick={e => e.stopPropagation()}>
         <div style={am.header}><span style={am.title}>Split · {txn.payee}</span><button onClick={onClose} style={am.close}>✕</button></div>
         <div style={am.body}>
-          <p style={am.help}>Divide {fmt(total)} across categories.</p>
+          <p style={am.help}>Divide {fmt(total, txn.currency)} across categories.</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {rows.map((r, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -143,7 +143,7 @@ export function SplitModal({ txn, categories, fmt, onClose, onSave }: SplitProps
           <button onClick={addRow} style={am.addSplitBtn}>+ Add split</button>
           <div style={am.diffBox}>
             <span style={{ color: T.textDim }}>Remaining to allocate</span>
-            <span style={{ fontFamily: T.mono, fontWeight: 700, color: remaining === 0 ? T.pos : T.warn }}>{fmt(remaining)}</span>
+            <span style={{ fontFamily: T.mono, fontWeight: 700, color: remaining === 0 ? T.pos : T.warn }}>{fmt(remaining, txn.currency)}</span>
           </div>
         </div>
         <div style={am.footer}>

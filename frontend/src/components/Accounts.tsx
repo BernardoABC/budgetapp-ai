@@ -18,7 +18,7 @@ interface EditableRowProps {
   onSave: (t: Transaction) => void;
   onToggleSelect: (id: string) => void;
   selected: boolean;
-  fmt: (n: number) => string;
+  fmt: (n: number, txnCurrency?: string) => string;
   rowPad: string;
   onSplit: (t: Transaction) => void;
   onToggleCleared: (t: Transaction) => void;
@@ -130,7 +130,7 @@ function EditableRow({ t, categories: _categories, catColor, onSave, onToggleSel
           )
           : <>
               {t.splits && t.splits.length > 0
-                ? <span style={st.splitChip} title={t.splits.map(s => s.category + ' ' + fmt(s.amount)).join('  ·  ')}>⑂ Split · {t.splits.length}</span>
+                ? <span style={st.splitChip} title={t.splits.map(s => s.category + ' ' + fmt(s.amount, t.currency)).join('  ·  ')}>⑂ Split · {t.splits.length}</span>
                 : t.category
                   ? <span style={{ ...st.catTag, color: catColor(t.category) }}><span style={{ width: 6, height: 6, borderRadius: 2, background: 'currentColor' }} />{t.category}</span>
                   : null
@@ -144,8 +144,8 @@ function EditableRow({ t, categories: _categories, catColor, onSave, onToggleSel
         }
       </td>
       <td style={{ ...st.td, padding: rowPad + ' 12px', color: T.textDim, fontSize: 12 }}>{t.memo || '—'}</td>
-      <td style={{ ...st.td, padding: rowPad + ' 12px', textAlign: 'right', fontFamily: T.mono, fontSize: 12.5, color: T.textMid }}>{t.outflow > 0 ? fmt(t.outflow) : ''}</td>
-      <td style={{ ...st.td, padding: rowPad + ' 12px', textAlign: 'right', fontFamily: T.mono, fontSize: 12.5, color: T.pos, fontWeight: 600 }}>{t.inflow > 0 ? '+' + fmt(t.inflow) : ''}</td>
+      <td style={{ ...st.td, padding: rowPad + ' 12px', textAlign: 'right', fontFamily: T.mono, fontSize: 12.5, color: T.textMid }}>{t.outflow > 0 ? fmt(t.outflow, t.currency) : ''}</td>
+      <td style={{ ...st.td, padding: rowPad + ' 12px', textAlign: 'right', fontFamily: T.mono, fontSize: 12.5, color: T.pos, fontWeight: 600 }}>{t.inflow > 0 ? '+' + fmt(t.inflow, t.currency) : ''}</td>
       <td style={{ ...st.td, padding: rowPad + ' 12px', textAlign: 'center' }} onClick={e => { e.stopPropagation(); onToggleCleared(t); }}>
         <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', cursor: 'pointer', background: t.cleared ? T.pos : 'transparent', border: t.cleared ? 'none' : `1.5px solid ${T.textFaint}`, boxShadow: t.cleared ? `0 0 7px ${T.pos}` : 'none' }} />
       </td>
@@ -161,7 +161,7 @@ interface Props {
   accounts: { budget: Account[]; tracking: Account[] };
   accountId: string;
   categoryGroups: CategoryGroup[];
-  fmt: (n: number) => string;
+  fmt: (n: number, txnCurrency?: string) => string;
   density: string;
   categoryIdByName: Record<string, string>;
   onAccountsChanged: () => void;
@@ -411,10 +411,11 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
       const targetPayee = result.to.payee;
       const tgtAccId = savedModal.targetAccountId;
 
-      // Find all other unlinked source-side transactions with the same payee.
-      const samePay = page?.transactions.filter(
+      // Fetch ALL unlinked source-side transactions with the same payee (not just current page).
+      const allSourcePage = await fetchTransactionsPage(accountId, { search: savedModal.txn.payee, per_page: 500 }).catch(() => null);
+      const samePay = (allSourcePage?.transactions ?? []).filter(
         t => t.payee === savedModal.txn.payee && !t.transfer_peer_id && t.id !== savedModal.txn.id
-      ) ?? [];
+      );
 
       if (samePay.length > 0) {
         // Fetch target account transactions matching the target payee (search is ILIKE).
@@ -549,15 +550,15 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
           </div>
           <div style={st.balCard}>
             <span style={st.balLabel}>Working Balance</span>
-            <span style={{ ...st.balance, color: account.balance < 0 ? T.neg : T.text }}>{fmt(account.balance)}</span>
+            <span style={{ ...st.balance, color: account.balance < 0 ? T.neg : T.text }}>{fmt(account.balance, account.currency)}</span>
           </div>
         </div>
       </div>
 
       <div style={st.statRow}>
         <div style={st.stat}><span style={st.statNum}>{page?.pagination.total ?? 0}</span><span style={st.statLbl}>transactions</span></div>
-        <div style={st.stat}><span style={{ ...st.statNum, color: T.textMid }}>−{fmt(page?.summary.total_outflow ?? 0)}</span><span style={st.statLbl}>outflow</span></div>
-        <div style={st.stat}><span style={{ ...st.statNum, color: T.pos }}>+{fmt(page?.summary.total_inflow ?? 0)}</span><span style={st.statLbl}>inflow</span></div>
+        <div style={st.stat}><span style={{ ...st.statNum, color: T.textMid }}>−{fmt(page?.summary.total_outflow ?? 0, account?.currency)}</span><span style={st.statLbl}>outflow</span></div>
+        <div style={st.stat}><span style={{ ...st.statNum, color: T.pos }}>+{fmt(page?.summary.total_inflow ?? 0, account?.currency)}</span><span style={st.statLbl}>inflow</span></div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
@@ -727,7 +728,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
             {linkModal.step === 1 && (
               <>
                 <div style={{ fontSize: 13, color: T.textDim, marginBottom: 12 }}>
-                  Linking: <b style={{ color: T.text }}>{linkModal.txn.payee}</b> · {linkModal.txn.outflow > 0 ? '-' : '+'}{fmt(linkModal.txn.outflow || linkModal.txn.inflow)}
+                  Linking: <b style={{ color: T.text }}>{linkModal.txn.payee}</b> · {linkModal.txn.outflow > 0 ? '-' : '+'}{fmt(linkModal.txn.outflow || linkModal.txn.inflow, linkModal.txn.currency)}
                 </div>
                 <label style={stModal.label}>Target account</label>
                 <select
@@ -757,7 +758,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                         <div style={{ fontSize: 11, color: T.textDim, marginTop: 2 }}>{c.date}</div>
                       </div>
                       <div style={{ fontFamily: T.mono, fontSize: 13, color: c.inflow > 0 ? T.pos : T.textMid }}>
-                        {c.inflow > 0 ? '+' : '-'}{fmt(c.inflow || c.outflow)}
+                        {c.inflow > 0 ? '+' : '-'}{fmt(c.inflow || c.outflow, c.currency)}
                       </div>
                     </div>
                   ))
@@ -805,19 +806,19 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                     </td>
                     <td style={{ padding: '8px 8px', fontSize: 12 }}>
                       <div style={{ fontWeight: 600, color: T.text }}>{pair.source.date}</div>
-                      <div style={{ color: T.textDim }}>{fmt(pair.source.outflow || pair.source.inflow)}</div>
+                      <div style={{ color: T.textDim }}>{fmt(pair.source.outflow || pair.source.inflow, pair.source.currency)}</div>
                     </td>
                     <td style={{ padding: '8px 4px', color: T.textDim }}>→</td>
                     <td style={{ padding: '8px 8px', fontSize: 12 }}>
                       {pair.candidate
                         ? <>
                             <div style={{ fontWeight: 600, color: T.text }}>{pair.candidate.date}</div>
-                            <div style={{ color: T.textDim }}>{fmt(pair.candidate.inflow || pair.candidate.outflow)}</div>
+                            <div style={{ color: T.textDim }}>{fmt(pair.candidate.inflow || pair.candidate.outflow, pair.candidate.currency)}</div>
                           </>
                         : <>
                             <div style={{ fontWeight: 600, color: T.textDim }}>{pair.source.date}</div>
                             <div style={{ color: T.textDim, display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {fmt(pair.source.inflow || pair.source.outflow)}
+                              {fmt(pair.source.inflow || pair.source.outflow, pair.source.currency)}
                               <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-dim)', borderRadius: 3, padding: '1px 4px' }}>New</span>
                             </div>
                           </>

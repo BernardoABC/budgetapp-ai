@@ -5,7 +5,7 @@ import { fetchRecentTransactions, fetchAccounts, fetchBudget } from '../api';
 
 interface Props {
   categoryGroups: CategoryGroup[];
-  fmt: (n: number) => string;
+  fmt: (n: number, txnCurrency?: string) => string;
   onNavigate: (page: string, accountId?: string) => void;
 }
 
@@ -47,7 +47,7 @@ function StatCard({ label, value, sub, subColor, spark, sparkColor, accent }: {
   );
 }
 
-function SpendingBar({ label, color, spent, budget, fmt }: { label: string; color: string; spent: number; budget: number; fmt: (n: number) => string }) {
+function SpendingBar({ label, color, spent, budget, fmt }: { label: string; color: string; spent: number; budget: number; fmt: (n: number, txnCurrency?: string) => string }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const over = spent > budget;
   const barColor = over ? T.neg : pct > 88 ? T.warn : color;
@@ -209,7 +209,7 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
                         : <span style={{ color: T.textFaint, fontSize: 12 }}>—</span>}
                     </td>
                     <td style={{ ...st.td, textAlign: 'right', fontFamily: T.mono, fontSize: 13, fontWeight: 500 }}>
-                      {t.inflow > 0 ? <span style={{ color: T.pos }}>+{fmt(t.inflow)}</span> : <span style={{ color: T.textMid }}>−{fmt(t.outflow)}</span>}
+                      {t.inflow > 0 ? <span style={{ color: T.pos }}>+{fmt(t.inflow, t.currency)}</span> : <span style={{ color: T.textMid }}>−{fmt(t.outflow, t.currency)}</span>}
                     </td>
                   </tr>
                 );

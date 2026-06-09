@@ -17,13 +17,15 @@ const TWEAK_DEFAULTS = { accent: 'mint' as AccentKey, density: 'comfortable' };
 
 applyAccent(TWEAK_DEFAULTS.accent);
 
-function fmt(amount: number, currency: string, rate: number): string {
-  if (currency === 'USD') {
-    const usd = amount / rate;
-    return (amount < 0 ? '-' : '') + '$' + Math.abs(usd).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+// txnCurrency: the currency the amount is actually in ('CRC' by default).
+// displayCurrency: what the user wants to see ('CRC' or 'USD').
+function fmt(amount: number, displayCurrency: string, rate: number, txnCurrency = 'CRC'): string {
+  if (displayCurrency === 'USD') {
+    const usd = txnCurrency === 'USD' ? Math.abs(amount) : Math.abs(amount) / rate;
+    return (amount < 0 ? '-' : '') + '$' + usd.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
-  const abs = Math.abs(Math.round(amount));
-  return (amount < 0 ? '-' : '') + '₡' + abs.toLocaleString('en-US');
+  const crc = txnCurrency === 'USD' ? Math.abs(amount) * rate : Math.abs(amount);
+  return (amount < 0 ? '-' : '') + '₡' + Math.round(crc).toLocaleString('en-US');
 }
 
 interface Tweaks { accent: AccentKey; density: string; }
@@ -146,7 +148,7 @@ function App() {
     if (key === 'accent') applyAccent(val as AccentKey);
   };
 
-  const fmtBound = useCallback((amount: number) => fmt(amount, currency, exchangeRate), [currency, exchangeRate]);
+  const fmtBound = useCallback((amount: number, txnCurrency?: string) => fmt(amount, currency, exchangeRate, txnCurrency ?? 'CRC'), [currency, exchangeRate]);
 
   return (
     <ToastProvider>
