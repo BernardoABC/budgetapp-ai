@@ -56,6 +56,13 @@ function Step1({ accounts, previewing, onNext }: { accounts: Accounts; previewin
 
   return (
     <div style={st.stepCard}>
+      <div style={{ marginBottom: 22, display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={() => { if (file && accountId && !previewing) onNext({ file, accountId }); }}
+          disabled={!file || !accountId || previewing}
+          style={{ ...st.primaryBtn, opacity: (file && accountId && !previewing) ? 1 : 0.45, cursor: (file && accountId && !previewing) ? 'pointer' : 'not-allowed' }}
+        >Continue →</button>
+      </div>
       <h3 style={st.stepTitle}>Upload bank export</h3>
       <p style={st.stepSub}>Drag a CSV or XLS file exported from your bank, or click to browse.</p>
       <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={handleDrop}
@@ -82,13 +89,6 @@ function Step1({ accounts, previewing, onNext }: { accounts: Accounts; previewin
           {allAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
       </div>
-      <div style={{ marginTop: 26, display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          onClick={() => { if (file && accountId && !previewing) onNext({ file, accountId }); }}
-          disabled={!file || !accountId || previewing}
-          style={{ ...st.primaryBtn, opacity: (file && accountId && !previewing) ? 1 : 0.45, cursor: (file && accountId && !previewing) ? 'pointer' : 'not-allowed' }}
-        >Continue →</button>
-      </div>
     </div>
   );
 }
@@ -109,6 +109,13 @@ function Step2({ parsed, allCategoryNames: _allCategoryNames, categoryIdByName: 
   const dupCount = parsed.filter(p => p.duplicateOf != null).length;
   return (
     <div style={st.stepCard}>
+      <div style={{ marginBottom: 22, display: 'flex', justifyContent: 'space-between' }}>
+        <button onClick={onBack} style={st.ghostBtn}>← Back</button>
+        <button onClick={onNext} disabled={included.length === 0}
+          style={{ ...st.primaryBtn, opacity: included.length === 0 ? 0.45 : 1, cursor: included.length === 0 ? 'not-allowed' : 'pointer' }}>
+          Continue →
+        </button>
+      </div>
       <h3 style={st.stepTitle}>Review transactions</h3>
       <p style={st.stepSub}>
         <b style={{ color: T.text }}>{parsed.length}</b> parsed · <span style={{ color: 'var(--accent)' }}>{autoCount} auto-categorized</span>
@@ -148,13 +155,6 @@ function Step2({ parsed, allCategoryNames: _allCategoryNames, categoryIdByName: 
           </tbody>
         </table>
       </div>
-      <div style={{ marginTop: 22, display: 'flex', justifyContent: 'space-between' }}>
-        <button onClick={onBack} style={st.ghostBtn}>← Back</button>
-        <button onClick={onNext} disabled={included.length === 0}
-          style={{ ...st.primaryBtn, opacity: included.length === 0 ? 0.45 : 1, cursor: included.length === 0 ? 'not-allowed' : 'pointer' }}>
-          Continue →
-        </button>
-      </div>
     </div>
   );
 }
@@ -178,6 +178,13 @@ function Step3({ parsed, filename, fmt, confirming, onBack, onConfirm }: {
   );
   return (
     <div style={st.stepCard}>
+      <div style={{ marginBottom: 22, display: 'flex', justifyContent: 'space-between' }}>
+        <button onClick={onBack} style={st.ghostBtn} disabled={confirming}>← Back</button>
+        <button onClick={onConfirm} disabled={confirming || included.length === 0}
+          style={{ ...st.confirmBtn, opacity: confirming || included.length === 0 ? 0.55 : 1, cursor: confirming ? 'wait' : 'pointer' }}>
+          {confirming ? 'Importing…' : `Import ${included.length} transactions ✓`}
+        </button>
+      </div>
       <h3 style={st.stepTitle}>Confirm import</h3>
       <p style={st.stepSub}>Review the summary before importing.</p>
       <div style={st.summaryGrid}>
@@ -190,13 +197,6 @@ function Step3({ parsed, filename, fmt, confirming, onBack, onConfirm }: {
         <div style={st.metaRow}><span style={st.metaKey}>Date range</span><span style={st.metaVal}>{dates.length ? `${dates[0]} → ${dates[dates.length - 1]}` : '—'}</span></div>
         <div style={st.metaRow}><span style={st.metaKey}>Source file</span><span style={st.metaVal}>{filename}</span></div>
         {uncategorized > 0 && <div style={st.warnBox}>⚠ {uncategorized} transaction{uncategorized > 1 ? 's' : ''} without a category — you can assign later.</div>}
-      </div>
-      <div style={{ marginTop: 26, display: 'flex', justifyContent: 'space-between' }}>
-        <button onClick={onBack} style={st.ghostBtn} disabled={confirming}>← Back</button>
-        <button onClick={onConfirm} disabled={confirming || included.length === 0}
-          style={{ ...st.confirmBtn, opacity: confirming || included.length === 0 ? 0.55 : 1, cursor: confirming ? 'wait' : 'pointer' }}>
-          {confirming ? 'Importing…' : `Import ${included.length} transactions ✓`}
-        </button>
       </div>
     </div>
   );
@@ -370,6 +370,13 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, rawCa
             </>}
             {step === 3 && (
               <div style={st.stepCard}>
+                <div style={{ marginBottom: 22, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={() => {
+                    const skipped = result && result.skipped > 0 ? ` · ${result.skipped} skipped` : '';
+                    toast.success(`${result?.imported ?? 0} transaction${(result?.imported ?? 0) === 1 ? '' : 's'} imported${skipped}`);
+                    onNavigate('dashboard');
+                  }} style={st.ghostBtn}>Done</button>
+                </div>
                 <h3 style={st.stepTitle}>Link Transfer Transactions</h3>
                 <p style={st.stepSub}>
                   {pendingTransferIds.length} imported transaction{pendingTransferIds.length > 1 ? 's were' : ' was'} flagged as a bank transfer.
@@ -401,13 +408,6 @@ export function ImportWizard({ accounts, categoryGroups, categoryIdByName, rawCa
                     </div>
                   );
                 })}
-                <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
-                  <button onClick={() => {
-                    const skipped = result && result.skipped > 0 ? ` · ${result.skipped} skipped` : '';
-                    toast.success(`${result?.imported ?? 0} transaction${(result?.imported ?? 0) === 1 ? '' : 's'} imported${skipped}`);
-                    onNavigate('dashboard');
-                  }} style={st.ghostBtn}>Done</button>
-                </div>
               </div>
             )}
             {linkState && (
