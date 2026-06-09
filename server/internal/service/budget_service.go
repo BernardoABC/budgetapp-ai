@@ -51,6 +51,9 @@ func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.Budg
 	// Collect all category IDs from groups.
 	var allCatIDs []string
 	for _, g := range groups {
+		if g.IsSystem {
+			continue
+		}
 		for _, c := range g.Categories {
 			allCatIDs = append(allCatIDs, c.ID)
 		}
@@ -124,6 +127,9 @@ func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.Budg
 	var groupBudgets []model.CategoryGroupBudget
 
 	for _, g := range groups {
+		if g.IsSystem {
+			continue
+		}
 		gb := model.CategoryGroupBudget{
 			ID:   g.ID,
 			Name: g.Name,
