@@ -277,6 +277,19 @@ export async function linkTransferBatch(
   });
 }
 
+export type LinkOrCreatePair =
+  | { source_id: string; target_id: string }
+  | { source_id: string; target_account_id: string; target_payee: string; target_date: string; target_amount: number };
+
+export async function linkOrCreateBatch(
+  pairs: LinkOrCreatePair[],
+): Promise<{ linked: number; created: number }> {
+  return apiFetch('/transfers/link-or-create-batch', {
+    method: 'POST',
+    body: JSON.stringify({ pairs }),
+  });
+}
+
 export async function batchTransactions(
   ids: string[],
   action: 'categorize' | 'clear' | 'unclear' | 'delete',
