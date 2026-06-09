@@ -4,7 +4,7 @@ import { useToast } from './Toast';
 import { T, GROUP_COLORS } from '../theme';
 import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
 import type { PayeeRule } from './AccountsModals';
-import type { Transaction, Account, CategoryGroup } from '../api';
+import type { Transaction, Account, CategoryGroup, CategoryGroupAPI } from '../api';
 
 function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string; sortDir: string }) {
   const on = sortCol === col;
@@ -27,9 +27,10 @@ interface EditableRowProps {
   onNavigateToTransfer: (peerId: string, peerAccountId: string) => void;
   accountNameById: Record<string, string>;
   highlightId?: string;
+  rawCategoryGroups: CategoryGroupAPI[];
 }
 
-function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared, onDelete, onLink, onNavigateToTransfer, accountNameById, highlightId }: EditableRowProps) {
+function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared, onDelete, onLink, onNavigateToTransfer, accountNameById, highlightId, rawCategoryGroups }: EditableRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(t);
   const commit = () => { onSave(draft); setEditing(false); };
@@ -72,7 +73,20 @@ function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected
               >
                 <option value="">—</option>
                 <option value="__transfer__" style={{ color: 'var(--text-faint, #666)' }}>↔ Transfer to account…</option>
-                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                {rawCategoryGroups.filter(g => g.is_system && !g.hidden).map(g => (
+                  <optgroup key={g.id} label={`━━ ${g.name.toUpperCase()} ━━`}>
+                    {g.categories.filter(c => !c.hidden).map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                  </optgroup>
+                ))}
+                {rawCategoryGroups.filter(g => !g.is_system && !g.hidden).map(g => (
+                  <optgroup key={g.id} label={g.name}>
+                    {g.categories.filter(c => !c.hidden).map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             )
           }
@@ -155,9 +169,10 @@ interface Props {
   highlightTxnId?: string | null;
   onHighlightConsumed: () => void;
   onNavigateToTransfer: (peerId: string, peerAccountId: string) => void;
+  rawCategoryGroups: CategoryGroupAPI[];
 }
 
-export function Accounts({ accounts, accountId, categoryGroups, fmt, density, categoryIdByName, onAccountsChanged, onDeleted, highlightTxnId, onHighlightConsumed, onNavigateToTransfer }: Props) {
+export function Accounts({ accounts, accountId, categoryGroups, fmt, density, categoryIdByName, onAccountsChanged, onDeleted, highlightTxnId, onHighlightConsumed, onNavigateToTransfer, rawCategoryGroups }: Props) {
   const allAccounts = [...accounts.budget, ...accounts.tracking];
   const accountNameById = useMemo(
     () => Object.fromEntries(allAccounts.map(a => [a.id, a.name])),
@@ -557,7 +572,20 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
         <select value={filter.category} onChange={e => { setFilter(f => ({ ...f, category: e.target.value })); setPageNum(1); }} style={st.filterSelect}>
           <option value="">All categories</option>
           <option value="__uncategorized__">Uncategorized</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          {rawCategoryGroups.filter(g => g.is_system && !g.hidden).map(g => (
+            <optgroup key={g.id} label={`━━ ${g.name.toUpperCase()} ━━`}>
+              {g.categories.filter(c => !c.hidden).map(c => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </optgroup>
+          ))}
+          {rawCategoryGroups.filter(g => !g.is_system && !g.hidden).map(g => (
+            <optgroup key={g.id} label={g.name}>
+              {g.categories.filter(c => !c.hidden).map(c => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </optgroup>
+          ))}
         </select>
         <input type="date" value={filter.from} onChange={e => { setFilter(f => ({ ...f, from: e.target.value })); setPageNum(1); }} style={st.filterInput} />
         <span style={{ color: T.textFaint, fontSize: 12 }}>→</span>
@@ -571,7 +599,20 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
           <select value={bulkCat} onChange={e => setBulkCat(e.target.value)} style={st.filterSelect}>
             <option value="">Set category…</option>
             <option value="__uncategorized__">— Uncategorized —</option>
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            {rawCategoryGroups.filter(g => g.is_system && !g.hidden).map(g => (
+              <optgroup key={g.id} label={`━━ ${g.name.toUpperCase()} ━━`}>
+                {g.categories.filter(c => !c.hidden).map(c => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </optgroup>
+            ))}
+            {rawCategoryGroups.filter(g => !g.is_system && !g.hidden).map(g => (
+              <optgroup key={g.id} label={g.name}>
+                {g.categories.filter(c => !c.hidden).map(c => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </optgroup>
+            ))}
           </select>
           <button
             onClick={() => { runBatch('categorize', bulkCat); setBulkCat(''); }}
@@ -630,6 +671,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                 onNavigateToTransfer={onNavigateToTransfer}
                 accountNameById={accountNameById}
                 highlightId={highlightTxnId ?? undefined}
+                rawCategoryGroups={rawCategoryGroups}
               />
             ))}
           </tbody>
