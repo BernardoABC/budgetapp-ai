@@ -921,3 +921,136 @@ func (r *TransactionRepo) LinkTransferBatch(ctx context.Context, pairs [][2]stri
 
 	return len(pairs), tx.Commit(ctx)
 }
+
+// LinkOrCreateBatch atomically processes a batch of link-or-create pairs in one
+// DB transaction. Pairs with TargetID set link two existing transactions (same
+// validation as LinkTransferBatch). Pairs with TargetAccountID set find an
+// existing unlinked transaction matching all fields (idempotency), or create one,
+// then link both directions. Returns (linked, created, error).
+func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.LinkOrCreatePair) (linked, created int, err error) {
+	if len(pairs) == 0 {
+		return 0, 0, nil
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	for _, pair := range pairs {
+		if pair.TargetID != "" {
+			// ── Link existing pair ──────────────────────────────────────────
+			type row struct {
+				accountID string
+				amount    int64
+				peerID    *string
+			}
+			var a, b row
+			if err := tx.QueryRow(ctx,
+				`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, pair.SourceID,
+			).Scan(&a.accountID, &a.amount, &a.peerID); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return 0, 0, ErrNotFound
+				}
+				return 0, 0, fmt.Errorf("get source %s: %w", pair.SourceID, err)
+			}
+			if err := tx.QueryRow(ctx,
+				`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, pair.TargetID,
+			).Scan(&b.accountID, &b.amount, &b.peerID); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return 0, 0, ErrNotFound
+				}
+				return 0, 0, fmt.Errorf("get target %s: %w", pair.TargetID, err)
+			}
+			if a.peerID != nil {
+				return 0, 0, fmt.Errorf("transaction %s is already linked", pair.SourceID)
+			}
+			if b.peerID != nil {
+				return 0, 0, fmt.Errorf("transaction %s is already linked", pair.TargetID)
+			}
+			if a.accountID == b.accountID {
+				return 0, 0, fmt.Errorf("transactions %s and %s belong to the same account", pair.SourceID, pair.TargetID)
+			}
+			if a.amount+b.amount != 0 {
+				return 0, 0, fmt.Errorf("amounts do not sum to zero for pair (%s, %s)", pair.SourceID, pair.TargetID)
+			}
+			if _, err := tx.Exec(ctx,
+				`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+				pair.TargetID, pair.SourceID); err != nil {
+				return 0, 0, fmt.Errorf("link source %s: %w", pair.SourceID, err)
+			}
+			if _, err := tx.Exec(ctx,
+				`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+				pair.SourceID, pair.TargetID); err != nil {
+				return 0, 0, fmt.Errorf("link target %s: %w", pair.TargetID, err)
+			}
+			linked++
+
+		} else {
+			// ── Create-and-link ─────────────────────────────────────────────
+			// Validate source exists and amounts sum to zero.
+			var sourceAmount int64
+			var sourcePeerID *string
+			if err := tx.QueryRow(ctx,
+				`SELECT amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, pair.SourceID,
+			).Scan(&sourceAmount, &sourcePeerID); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return 0, 0, ErrNotFound
+				}
+				return 0, 0, fmt.Errorf("get source %s: %w", pair.SourceID, err)
+			}
+			if sourcePeerID != nil {
+				return 0, 0, fmt.Errorf("transaction %s is already linked", pair.SourceID)
+			}
+			if sourceAmount+pair.TargetAmount != 0 {
+				return 0, 0, fmt.Errorf("source amount %d and target amount %d do not sum to zero", sourceAmount, pair.TargetAmount)
+			}
+
+			// Idempotency: find existing unlinked transaction matching all create fields.
+			var targetID string
+			idempotErr := tx.QueryRow(ctx,
+				`SELECT id::text FROM transactions
+				 WHERE account_id = $1::uuid AND date = $2::date AND amount = $3
+				   AND payee = $4 AND transfer_peer_id IS NULL
+				 LIMIT 1`,
+				pair.TargetAccountID, pair.TargetDate, pair.TargetAmount, pair.TargetPayee,
+			).Scan(&targetID)
+
+			if idempotErr == nil {
+				// Found existing — link it.
+				linked++
+			} else {
+				// Create new peer transaction.
+				if err := tx.QueryRow(ctx,
+					`INSERT INTO transactions (account_id, date, amount, currency, payee, cleared)
+					 VALUES ($1::uuid, $2::date, $3, (SELECT currency FROM accounts WHERE id=$1::uuid), $4, true)
+					 RETURNING id::text`,
+					pair.TargetAccountID, pair.TargetDate, pair.TargetAmount, pair.TargetPayee,
+				).Scan(&targetID); err != nil {
+					return 0, 0, fmt.Errorf("insert peer transaction: %w", err)
+				}
+				if _, err := tx.Exec(ctx,
+					`UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2::uuid`,
+					pair.TargetAmount, pair.TargetAccountID,
+				); err != nil {
+					return 0, 0, fmt.Errorf("update target balance: %w", err)
+				}
+				created++
+			}
+
+			// Link both directions.
+			if _, err := tx.Exec(ctx,
+				`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+				targetID, pair.SourceID); err != nil {
+				return 0, 0, fmt.Errorf("link source %s: %w", pair.SourceID, err)
+			}
+			if _, err := tx.Exec(ctx,
+				`UPDATE transactions SET transfer_peer_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+				pair.SourceID, targetID); err != nil {
+				return 0, 0, fmt.Errorf("link target %s: %w", targetID, err)
+			}
+		}
+	}
+
+	return linked, created, tx.Commit(ctx)
+}

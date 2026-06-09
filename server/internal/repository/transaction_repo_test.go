@@ -751,6 +751,112 @@ func TestTransactionRepo_HighlightPage(t *testing.T) {
 	}
 }
 
+func TestTransactionRepo_LinkOrCreateBatch_LinkExisting(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	accA := testutil.SeedOnBudgetAccount(t, pool)
+	accB := testutil.SeedOnBudgetAccount(t, pool)
+	// Seed two unlinked transactions that sum to zero
+	idA := testutil.SeedTransactionFull(t, pool, accA, "", "2026-05-10", -8000, "TEF DE: 123", "", false)
+	idB := testutil.SeedTransactionFull(t, pool, accB, "", "2026-05-10", 8000, "TEF A: 456", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	linked, created, err := repo.LinkOrCreateBatch(context.Background(), []model.LinkOrCreatePair{
+		{SourceID: idA, TargetID: idB},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linked != 1 {
+		t.Errorf("want linked=1 got %d", linked)
+	}
+	if created != 0 {
+		t.Errorf("want created=0 got %d", created)
+	}
+	txA, err := repo.Get(context.Background(), idA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if txA.TransferPeerID != idB {
+		t.Errorf("want peer %s got %q", idB, txA.TransferPeerID)
+	}
+}
+
+func TestTransactionRepo_LinkOrCreateBatch_CreateAndLink(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	accA := testutil.SeedOnBudgetAccount(t, pool)
+	accB := testutil.SeedOnBudgetAccount(t, pool)
+	idA := testutil.SeedTransactionFull(t, pool, accA, "", "2026-05-10", -8000, "TEF DE: 123", "", false)
+
+	repo := repository.NewTransactionRepo(pool)
+	linked, created, err := repo.LinkOrCreateBatch(context.Background(), []model.LinkOrCreatePair{
+		{SourceID: idA, TargetAccountID: accB, TargetPayee: "TEF A: 456", TargetDate: "2026-05-10", TargetAmount: 8000},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linked != 0 {
+		t.Errorf("want linked=0 got %d", linked)
+	}
+	if created != 1 {
+		t.Errorf("want created=1 got %d", created)
+	}
+	txA, err := repo.Get(context.Background(), idA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if txA.TransferPeerID == "" {
+		t.Error("source not linked after create")
+	}
+	txB, err := repo.Get(context.Background(), txA.TransferPeerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if txB.Amount != 8000 {
+		t.Errorf("want peer amount 8000 got %d", txB.Amount)
+	}
+	if txB.Payee != "TEF A: 456" {
+		t.Errorf("want payee %q got %q", "TEF A: 456", txB.Payee)
+	}
+	if !txB.Cleared {
+		t.Error("want peer cleared=true")
+	}
+	if txB.AccountID != accB {
+		t.Errorf("want peer in account %s got %s", accB, txB.AccountID)
+	}
+}
+
+func TestTransactionRepo_LinkOrCreateBatch_IdempotentCreate(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	accA := testutil.SeedOnBudgetAccount(t, pool)
+	accB := testutil.SeedOnBudgetAccount(t, pool)
+	idA := testutil.SeedTransactionFull(t, pool, accA, "", "2026-05-10", -8000, "TEF DE: 123", "", false)
+	// Pre-seed the peer transaction
+	idB := testutil.SeedTransactionFull(t, pool, accB, "", "2026-05-10", 8000, "TEF A: 456", "", true)
+
+	repo := repository.NewTransactionRepo(pool)
+	linked, created, err := repo.LinkOrCreateBatch(context.Background(), []model.LinkOrCreatePair{
+		{SourceID: idA, TargetAccountID: accB, TargetPayee: "TEF A: 456", TargetDate: "2026-05-10", TargetAmount: 8000},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Found existing → counts as linked, not created
+	if linked != 1 {
+		t.Errorf("want linked=1 got %d", linked)
+	}
+	if created != 0 {
+		t.Errorf("want created=0 got %d", created)
+	}
+	txA, err := repo.Get(context.Background(), idA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Must have linked to the pre-existing transaction, not a new duplicate
+	if txA.TransferPeerID != idB {
+		t.Errorf("want peer %s got %q (possible duplicate created)", idB, txA.TransferPeerID)
+	}
+}
+
 func TestTransactionRepo_LinkTransferBatch_RollbackOnError(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	accA := testutil.SeedOnBudgetAccount(t, pool)

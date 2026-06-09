@@ -53,3 +53,15 @@ type CreateTransferReq struct {
 	Memo          string `json:"memo"`
 	Cleared       bool   `json:"cleared"`
 }
+
+// LinkOrCreatePair is one item in a link-or-create-batch request.
+// Either TargetID is set (link two existing transactions) or
+// TargetAccountID+TargetPayee+TargetDate+TargetAmount are set (create then link).
+type LinkOrCreatePair struct {
+	SourceID        string
+	TargetID        string // link existing
+	TargetAccountID string // create: account to insert into
+	TargetPayee     string // create: payee for the new transaction
+	TargetDate      string // create: "YYYY-MM-DD"
+	TargetAmount    int64  // create: signed centimos (+inflow, -outflow)
+}
