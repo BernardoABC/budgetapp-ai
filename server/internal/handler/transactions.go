@@ -364,3 +364,45 @@ func (h *TransactionHandler) LinkBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"linked": linked})
 }
+
+func (h *TransactionHandler) LinkOrCreateBatch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Pairs []struct {
+			SourceID        string `json:"source_id"`
+			TargetID        string `json:"target_id"`
+			TargetAccountID string `json:"target_account_id"`
+			TargetPayee     string `json:"target_payee"`
+			TargetDate      string `json:"target_date"`
+			TargetAmount    int64  `json:"target_amount"`
+		} `json:"pairs"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+	if len(req.Pairs) == 0 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "pairs must be non-empty")
+		return
+	}
+	pairs := make([]model.LinkOrCreatePair, len(req.Pairs))
+	for i, p := range req.Pairs {
+		pairs[i] = model.LinkOrCreatePair{
+			SourceID:        p.SourceID,
+			TargetID:        p.TargetID,
+			TargetAccountID: p.TargetAccountID,
+			TargetPayee:     p.TargetPayee,
+			TargetDate:      p.TargetDate,
+			TargetAmount:    p.TargetAmount,
+		}
+	}
+	linked, created, err := h.repo.LinkOrCreateBatch(r.Context(), pairs)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "Transaction not found")
+			return
+		}
+		writeError(w, http.StatusUnprocessableEntity, "LINK_ERROR", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"linked": linked, "created": created})
+}

@@ -122,6 +122,7 @@ func main() {
 	mux.HandleFunc("GET /api/accounts/{id}/transfer-candidates", txns.TransferCandidates)
 	mux.HandleFunc("POST /api/transfers/link", txns.Link)
 	mux.HandleFunc("POST /api/transfers/link-batch", txns.LinkBatch)
+	mux.HandleFunc("POST /api/transfers/link-or-create-batch", txns.LinkOrCreateBatch)
 
 	// Categories
 	mux.HandleFunc("GET /api/category-groups", cats.ListGroups)
