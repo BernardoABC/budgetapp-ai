@@ -30,7 +30,7 @@ interface EditableRowProps {
   rawCategoryGroups: CategoryGroupAPI[];
 }
 
-function EditableRow({ t, categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared, onDelete, onLink, onNavigateToTransfer, accountNameById, highlightId, rawCategoryGroups }: EditableRowProps) {
+function EditableRow({ t, categories: _categories, catColor, onSave, onToggleSelect, selected, fmt, rowPad, onSplit, onToggleCleared, onDelete, onLink, onNavigateToTransfer, accountNameById, highlightId, rawCategoryGroups }: EditableRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(t);
   const commit = () => { onSave(draft); setEditing(false); };
