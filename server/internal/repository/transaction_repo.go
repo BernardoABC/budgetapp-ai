@@ -994,9 +994,10 @@ func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.L
 			// Validate source exists and amounts sum to zero.
 			var sourceAmount int64
 			var sourcePeerID *string
+			var sourceAccountID string
 			if err := tx.QueryRow(ctx,
-				`SELECT amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, pair.SourceID,
-			).Scan(&sourceAmount, &sourcePeerID); err != nil {
+				`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, pair.SourceID,
+			).Scan(&sourceAccountID, &sourceAmount, &sourcePeerID); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					return 0, 0, ErrNotFound
 				}
@@ -1004,6 +1005,9 @@ func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.L
 			}
 			if sourcePeerID != nil {
 				return 0, 0, fmt.Errorf("transaction %s is already linked", pair.SourceID)
+			}
+			if sourceAccountID == pair.TargetAccountID {
+				return 0, 0, fmt.Errorf("transaction %s and target account are the same account", pair.SourceID)
 			}
 			if sourceAmount+pair.TargetAmount != 0 {
 				return 0, 0, fmt.Errorf("source amount %d and target amount %d do not sum to zero", sourceAmount, pair.TargetAmount)
