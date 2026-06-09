@@ -147,3 +147,49 @@ func TestBudgetService_AgeOfMoney(t *testing.T) {
 		}
 	}
 }
+
+func TestBudgetService_GetMonth_SystemCategoryInflowIncreasesRTA(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	budgetRepo := repository.NewBudgetRepo(pool)
+	targetRepo := repository.NewTargetRepo(pool)
+	catRepo := repository.NewCategoryRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo)
+	ctx := context.Background()
+
+	// Get the seeded system category ID.
+	var sysCatID string
+	err := pool.QueryRow(ctx,
+		`SELECT id::text FROM categories WHERE is_system = true AND name = 'Inflow: Ready to Assign' LIMIT 1`,
+	).Scan(&sysCatID)
+	if err != nil {
+		t.Skipf("system category not seeded (run migrations): %v", err)
+	}
+
+	// Create an on-budget account with a balance of 500000.
+	accID := testutil.SeedOnBudgetAccount(t, pool)
+	pool.Exec(ctx, `UPDATE accounts SET balance = 500000 WHERE id = $1::uuid`, accID)
+	t.Cleanup(func() {
+		pool.Exec(ctx, `UPDATE accounts SET balance = 0 WHERE id = $1::uuid`, accID)
+	})
+
+	// Inflow transaction categorized to the system category.
+	txID := testutil.SeedTransaction(t, pool, accID, sysCatID, "2026-04-15", 500000)
+	_ = txID
+
+	result, err := svc.GetMonth(ctx, "2026-04")
+	if err != nil {
+		t.Fatalf("GetMonth: %v", err)
+	}
+
+	// RTA = balance (500000) - totalAvailable (0, system cat excluded) = 500000.
+	if result.ReadyToAssign != 500000 {
+		t.Errorf("want RTA=500000, got %d", result.ReadyToAssign)
+	}
+
+	// System group must NOT appear in CategoryGroups.
+	for _, g := range result.CategoryGroups {
+		if g.Name == "Inflows" {
+			t.Errorf("system group 'Inflows' must not appear in budget CategoryGroups")
+		}
+	}
+}
