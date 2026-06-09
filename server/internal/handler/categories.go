@@ -27,12 +27,14 @@ func (h *CategoryHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 		Name      string `json:"name"`
 		Hidden    bool   `json:"hidden"`
 		SortOrder int    `json:"sort_order"`
+		IsSystem  bool   `json:"is_system"`
 	}
 	type groupResp struct {
 		ID         string    `json:"id"`
 		Name       string    `json:"name"`
 		SortOrder  int       `json:"sort_order"`
 		Hidden     bool      `json:"hidden"`
+		IsSystem   bool      `json:"is_system"`
 		Categories []catResp `json:"categories"`
 	}
 
@@ -40,9 +42,9 @@ func (h *CategoryHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	for i, g := range groups {
 		cats := make([]catResp, len(g.Categories))
 		for j, c := range g.Categories {
-			cats[j] = catResp{ID: c.ID, Name: c.Name, Hidden: c.Hidden, SortOrder: c.SortOrder}
+			cats[j] = catResp{ID: c.ID, Name: c.Name, Hidden: c.Hidden, SortOrder: c.SortOrder, IsSystem: c.IsSystem}
 		}
-		resp[i] = groupResp{ID: g.ID, Name: g.Name, SortOrder: g.SortOrder, Hidden: g.Hidden, Categories: cats}
+		resp[i] = groupResp{ID: g.ID, Name: g.Name, SortOrder: g.SortOrder, Hidden: g.Hidden, IsSystem: g.IsSystem, Categories: cats}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
