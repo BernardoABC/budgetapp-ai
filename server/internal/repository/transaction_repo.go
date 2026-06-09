@@ -988,6 +988,9 @@ func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.L
 
 		} else {
 			// ── Create-and-link ─────────────────────────────────────────────
+			if pair.TargetAccountID == "" {
+				return 0, 0, fmt.Errorf("pair for source %s: must set either TargetID or TargetAccountID", pair.SourceID)
+			}
 			// Validate source exists and amounts sum to zero.
 			var sourceAmount int64
 			var sourcePeerID *string
@@ -1016,10 +1019,7 @@ func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.L
 				pair.TargetAccountID, pair.TargetDate, pair.TargetAmount, pair.TargetPayee,
 			).Scan(&targetID)
 
-			if idempotErr == nil {
-				// Found existing — link it.
-				linked++
-			} else {
+			if errors.Is(idempotErr, pgx.ErrNoRows) {
 				// Create new peer transaction.
 				if err := tx.QueryRow(ctx,
 					`INSERT INTO transactions (account_id, date, amount, currency, payee, cleared)
@@ -1036,6 +1036,11 @@ func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.L
 					return 0, 0, fmt.Errorf("update target balance: %w", err)
 				}
 				created++
+			} else if idempotErr != nil {
+				return 0, 0, fmt.Errorf("idempotency check: %w", idempotErr)
+			} else {
+				// Found existing — link it.
+				linked++
 			}
 
 			// Link both directions.
