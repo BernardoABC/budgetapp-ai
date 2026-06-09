@@ -3,7 +3,7 @@ import { T, ACCENTS, applyAccent } from './theme';
 import type { AccentKey } from './theme';
 import { fetchAccounts, fetchCategoryGroupsRaw, fetchCurrentRate, fetchServerVersion } from './api';
 import { AccountFormModal } from './components/AccountFormModal';
-import type { Account, CategoryGroup } from './api';
+import type { Account, CategoryGroup, CategoryGroupAPI } from './api';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Budget } from './components/Budget';
@@ -68,6 +68,7 @@ function App() {
   const [accounts, setAccounts] = useState<{ budget: Account[]; tracking: Account[] }>({ budget: [], tracking: [] });
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
   const [categoryIdByName, setCategoryIdByName] = useState<Record<string, string>>({});
+  const [rawCategoryGroups, setRawCategoryGroups] = useState<CategoryGroupAPI[]>([]);
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [exchangeRateDate, setExchangeRateDate] = useState<string>('');
@@ -84,6 +85,7 @@ function App() {
           name: g.name,
           categories: g.categories.map(c => c.name),
         })));
+        setRawCategoryGroups(rawGroups);
       })
       .catch(err => console.warn('Failed to load categories:', err.message));
   }, []);
@@ -110,6 +112,7 @@ function App() {
           name: g.name,
           categories: g.categories.map(c => c.name),
         })));
+        setRawCategoryGroups(rawGroups);
       })
       .catch(err => console.warn('API unavailable, using static data:', err.message));
     fetchServerVersion().then(setServerSha);
@@ -172,9 +175,10 @@ function App() {
               highlightTxnId={highlightTxnId}
               onHighlightConsumed={() => setHighlightTxnId(null)}
               onNavigateToTransfer={handleNavigateToTransfer}
+              rawCategoryGroups={rawCategoryGroups}
             />
           )}
-          {page === 'import' && <ImportWizard accounts={accounts} categoryGroups={categoryGroups} categoryIdByName={categoryIdByName} fmt={fmtBound} onNavigate={navigate} />}
+          {page === 'import' && <ImportWizard accounts={accounts} categoryGroups={categoryGroups} categoryIdByName={categoryIdByName} fmt={fmtBound} onNavigate={navigate} rawCategoryGroups={rawCategoryGroups} />}
           {page === 'reports' && <Reports fmt={fmtBound} />}
         </div>
       </Layout>
