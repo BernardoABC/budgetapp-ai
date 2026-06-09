@@ -77,8 +77,8 @@ func (r *CategoryRepo) CreateGroup(ctx context.Context, req model.CreateGroupReq
 	err := r.pool.QueryRow(ctx, `
 		INSERT INTO category_groups (name, sort_order)
 		VALUES ($1, $2)
-		RETURNING id::text, name, sort_order, hidden
-	`, req.Name, req.SortOrder).Scan(&g.ID, &g.Name, &g.SortOrder, &g.Hidden)
+		RETURNING id::text, name, sort_order, hidden, is_system
+	`, req.Name, req.SortOrder).Scan(&g.ID, &g.Name, &g.SortOrder, &g.Hidden, &g.IsSystem)
 	if err != nil {
 		return g, fmt.Errorf("create category group: %w", err)
 	}
@@ -90,8 +90,8 @@ func (r *CategoryRepo) UpdateGroup(ctx context.Context, id string, req model.Upd
 	err := r.pool.QueryRow(ctx, `
 		UPDATE category_groups SET name=$1, sort_order=$2, hidden=$3, updated_at=NOW()
 		WHERE id=$4
-		RETURNING id::text, name, sort_order, hidden
-	`, req.Name, req.SortOrder, req.Hidden, id).Scan(&g.ID, &g.Name, &g.SortOrder, &g.Hidden)
+		RETURNING id::text, name, sort_order, hidden, is_system
+	`, req.Name, req.SortOrder, req.Hidden, id).Scan(&g.ID, &g.Name, &g.SortOrder, &g.Hidden, &g.IsSystem)
 	if err != nil {
 		return g, fmt.Errorf("update category group: %w", err)
 	}
@@ -99,6 +99,15 @@ func (r *CategoryRepo) UpdateGroup(ctx context.Context, id string, req model.Upd
 }
 
 func (r *CategoryRepo) DeleteGroup(ctx context.Context, id string) error {
+	var isSystem bool
+	if err := r.pool.QueryRow(ctx,
+		`SELECT is_system FROM category_groups WHERE id = $1`, id,
+	).Scan(&isSystem); err != nil {
+		return fmt.Errorf("check group exists: %w", err)
+	}
+	if isSystem {
+		return fmt.Errorf("cannot delete system category group")
+	}
 	var count int
 	if err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM categories WHERE group_id = $1`, id,
@@ -139,6 +148,15 @@ func (r *CategoryRepo) UpdateCategory(ctx context.Context, id string, req model.
 }
 
 func (r *CategoryRepo) DeleteCategory(ctx context.Context, id string) error {
+	var isSystem bool
+	if err := r.pool.QueryRow(ctx,
+		`SELECT is_system FROM categories WHERE id = $1`, id,
+	).Scan(&isSystem); err != nil {
+		return fmt.Errorf("check category exists: %w", err)
+	}
+	if isSystem {
+		return fmt.Errorf("cannot delete system category")
+	}
 	var count int
 	if err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM transactions WHERE category_id = $1`, id,
