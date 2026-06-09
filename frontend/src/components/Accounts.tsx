@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { updateTransaction, deleteTransaction, createTransaction, createTransfer, fetchTransactionsPage, batchTransactions, reconcileAccount, fetchTransferCandidates, linkTransfer, linkTransferBatch, updateAccount, deleteAccount, type TxnPage, type TxnFilterParams } from '../api';
+import { updateTransaction, deleteTransaction, createTransaction, createTransfer, fetchTransactionsPage, batchTransactions, reconcileAccount, fetchTransferCandidates, linkTransfer, linkTransferBatch, linkOrCreateBatch, updateAccount, deleteAccount, type TxnPage, type TxnFilterParams, type LinkOrCreatePair } from '../api';
 import { useToast } from './Toast';
 import { T, GROUP_COLORS } from '../theme';
 import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
@@ -210,6 +210,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
 
   const [batchReview, setBatchReview] = useState<{
     payee: string;
+    targetPayee: string;
     targetAccountId: string;
     pairs: Array<{ source: Transaction; candidate: Transaction | null; include: boolean }>;
   } | null>(null);
@@ -386,43 +387,60 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   const handleLinkConfirm = async (candidateId: string) => {
     if (!linkModal) return;
     try {
-      await linkTransfer(linkModal.txn.id, candidateId);
+      const result = await linkTransfer(linkModal.txn.id, candidateId);
       reload();
       const savedModal = linkModal;
       setLinkModal(null);
 
-      // Check for other unlinked rows with the same payee.
+      // Capture the payee mapping from the first confirmed link.
+      const targetPayee = result.to.payee;
+      const tgtAccId = savedModal.targetAccountId;
+
+      // Find all other unlinked source-side transactions with the same payee.
       const samePay = page?.transactions.filter(
         t => t.payee === savedModal.txn.payee && !t.transfer_peer_id && t.id !== savedModal.txn.id
       ) ?? [];
+
       if (samePay.length > 0) {
-        const tgtAccId = savedModal.targetAccountId;
-        const amount = savedModal.txn.outflow > 0 ? -savedModal.txn.outflow : savedModal.txn.inflow;
-        const allCands = await fetchTransferCandidates(tgtAccId, amount).catch(() => []);
+        // Fetch target account transactions matching the target payee (search is ILIKE).
+        const targetPage = await fetchTransactionsPage(tgtAccId, { search: targetPayee, per_page: 200 }).catch(() => null);
+        const targetCands = (targetPage?.transactions ?? []).filter(c => !c.transfer_peer_id && c.payee === targetPayee);
+
         const pairs = samePay.map(src => {
-          const best = allCands
-            .filter(c => !c.transfer_peer_id)
-            .sort((a, b) =>
-              Math.abs(new Date(a.date).getTime() - new Date(src.date).getTime()) -
-              Math.abs(new Date(b.date).getTime() - new Date(src.date).getTime())
-            )[0] ?? null;
-          return { source: src, candidate: best, include: best !== null };
+          const srcAmt = src.outflow > 0 ? src.outflow : src.inflow;
+          // Match: same target payee (already filtered), same date, same magnitude.
+          const best = targetCands.find(
+            c => c.date === src.date && Math.abs((c.inflow || c.outflow) - srcAmt) < 0.001
+          ) ?? null;
+          return { source: src, candidate: best, include: true };
         });
-        setBatchReview({ payee: savedModal.txn.payee, targetAccountId: tgtAccId, pairs });
+
+        setBatchReview({ payee: savedModal.txn.payee, targetPayee, targetAccountId: tgtAccId, pairs });
       }
     } catch (e: any) {
-      alert('Link failed: ' + e.message);
+      alert('Link failed: ' + (e as Error).message);
     }
   };
 
   const handleBatchLink = async () => {
     if (!batchReview) return;
-    const pairs: [string, string][] = batchReview.pairs
-      .filter(p => p.include && p.candidate)
-      .map(p => [p.source.id, p.candidate!.id]);
-    if (pairs.length === 0) { setBatchReview(null); return; }
+    const selected = batchReview.pairs.filter(p => p.include);
+    if (selected.length === 0) { setBatchReview(null); return; }
     try {
-      await linkTransferBatch(pairs);
+      const payload: LinkOrCreatePair[] = selected.map(p =>
+        p.candidate
+          ? { source_id: p.source.id, target_id: p.candidate.id }
+          : {
+              source_id: p.source.id,
+              target_account_id: batchReview.targetAccountId,
+              target_payee: batchReview.targetPayee,
+              target_date: p.source.date,
+              target_amount: p.source.outflow > 0
+                ? Math.round(p.source.outflow * 100)
+                : -Math.round(p.source.inflow * 100),
+            }
+      );
+      await linkOrCreateBatch(payload);
       reload();
       setBatchReview(null);
     } catch (e: any) {
@@ -723,7 +741,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['', 'This account', '', 'Target account'].map((h, i) => (
+                  {['', 'This account', '', 'Peer (existing / to create)'].map((h, i) => (
                     <th key={i} style={{ fontSize: 10.5, fontWeight: 700, color: T.textDim, textAlign: 'left', padding: '6px 8px', borderBottom: `1px solid ${T.border}` }}>{h}</th>
                   ))}
                 </tr>
@@ -735,7 +753,6 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                       <input
                         type="checkbox"
                         checked={pair.include}
-                        disabled={!pair.candidate}
                         onChange={() => setBatchReview(br => br ? {
                           ...br,
                           pairs: br.pairs.map((p, j) => j === i ? { ...p, include: !p.include } : p)
@@ -749,8 +766,17 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                     <td style={{ padding: '8px 4px', color: T.textDim }}>→</td>
                     <td style={{ padding: '8px 8px', fontSize: 12 }}>
                       {pair.candidate
-                        ? <><div style={{ fontWeight: 600, color: T.text }}>{pair.candidate.date}</div><div style={{ color: T.textDim }}>{fmt(pair.candidate.inflow || pair.candidate.outflow)}</div></>
-                        : <span style={{ color: T.textDim, fontStyle: 'italic' }}>No candidate found</span>
+                        ? <>
+                            <div style={{ fontWeight: 600, color: T.text }}>{pair.candidate.date}</div>
+                            <div style={{ color: T.textDim }}>{fmt(pair.candidate.inflow || pair.candidate.outflow)}</div>
+                          </>
+                        : <>
+                            <div style={{ fontWeight: 600, color: T.textDim }}>{pair.source.date}</div>
+                            <div style={{ color: T.textDim, display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {fmt(pair.source.inflow || pair.source.outflow)}
+                              <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-dim)', borderRadius: 3, padding: '1px 4px' }}>New</span>
+                            </div>
+                          </>
                       }
                     </td>
                   </tr>
@@ -768,7 +794,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
                   disabled={batchReview.pairs.filter(p => p.include).length === 0}
                   style={{ padding: '7px 18px', borderRadius: 7, background: 'var(--accent)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: batchReview.pairs.filter(p => p.include).length === 0 ? 0.45 : 1 }}
                 >
-                  Link {batchReview.pairs.filter(p => p.include).length} pairs
+                  Link / Create {batchReview.pairs.filter(p => p.include).length} pairs
                 </button>
               </div>
             </div>
