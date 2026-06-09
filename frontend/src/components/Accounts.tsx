@@ -406,12 +406,14 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
         const targetPage = await fetchTransactionsPage(tgtAccId, { search: targetPayee, per_page: 200 }).catch(() => null);
         const targetCands = (targetPage?.transactions ?? []).filter(c => !c.transfer_peer_id && c.payee === targetPayee);
 
+        const usedCandidateIds = new Set<string>();
         const pairs = samePay.map(src => {
           const srcAmt = src.outflow > 0 ? src.outflow : src.inflow;
           // Match: same target payee (already filtered), same date, same magnitude.
           const best = targetCands.find(
-            c => c.date === src.date && Math.abs((c.inflow || c.outflow) - srcAmt) < 0.001
+            c => !usedCandidateIds.has(c.id) && c.date === src.date && Math.abs((c.inflow || c.outflow) - srcAmt) < 0.001
           ) ?? null;
+          if (best) usedCandidateIds.add(best.id);
           return { source: src, candidate: best, include: true };
         });
 
