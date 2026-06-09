@@ -237,6 +237,14 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   const [moveCat, setMoveCat] = useState<string | null>(null);
   const [inspectorCat, setInspectorCat] = useState<string | null>(null);
 
+  // Sync groups when the prop arrives after mount (race condition: Budget can mount before the
+  // initial fetchCategoryGroupsRaw resolves, leaving groups empty forever).
+  useEffect(() => {
+    if (categoryGroups.length > 0) {
+      setGroups(categoryGroups.map(g => ({ ...g, categories: [...g.categories] })));
+    }
+  }, [categoryGroups]);
+
   useEffect(() => {
     setLoading(true);
     const nameById: Record<string, string> = Object.fromEntries(
