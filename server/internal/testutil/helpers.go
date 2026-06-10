@@ -178,6 +178,84 @@ func SeedLinkedPair(t *testing.T, pool *pgxpool.Pool, accA, accB, date string, a
 	return idA, idB
 }
 
+// SeedCategoryWithCurrency inserts a category with the given currency and returns its ID.
+func SeedCategoryWithCurrency(t *testing.T, pool *pgxpool.Pool, currency string) string {
+	t.Helper()
+	groupID := SeedGroup(t, pool)
+	var id string
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO categories (group_id, name, sort_order, currency)
+		 VALUES ($1::uuid, $2, 0, $3) RETURNING id::text`,
+		groupID, fmt.Sprintf("TestCat-%d", randomID()), currency,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("SeedCategoryWithCurrency: %v", err)
+	}
+	return id
+}
+
+// SeedOnBudgetAccountWithCurrency inserts an on-budget account with the given currency and returns its ID.
+func SeedOnBudgetAccountWithCurrency(t *testing.T, pool *pgxpool.Pool, currency string, balance int64) string {
+	t.Helper()
+	var id string
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO accounts (name, type, currency, balance, on_budget)
+		 VALUES ($1, 'checking', $2, $3, true) RETURNING id::text`,
+		fmt.Sprintf("TestAcc-%d", randomID()), currency, balance,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("SeedOnBudgetAccountWithCurrency: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM accounts WHERE id = $1::uuid`, id)
+	})
+	return id
+}
+
+// SeedExchangeRate inserts an exchange rate for a date (upserts if exists).
+func SeedExchangeRate(t *testing.T, pool *pgxpool.Pool, date string, usdToCRC float64) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO exchange_rates (date, usd_to_crc, source)
+		 VALUES ($1::date, $2, 'test')
+		 ON CONFLICT (date) DO UPDATE SET usd_to_crc = EXCLUDED.usd_to_crc`,
+		date, usdToCRC,
+	)
+	if err != nil {
+		t.Fatalf("SeedExchangeRate: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM exchange_rates WHERE date = $1::date`, date)
+	})
+}
+
+// SeedTransactionWithCurrency inserts a transaction with the given currency and optional exchange rate.
+func SeedTransactionWithCurrency(t *testing.T, pool *pgxpool.Pool, accountID, categoryID, date string, amount int64, currency string, exchangeRate *float64) string {
+	t.Helper()
+	var id string
+	var err error
+	if exchangeRate != nil {
+		err = pool.QueryRow(context.Background(),
+			`INSERT INTO transactions (account_id, category_id, date, amount, currency, exchange_rate)
+			 VALUES ($1::uuid, $2::uuid, $3::date, $4, $5, $6) RETURNING id::text`,
+			accountID, categoryID, date, amount, currency, *exchangeRate,
+		).Scan(&id)
+	} else {
+		err = pool.QueryRow(context.Background(),
+			`INSERT INTO transactions (account_id, category_id, date, amount, currency)
+			 VALUES ($1::uuid, $2::uuid, $3::date, $4, $5) RETURNING id::text`,
+			accountID, categoryID, date, amount, currency,
+		).Scan(&id)
+	}
+	if err != nil {
+		t.Fatalf("SeedTransactionWithCurrency: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM transactions WHERE id = $1::uuid`, id)
+	})
+	return id
+}
+
 var idCounter int64
 
 func randomID() int64 {

@@ -16,7 +16,7 @@ func NewCategoryRepo(pool *pgxpool.Pool) *CategoryRepo { return &CategoryRepo{po
 func (r *CategoryRepo) ListGroups(ctx context.Context) ([]model.CategoryGroup, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT g.id::text, g.name, g.sort_order, g.hidden, g.is_system,
-		       c.id::text, c.name, c.hidden, c.sort_order, c.is_system
+		       c.id::text, c.name, c.hidden, c.sort_order, c.is_system, c.currency
 		FROM category_groups g
 		LEFT JOIN categories c ON c.group_id = g.id AND c.hidden = false
 		ORDER BY g.sort_order, g.name, c.sort_order, c.name
@@ -37,9 +37,10 @@ func (r *CategoryRepo) ListGroups(ctx context.Context) ([]model.CategoryGroup, e
 		var cHidden *bool
 		var cSort *int
 		var cSystem *bool
+		var cCurrency *string
 
 		if err := rows.Scan(&gID, &gName, &gSort, &gHidden, &gSystem,
-			&cID, &cName, &cHidden, &cSort, &cSystem); err != nil {
+			&cID, &cName, &cHidden, &cSort, &cSystem, &cCurrency); err != nil {
 			return nil, fmt.Errorf("scan category row: %w", err)
 		}
 
@@ -55,9 +56,13 @@ func (r *CategoryRepo) ListGroups(ctx context.Context) ([]model.CategoryGroup, e
 			if cSystem != nil {
 				sys = *cSystem
 			}
+			cur := "CRC"
+			if cCurrency != nil {
+				cur = *cCurrency
+			}
 			groupMap[gID].Categories = append(groupMap[gID].Categories, model.Category{
 				ID: *cID, GroupID: gID, Name: *cName,
-				Hidden: *cHidden, SortOrder: *cSort, IsSystem: sys,
+				Currency: cur, Hidden: *cHidden, SortOrder: *cSort, IsSystem: sys,
 			})
 		}
 	}
@@ -122,12 +127,18 @@ func (r *CategoryRepo) DeleteGroup(ctx context.Context, id string) error {
 }
 
 func (r *CategoryRepo) CreateCategory(ctx context.Context, req model.CreateCategoryReq) (model.Category, error) {
+	currency := req.Currency
+	if currency == "" {
+		currency = "CRC"
+	}
 	var c model.Category
 	err := r.pool.QueryRow(ctx, `
-		INSERT INTO categories (group_id, name, sort_order)
-		VALUES ($1, $2, $3)
-		RETURNING id::text, group_id::text, name, hidden, sort_order
-	`, req.GroupID, req.Name, req.SortOrder).Scan(&c.ID, &c.GroupID, &c.Name, &c.Hidden, &c.SortOrder)
+		INSERT INTO categories (group_id, name, sort_order, currency)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id::text, group_id::text, name, hidden, sort_order, currency
+	`, req.GroupID, req.Name, req.SortOrder, currency).Scan(
+		&c.ID, &c.GroupID, &c.Name, &c.Hidden, &c.SortOrder, &c.Currency,
+	)
 	if err != nil {
 		return c, fmt.Errorf("create category: %w", err)
 	}
@@ -135,16 +146,46 @@ func (r *CategoryRepo) CreateCategory(ctx context.Context, req model.CreateCateg
 }
 
 func (r *CategoryRepo) UpdateCategory(ctx context.Context, id string, req model.UpdateCategoryReq) (model.Category, error) {
+	currency := req.Currency
+	if currency == "" {
+		if err := r.pool.QueryRow(ctx,
+			`SELECT currency FROM categories WHERE id = $1::uuid`, id,
+		).Scan(&currency); err != nil {
+			return model.Category{}, fmt.Errorf("get existing currency: %w", err)
+		}
+	}
 	var c model.Category
 	err := r.pool.QueryRow(ctx, `
-		UPDATE categories SET name=$1, hidden=$2, sort_order=$3, updated_at=NOW()
-		WHERE id=$4
-		RETURNING id::text, group_id::text, name, hidden, sort_order
-	`, req.Name, req.Hidden, req.SortOrder, id).Scan(&c.ID, &c.GroupID, &c.Name, &c.Hidden, &c.SortOrder)
+		UPDATE categories SET name=$1, hidden=$2, sort_order=$3, currency=$4, updated_at=NOW()
+		WHERE id=$5
+		RETURNING id::text, group_id::text, name, hidden, sort_order, currency
+	`, req.Name, req.Hidden, req.SortOrder, currency, id).Scan(
+		&c.ID, &c.GroupID, &c.Name, &c.Hidden, &c.SortOrder, &c.Currency,
+	)
 	if err != nil {
 		return c, fmt.Errorf("update category: %w", err)
 	}
 	return c, nil
+}
+
+// GetCurrencies returns a map of category ID → currency for the given IDs.
+func (r *CategoryRepo) GetCurrencies(ctx context.Context, ids []string) (map[string]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id::text, currency FROM categories WHERE id::text = ANY($1)`, ids,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get currencies: %w", err)
+	}
+	defer rows.Close()
+	out := make(map[string]string, len(ids))
+	for rows.Next() {
+		var cid, cur string
+		if err := rows.Scan(&cid, &cur); err != nil {
+			return nil, fmt.Errorf("scan currency: %w", err)
+		}
+		out[cid] = cur
+	}
+	return out, rows.Err()
 }
 
 func (r *CategoryRepo) DeleteCategory(ctx context.Context, id string) error {

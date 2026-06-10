@@ -4,6 +4,7 @@ type Category struct {
 	ID        string `json:"id"`
 	GroupID   string `json:"group_id"`
 	Name      string `json:"name"`
+	Currency  string `json:"currency"`
 	Hidden    bool   `json:"hidden"`
 	SortOrder int    `json:"sort_order"`
 	IsSystem  bool   `json:"is_system"`
@@ -21,11 +22,13 @@ type CategoryGroup struct {
 type CreateCategoryReq struct {
 	GroupID   string `json:"group_id"`
 	Name      string `json:"name"`
+	Currency  string `json:"currency"`
 	SortOrder int    `json:"sort_order"`
 }
 
 type UpdateCategoryReq struct {
 	Name      string `json:"name"`
+	Currency  string `json:"currency"`
 	Hidden    bool   `json:"hidden"`
 	SortOrder int    `json:"sort_order"`
 }

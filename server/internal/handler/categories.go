@@ -25,6 +25,7 @@ func (h *CategoryHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	type catResp struct {
 		ID        string `json:"id"`
 		Name      string `json:"name"`
+		Currency  string `json:"currency"`
 		Hidden    bool   `json:"hidden"`
 		SortOrder int    `json:"sort_order"`
 		IsSystem  bool   `json:"is_system"`
@@ -42,7 +43,7 @@ func (h *CategoryHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	for i, g := range groups {
 		cats := make([]catResp, len(g.Categories))
 		for j, c := range g.Categories {
-			cats[j] = catResp{ID: c.ID, Name: c.Name, Hidden: c.Hidden, SortOrder: c.SortOrder, IsSystem: c.IsSystem}
+			cats[j] = catResp{ID: c.ID, Name: c.Name, Currency: c.Currency, Hidden: c.Hidden, SortOrder: c.SortOrder, IsSystem: c.IsSystem}
 		}
 		resp[i] = groupResp{ID: g.ID, Name: g.Name, SortOrder: g.SortOrder, Hidden: g.Hidden, IsSystem: g.IsSystem, Categories: cats}
 	}
@@ -91,6 +92,10 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 	var req model.CreateCategoryReq
 	if err := readJSON(r, &req); err != nil || req.Name == "" || req.GroupID == "" {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "group_id and name are required")
+		return
+	}
+	if req.Currency != "" && req.Currency != "CRC" && req.Currency != "USD" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "currency must be CRC or USD")
 		return
 	}
 	c, err := h.repo.CreateCategory(r.Context(), req)
