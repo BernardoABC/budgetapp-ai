@@ -16,7 +16,8 @@ func TestBudgetService_GetMonth_Empty(t *testing.T) {
 	budgetRepo := repository.NewBudgetRepo(pool)
 	targetRepo := repository.NewTargetRepo(pool)
 	catRepo := repository.NewCategoryRepo(pool)
-	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo)
+	rateRepo := repository.NewExchangeRateRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo, rateRepo)
 
 	ctx := context.Background()
 	result, err := svc.GetMonth(ctx, "2026-04")
@@ -36,7 +37,8 @@ func TestBudgetService_GetMonth_Rollover(t *testing.T) {
 	budgetRepo := repository.NewBudgetRepo(pool)
 	targetRepo := repository.NewTargetRepo(pool)
 	catRepo := repository.NewCategoryRepo(pool)
-	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo)
+	rateRepo := repository.NewExchangeRateRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo, rateRepo)
 
 	ctx := context.Background()
 
@@ -111,7 +113,8 @@ func TestBudgetService_AgeOfMoney(t *testing.T) {
 	budgetRepo := repository.NewBudgetRepo(pool)
 	targetRepo := repository.NewTargetRepo(pool)
 	catRepo := repository.NewCategoryRepo(pool)
-	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo)
+	rateRepo := repository.NewExchangeRateRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo, rateRepo)
 
 	ctx := context.Background()
 
@@ -153,7 +156,8 @@ func TestBudgetService_GetMonth_SystemCategoryInflowIncreasesRTA(t *testing.T) {
 	budgetRepo := repository.NewBudgetRepo(pool)
 	targetRepo := repository.NewTargetRepo(pool)
 	catRepo := repository.NewCategoryRepo(pool)
-	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo)
+	rateRepo := repository.NewExchangeRateRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo, rateRepo)
 	ctx := context.Background()
 
 	// Get the seeded system category ID.
@@ -191,5 +195,54 @@ func TestBudgetService_GetMonth_SystemCategoryInflowIncreasesRTA(t *testing.T) {
 		if g.Name == "Inflows" {
 			t.Errorf("system group 'Inflows' must not appear in budget CategoryGroups")
 		}
+	}
+}
+
+func TestBudgetService_GetMonth_MultiCurrencyRTA(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	budgetRepo := repository.NewBudgetRepo(pool)
+	targetRepo := repository.NewTargetRepo(pool)
+	catRepo    := repository.NewCategoryRepo(pool)
+	rateRepo   := repository.NewExchangeRateRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo, rateRepo)
+
+	ctx := context.Background()
+
+	testutil.SeedExchangeRate(t, pool, "2026-06-01", 500.0)
+
+	testutil.SeedOnBudgetAccountWithCurrency(t, pool, "CRC", 50000000)
+	testutil.SeedOnBudgetAccountWithCurrency(t, pool, "USD", 100000)
+
+	result, err := svc.GetMonth(ctx, "2026-06")
+	if err != nil {
+		t.Fatalf("GetMonth: %v", err)
+	}
+
+	if result.RTABreakdown.CRCAccounts < 50000000 {
+		t.Errorf("CRCAccounts should be >= 50000000, got %d", result.RTABreakdown.CRCAccounts)
+	}
+	if result.RTABreakdown.USDNative < 100000 {
+		t.Errorf("USDNative should be >= 100000, got %d", result.RTABreakdown.USDNative)
+	}
+	if result.RTABreakdown.USDAccountsCRC < 50000000 {
+		t.Errorf("USDAccountsCRC should be >= 50000000, got %d", result.RTABreakdown.USDAccountsCRC)
+	}
+}
+
+func TestBudgetService_Move_CrossCurrencyRejected(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	budgetRepo := repository.NewBudgetRepo(pool)
+	targetRepo := repository.NewTargetRepo(pool)
+	catRepo    := repository.NewCategoryRepo(pool)
+	rateRepo   := repository.NewExchangeRateRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo, rateRepo)
+
+	ctx := context.Background()
+	crcCat := testutil.SeedCategoryWithCurrency(t, pool, "CRC")
+	usdCat := testutil.SeedCategoryWithCurrency(t, pool, "USD")
+
+	err := svc.Move(ctx, "2026-06", crcCat, usdCat, 10000)
+	if err == nil {
+		t.Fatal("expected error moving money between different currencies, got nil")
 	}
 }
