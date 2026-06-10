@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { T, GROUP_COLORS } from '../theme';
 import { compute, quickAssign as engineQuickAssign, targetLabel } from '../engine';
 import { MoveMoneyModal, CategoryInspector } from './BudgetModals';
@@ -43,26 +43,31 @@ function InlineRename({ value, onCommit, style }: { value: string; onCommit: (v:
   );
 }
 
-function BudgetCell({ value, onSave, fmt }: { value: number; onSave: (v: number) => void; fmt: (n: number) => string }) {
-  const [editing, setEditing] = useState(false);
-  const [input, setInput] = useState('');
-  const [hovered, setHovered] = useState(false);
-  const startEdit = () => { setInput(String(value)); setEditing(true); };
-  const commit = () => { const num = parseFloat(input.replace(/[^0-9.-]/g, '')); if (!isNaN(num)) onSave(num); setEditing(false); };
-  if (editing) {
-    return <input autoFocus value={input} onChange={e => setInput(e.target.value)} onBlur={commit}
-      onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }} style={st.cellInput} />;
+interface BudgetCellHandle { startEdit: () => void; }
+
+const BudgetCell = forwardRef<BudgetCellHandle, { value: number; onSave: (v: number) => void; fmt: (n: number) => string }>(
+  ({ value, onSave, fmt }, ref) => {
+    const [editing, setEditing] = useState(false);
+    const [input, setInput] = useState('');
+    const [hovered, setHovered] = useState(false);
+    const startEdit = () => { setInput(String(value)); setEditing(true); };
+    useImperativeHandle(ref, () => ({ startEdit }));
+    const commit = () => { const num = parseFloat(input.replace(/[^0-9.-]/g, '')); if (!isNaN(num)) onSave(num); setEditing(false); };
+    if (editing) {
+      return <input autoFocus value={input} onChange={e => setInput(e.target.value)} onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }} style={st.cellInput} />;
+    }
+    return (
+      <div onClick={e => { e.stopPropagation(); startEdit(); }} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+        style={{ ...st.cellClickable, ...(hovered ? st.cellHovered : {}) }}>
+        {fmt(value)}
+        <span style={{ ...st.pencil, opacity: hovered ? 1 : 0 }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L18.5 9.5a2 2 0 0 0-3-3L5 17v3z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>
+        </span>
+      </div>
+    );
   }
-  return (
-    <div onClick={startEdit} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ ...st.cellClickable, ...(hovered ? st.cellHovered : {}) }}>
-      {fmt(value)}
-      <span style={{ ...st.pencil, opacity: hovered ? 1 : 0 }}>
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L18.5 9.5a2 2 0 0 0-3-3L5 17v3z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>
-      </span>
-    </div>
-  );
-}
+);
 
 interface GroupBlockProps {
   group: CategoryGroup;
@@ -87,14 +92,19 @@ interface GroupBlockProps {
   onRenameGroup: (gid: string, name: string) => void;
   onMoveGroup: (idx: number, dir: number) => void;
   onDeleteGroup: (gid: string) => void;
+  onReorderCat: (gid: string, fromIdx: number, toIdx: number) => void;
 }
 
 function GroupBlock(props: GroupBlockProps) {
   const { group, gidx, color, catState, collapsed, onToggle, fmt, onSaveAssigned, onOpenMove, onOpenInspector,
-    rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup, onMoveGroup, onDeleteGroup } = props;
+    rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup, onMoveGroup, onDeleteGroup, onReorderCat } = props;
   const [hovCat, setHovCat] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newCat, setNewCat] = useState('');
+  const cellRefs = useRef<Record<string, BudgetCellHandle | null>>({});
+  const [dragCat, setDragCat] = useState<string | null>(null);
+  const [dragOverCat, setDragOverCat] = useState<string | null>(null);
+  const dragHappened = useRef(false);
 
   const visibleCats = group.categories.filter(c => showHidden || !hidden.has(c));
   const totAssigned = group.categories.reduce((s, c) => s + (catState[c]?.assigned ?? 0), 0);
@@ -140,10 +150,35 @@ function GroupBlock(props: GroupBlockProps) {
         const isHidden = hidden.has(cat);
         const realIdx = group.categories.indexOf(cat);
 
+        const isDragOver = dragOverCat === cat && dragCat !== cat;
+        const dragRowStyle: React.CSSProperties = isDragOver
+          ? { boxShadow: `inset 0 2px 0 var(--accent)` }
+          : dragCat === cat ? { opacity: 0.4 } : {};
+
+        const dragHandlers = editMode ? {} : {
+          draggable: true as const,
+          onDragStart: (e: React.DragEvent) => { dragHappened.current = false; setDragCat(cat); e.dataTransfer.effectAllowed = 'move'; },
+          onDragOver: (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverCat(cat); },
+          onDragLeave: () => setDragOverCat(null),
+          onDrop: (e: React.DragEvent) => {
+            e.preventDefault();
+            if (dragCat && dragCat !== cat) {
+              dragHappened.current = true;
+              const fromIdx = group.categories.indexOf(dragCat);
+              const toIdx = group.categories.indexOf(cat);
+              if (fromIdx !== -1 && toIdx !== -1) onReorderCat(group.id, fromIdx, toIdx);
+            }
+            setDragCat(null); setDragOverCat(null);
+          },
+          onDragEnd: () => { setDragCat(null); setDragOverCat(null); },
+        };
+
         return (
           <React.Fragment key={cat}>
-            <tr style={{ ...st.catRow, background: rowBg, opacity: isHidden ? 0.45 : 1 }}
-              onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}>
+            <tr style={{ ...st.catRow, background: rowBg, opacity: isHidden ? 0.45 : 1, cursor: editMode ? 'default' : 'text', ...dragRowStyle }}
+              onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}
+              onClick={editMode ? undefined : () => { if (dragHappened.current) { dragHappened.current = false; return; } cellRefs.current[cat]?.startEdit(); }}
+              {...dragHandlers}>
               <td style={{ ...st.catCell, padding: rowPad + ' 16px 5px 40px', borderBottom: 'none' }}>
                 {editMode ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -157,13 +192,14 @@ function GroupBlock(props: GroupBlockProps) {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <button onClick={() => onOpenInspector(cat)} style={{ ...st.catName, color: over ? T.neg : T.textMid }}>{cat}</button>
+                    <span style={{ ...st.dragHandle, opacity: hovCat === cat ? 0.35 : 0 }}>⠿</span>
+                    <button onClick={e => { e.stopPropagation(); onOpenInspector(cat); }} style={{ ...st.catName, color: over ? T.neg : T.textMid }}>{cat}</button>
                     {tLabel && <span style={st.targetChip} title="Target">◎ {tLabel}</span>}
                     {c.underfunded > 0 && <span style={st.underBadge}>−{fmt(c.underfunded)}</span>}
                   </div>
                 )}
               </td>
-              <td style={{ ...st.numCell, padding: '0 16px', borderBottom: 'none' }}><BudgetCell value={c.assigned} onSave={v => onSaveAssigned(cat, v)} fmt={fmt} /></td>
+              <td style={{ ...st.numCell, padding: '0 16px', borderBottom: 'none' }}><BudgetCell ref={el => { cellRefs.current[cat] = el; }} value={c.assigned} onSave={v => onSaveAssigned(cat, v)} fmt={fmt} /></td>
               <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.activity < 0 ? T.textDim : T.pos }}>{fmt(c.activity)}</td>
               <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none' }}>
                 <button onClick={e => { e.stopPropagation(); onOpenMove(cat); }}
@@ -173,7 +209,9 @@ function GroupBlock(props: GroupBlockProps) {
                 </button>
               </td>
             </tr>
-            <tr style={{ background: rowBg }} onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}>
+            <tr style={{ background: rowBg, cursor: editMode ? 'default' : 'text' }} onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}
+              onClick={editMode ? undefined : () => { if (dragHappened.current) { dragHappened.current = false; return; } cellRefs.current[cat]?.startEdit(); }}
+              {...dragHandlers}>
               <td colSpan={4} style={{ padding: '0 16px ' + rowPad, borderBottom: `1px solid ${T.borderSoft}` }}>
                 <div style={st.barRowWrap}>
                   <div style={st.barTrack}><div style={{ ...st.barFill, width: pct + '%', background: barColor, boxShadow: pct > 0 ? `0 0 8px ${barColor}66` : 'none' }} /></div>
@@ -398,6 +436,20 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     [arr[idx], arr[j]] = [arr[j], arr[idx]];
     return { ...g, categories: arr };
   }));
+
+  const handleReorderCat = useCallback((gid: string, fromIdx: number, toIdx: number) => {
+    setGroups(gs => gs.map(g => {
+      if (g.id !== gid) return g;
+      const arr = [...g.categories];
+      const [moved] = arr.splice(fromIdx, 1);
+      arr.splice(toIdx, 0, moved);
+      arr.forEach((catName, idx) => {
+        const catId = categoryIdByName[catName];
+        if (catId) updateCategory(catId, { name: catName, hidden: false, sort_order: idx }).catch(err => toast.error(err.message));
+      });
+      return { ...g, categories: arr };
+    }));
+  }, [categoryIdByName]);
   const hideCat = (name: string) => setHidden(h => { const n = new Set(h); n.has(name) ? n.delete(name) : n.add(name); return n; });
   const deleteCat = (gid: string, name: string) => {
     const catId = categoryIdByName[name];
@@ -546,7 +598,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
                     collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmtMonth} onSaveAssigned={handleSaveAssigned}
                     onOpenMove={setMoveCat} onOpenInspector={setInspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
                     onRenameCat={renameCat} onMoveCat={reorderCat} onHideCat={hideCat} onDeleteCat={deleteCat} onAddCat={addCat}
-                    onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} />
+                    onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} onReorderCat={handleReorderCat} />
                 ))}
               </tbody>
             </table>
@@ -618,4 +670,5 @@ const st = {
   miniBtn:     { padding: '3px 9px', fontSize: 11, fontWeight: 600, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, color: T.textMid, cursor: 'pointer' },
   miniBtnOn:   { padding: '3px 9px', fontSize: 11, fontWeight: 700, background: 'var(--accent)', color: '#06140d', border: 'none', borderRadius: 6, cursor: 'pointer' },
   addCatBtn:   { background: 'none', border: `1px dashed ${T.border}`, borderRadius: 7, color: T.textDim, cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '6px 12px' },
+  dragHandle:  { fontSize: 14, color: T.textDim, cursor: 'grab', transition: 'opacity 0.1s', userSelect: 'none' as const, lineHeight: 1 },
 };

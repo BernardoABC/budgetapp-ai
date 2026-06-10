@@ -172,6 +172,142 @@ interface Props {
   rawCategoryGroups: CategoryGroupAPI[];
 }
 
+type FilterState = {
+  payee: string; category: string; from: string; to: string;
+  cleared: '' | 'true' | 'false';
+  flowType: '' | 'inflow' | 'outflow';
+  transfers: '' | 'only' | 'hide';
+  minAmount: string; maxAmount: string;
+};
+const DEFAULT_FILTER: FilterState = {
+  payee: '', category: '', from: '', to: '',
+  cleared: '', flowType: '', transfers: '',
+  minAmount: '', maxAmount: '',
+};
+function loadPersistedFilter(accountId: string): FilterState {
+  try {
+    const raw = sessionStorage.getItem(`txn_filter_${accountId}`);
+    return raw ? { ...DEFAULT_FILTER, ...JSON.parse(raw) } : DEFAULT_FILTER;
+  } catch { return DEFAULT_FILTER; }
+}
+function loadPersistedSort(accountId: string): string {
+  try { return sessionStorage.getItem(`txn_sort_${accountId}`) ?? 'date_desc'; } catch { return 'date_desc'; }
+}
+
+function DateFilterButton({ from, to, onChange }: {
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const presets = [
+    {
+      label: 'This month',
+      from: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; })(),
+      to: today,
+    },
+    {
+      label: 'Last 3 months',
+      from: (() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; })(),
+      to: today,
+    },
+    {
+      label: 'This year',
+      from: `${new Date().getFullYear()}-01-01`,
+      to: today,
+    },
+    {
+      label: 'Last year',
+      from: `${new Date().getFullYear() - 1}-01-01`,
+      to: `${new Date().getFullYear() - 1}-12-31`,
+    },
+  ];
+
+  const activePreset = presets.find(p => p.from === from && p.to === to);
+  const hasDate = from || to;
+  const label = activePreset ? activePreset.label : hasDate ? 'Custom range' : 'Dates';
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{ ...st.filterSelect, fontFamily: 'inherit' }}
+      >
+        {label}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+          background: 'var(--surface2, #1a1a1a)', border: '1px solid var(--border-hi, #333)',
+          borderRadius: 10, padding: '6px 0', zIndex: 150,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)', minWidth: 210,
+        }}>
+          {presets.map(p => {
+            const active = p.from === from && p.to === to;
+            return (
+              <button
+                key={p.label}
+                onClick={() => { onChange(p.from, p.to); setOpen(false); }}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '8px 14px', fontSize: 13,
+                  color: active ? 'var(--accent)' : 'var(--text, #e8e8e8)',
+                  background: active ? 'var(--accent-dim, rgba(61,220,151,0.1))' : 'transparent',
+                  border: 'none', cursor: 'pointer', fontWeight: active ? 700 : 400,
+                }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)'; }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+          <div style={{ height: 1, background: 'var(--border, #2a2a2a)', margin: '6px 0' }} />
+          <div style={{ padding: '6px 14px 10px' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-faint, #555)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 8 }}>Custom range</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <input
+                type="date"
+                value={from}
+                onChange={e => onChange(e.target.value, to)}
+                style={{ padding: '6px 8px', fontSize: 12, border: '1px solid var(--border, #2a2a2a)', borderRadius: 6, background: 'var(--surface, #141414)', color: 'var(--text, #e8e8e8)', width: '100%' }}
+              />
+              <input
+                type="date"
+                value={to}
+                onChange={e => onChange(from, e.target.value)}
+                style={{ padding: '6px 8px', fontSize: 12, border: '1px solid var(--border, #2a2a2a)', borderRadius: 6, background: 'var(--surface, #141414)', color: 'var(--text, #e8e8e8)', width: '100%' }}
+              />
+            </div>
+          </div>
+          {hasDate && (
+            <div style={{ padding: '0 14px 8px' }}>
+              <button
+                onClick={() => { onChange('', ''); setOpen(false); }}
+                style={{ fontSize: 11.5, color: 'var(--text-faint, #555)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              >
+                ✕ Clear dates
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Accounts({ accounts, accountId, categoryGroups, fmt, density, categoryIdByName, onAccountsChanged, onDeleted, highlightTxnId, onHighlightConsumed, onNavigateToTransfer, rawCategoryGroups }: Props) {
   const allAccounts = [...accounts.budget, ...accounts.tracking];
   const accountNameById = useMemo(
@@ -205,8 +341,8 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   const [addSaving, _setAddSaving] = useState(false);
 
   const [selected, setSelected] = useState(new Set<string>());
-  const [sort, setSort] = useState('date_desc');
-  const [filter, setFilter] = useState({ payee: '', category: '', from: '', to: '' });
+  const [sort, setSort] = useState(() => loadPersistedSort(accountId));
+  const [filter, setFilter] = useState<FilterState>(() => loadPersistedFilter(accountId));
   const [pageNum, setPageNum] = useState(1);
   const [rules, setRules] = useState<PayeeRule[]>([]);
   const [modal, setModal] = useState<null | 'reconcile' | 'rules' | { split: Transaction }>(null);
@@ -239,11 +375,17 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
       filter.category === '' ? undefined :
       filter.category === '__uncategorized__' ? 'none' :
       (categoryIdByName[filter.category] ?? undefined);
+    const cleared = filter.cleared === 'true' ? true : filter.cleared === 'false' ? false : undefined;
     return {
       search: filter.payee || undefined,
       from_date: filter.from || undefined,
       to_date: filter.to || undefined,
       category_id: categoryId,
+      cleared,
+      min_amount: filter.minAmount ? parseFloat(filter.minAmount) : undefined,
+      max_amount: filter.maxAmount ? parseFloat(filter.maxAmount) : undefined,
+      flow_type: filter.flowType || undefined,
+      transfers: filter.transfers || undefined,
       sort,
       page: pageNum,
       per_page: 50,
@@ -270,15 +412,14 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   const lastAccountId = useRef<string>(accountId);
 
   useEffect(() => {
-    // If account changed, reset filter state immediately before scheduling reload
+    // If account changed, restore persisted filter/sort for the new account
     if (lastAccountId.current !== accountId) {
       lastAccountId.current = accountId;
-      setFilter({ payee: '', category: '', from: '', to: '' });
+      setFilter(loadPersistedFilter(accountId));
+      setSort(loadPersistedSort(accountId));
       setPageNum(1);
       setSelected(new Set());
       setRenamingName(null);
-      // Don't schedule a debounced reload here — the state changes above will
-      // trigger this effect again with the reset values
       return;
     }
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -294,6 +435,14 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     const timer = setTimeout(onHighlightConsumed, 1600);
     return () => clearTimeout(timer);
   }, [page?.transactions, highlightTxnId, onHighlightConsumed]);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(`txn_filter_${accountId}`, JSON.stringify(filter)); } catch {}
+  }, [accountId, filter]);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(`txn_sort_${accountId}`, sort); } catch {}
+  }, [accountId, sort]);
 
   const toggleSelect = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -501,7 +650,12 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     { key: 'date', label: 'Date' }, { key: 'payee', label: 'Payee' }, { key: 'category', label: 'Category' },
     { key: 'memo', label: 'Memo' }, { key: 'outflow', label: 'Outflow' }, { key: 'inflow', label: 'Inflow' }, { key: 'cleared', label: 'C' },
   ];
-  const hasFilter = filter.payee || filter.category || filter.from || filter.to;
+  const filterCount = [
+    !!filter.payee, !!filter.category, !!(filter.from || filter.to),
+    !!filter.cleared, !!filter.flowType, !!filter.transfers,
+    !!filter.minAmount, !!filter.maxAmount,
+  ].filter(Boolean).length;
+  const hasFilter = filterCount > 0;
 
   if (!account) return <div style={{ padding: 40, color: T.textDim, fontSize: 14 }}>Loading…</div>;
 
@@ -588,10 +742,33 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
             </optgroup>
           ))}
         </select>
-        <input type="date" value={filter.from} onChange={e => { setFilter(f => ({ ...f, from: e.target.value })); setPageNum(1); }} style={st.filterInput} />
-        <span style={{ color: T.textFaint, fontSize: 12 }}>→</span>
-        <input type="date" value={filter.to} onChange={e => { setFilter(f => ({ ...f, to: e.target.value })); setPageNum(1); }} style={st.filterInput} />
-        {hasFilter && <button onClick={() => { setFilter({ payee: '', category: '', from: '', to: '' }); setPageNum(1); }} style={st.clearBtn}>Clear</button>}
+        <DateFilterButton
+          from={filter.from}
+          to={filter.to}
+          onChange={(from, to) => { setFilter(f => ({ ...f, from, to })); setPageNum(1); }}
+        />
+        <select value={filter.cleared} onChange={e => { setFilter(f => ({ ...f, cleared: e.target.value as FilterState['cleared'] })); setPageNum(1); }} style={st.filterSelect}>
+          <option value="">All cleared</option>
+          <option value="true">Cleared</option>
+          <option value="false">Uncleared</option>
+        </select>
+        <select value={filter.flowType} onChange={e => { setFilter(f => ({ ...f, flowType: e.target.value as FilterState['flowType'] })); setPageNum(1); }} style={st.filterSelect}>
+          <option value="">All flows</option>
+          <option value="inflow">Inflow only</option>
+          <option value="outflow">Outflow only</option>
+        </select>
+        <select value={filter.transfers} onChange={e => { setFilter(f => ({ ...f, transfers: e.target.value as FilterState['transfers'] })); setPageNum(1); }} style={st.filterSelect}>
+          <option value="">All transactions</option>
+          <option value="only">Transfers only</option>
+          <option value="hide">Hide transfers</option>
+        </select>
+        <input type="number" placeholder="Min $" min="0" step="0.01" value={filter.minAmount} onChange={e => { setFilter(f => ({ ...f, minAmount: e.target.value })); setPageNum(1); }} style={{ ...st.filterInput, width: 74 }} />
+        <input type="number" placeholder="Max $" min="0" step="0.01" value={filter.maxAmount} onChange={e => { setFilter(f => ({ ...f, maxAmount: e.target.value })); setPageNum(1); }} style={{ ...st.filterInput, width: 74 }} />
+        {hasFilter && (
+          <button onClick={() => { setFilter(DEFAULT_FILTER); setPageNum(1); }} style={st.clearBtn}>
+            ✕ Clear{filterCount > 1 ? ` (${filterCount})` : ''}
+          </button>
+        )}
       </div>
 
       {selected.size > 0 && (

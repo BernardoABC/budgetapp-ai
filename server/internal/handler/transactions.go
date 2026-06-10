@@ -86,6 +86,8 @@ func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Reques
 		PerPage:     perPage,
 		MinAmount:   parseAmountParam(q.Get("min_amount")),
 		MaxAmount:   parseAmountParam(q.Get("max_amount")),
+		FlowType:    q.Get("flow_type"),
+		Transfers:   q.Get("transfers"),
 		HighlightID: q.Get("highlight_id"),
 	}
 	if c := q.Get("cleared"); c == "true" {

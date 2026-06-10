@@ -29,6 +29,8 @@ type TxnFilter struct {
 	Cleared    *bool  // nil = all
 	MinAmount  *int64 // centimos, compared against ABS(amount)
 	MaxAmount  *int64 // centimos, compared against ABS(amount)
+	FlowType   string // "inflow" (amount>0), "outflow" (amount<0), or "" (all)
+	Transfers  string // "only" (has peer), "hide" (no peer), or "" (all)
 	Sort        string // see sortClause; default date_desc
 	Page        int    // 1-based, default 1
 	PerPage     int    // default 50, max 200
@@ -77,6 +79,18 @@ func (f TxnFilter) whereClause(accountID string) (string, []any) {
 	}
 	if f.MaxAmount != nil {
 		add("ABS(t.amount) <= ?", *f.MaxAmount)
+	}
+	switch f.FlowType {
+	case "inflow":
+		conds = append(conds, "t.amount > 0")
+	case "outflow":
+		conds = append(conds, "t.amount < 0")
+	}
+	switch f.Transfers {
+	case "only":
+		conds = append(conds, "t.transfer_peer_id IS NOT NULL")
+	case "hide":
+		conds = append(conds, "t.transfer_peer_id IS NULL")
 	}
 	return strings.Join(conds, " AND "), args
 }

@@ -133,6 +133,10 @@ export interface TxnFilterParams {
   to_date?: string;
   category_id?: string;   // UUID, "none", or omitted
   cleared?: boolean;
+  min_amount?: number;    // absolute value in major units
+  max_amount?: number;    // absolute value in major units
+  flow_type?: 'inflow' | 'outflow';
+  transfers?: 'only' | 'hide';
   sort?: string;          // date_desc | date_asc | amount_asc | amount_desc | payee_asc | ...
   page?: number;
   per_page?: number;
@@ -171,6 +175,10 @@ export async function fetchTransactionsPage(
   if (filter.to_date) params.set('to_date', filter.to_date);
   if (filter.category_id) params.set('category_id', filter.category_id);
   if (filter.cleared !== undefined) params.set('cleared', String(filter.cleared));
+  if (filter.min_amount !== undefined) params.set('min_amount', String(Math.round(filter.min_amount * 100)));
+  if (filter.max_amount !== undefined) params.set('max_amount', String(Math.round(filter.max_amount * 100)));
+  if (filter.flow_type) params.set('flow_type', filter.flow_type);
+  if (filter.transfers) params.set('transfers', filter.transfers);
   if (filter.sort) params.set('sort', filter.sort);
   if (filter.highlight_id) params.set('highlight_id', filter.highlight_id);
   params.set('page', String(filter.page ?? 1));
