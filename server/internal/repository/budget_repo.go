@@ -79,14 +79,36 @@ func (r *BudgetRepo) BulkInsertAssignedIfAbsent(ctx context.Context, entries []B
 
 // GetAllActivityUpToMonth returns SUM(amount) grouped by (category_id, YYYY-MM-01)
 // for all on-budget transactions up to the last day of the given month.
-// Result: map[categoryID][YYYY-MM-01] = sum.
+// Amounts are converted to each category's native currency using the transaction's
+// stamped exchange_rate; falls back to the nearest available rate when not stamped.
+// Result: map[categoryID][YYYY-MM-01] = sum in category native currency minor units.
 func (r *BudgetRepo) GetAllActivityUpToMonth(ctx context.Context, month string) (map[string]map[string]int64, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT t.category_id::text,
 		       date_trunc('month', t.date)::date::text AS m,
-		       SUM(t.amount) AS activity
+		       SUM(
+		         CASE
+		           WHEN a.currency = cat.currency THEN t.amount
+		           WHEN cat.currency = 'CRC' THEN
+		             ROUND(t.amount::numeric * COALESCE(
+		               t.exchange_rate,
+		               (SELECT er.usd_to_crc FROM exchange_rates er
+		                WHERE er.date <= t.date ORDER BY er.date DESC LIMIT 1),
+		               500
+		             ))::bigint
+		           WHEN cat.currency = 'USD' THEN
+		             ROUND(t.amount::numeric / COALESCE(
+		               t.exchange_rate,
+		               (SELECT er.usd_to_crc FROM exchange_rates er
+		                WHERE er.date <= t.date ORDER BY er.date DESC LIMIT 1),
+		               500
+		             ))::bigint
+		           ELSE t.amount
+		         END
+		       ) AS activity
 		FROM transactions t
 		JOIN accounts a ON a.id = t.account_id
+		JOIN categories cat ON cat.id = t.category_id
 		WHERE a.on_budget = true
 		  AND t.category_id IS NOT NULL
 		  AND t.date <= $1::date
@@ -120,6 +142,28 @@ func (r *BudgetRepo) GetOnBudgetBalance(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("get on-budget balance: %w", err)
 	}
 	return total, nil
+}
+
+// CurrencyBalance holds on-budget account balances split by currency.
+type CurrencyBalance struct {
+	CRC int64
+	USD int64
+}
+
+// GetOnBudgetBalanceByCurrency returns on-budget account balances split into CRC and USD minor units.
+func (r *BudgetRepo) GetOnBudgetBalanceByCurrency(ctx context.Context) (CurrencyBalance, error) {
+	var bal CurrencyBalance
+	err := r.pool.QueryRow(ctx, `
+		SELECT
+		  COALESCE(SUM(balance) FILTER (WHERE currency = 'CRC'), 0),
+		  COALESCE(SUM(balance) FILTER (WHERE currency = 'USD'), 0)
+		FROM accounts
+		WHERE on_budget = true AND closed = false
+	`).Scan(&bal.CRC, &bal.USD)
+	if err != nil {
+		return bal, fmt.Errorf("get balance by currency: %w", err)
+	}
+	return bal, nil
 }
 
 // GetOutflow30Days returns the sum of absolute values of negative transactions
@@ -167,4 +211,72 @@ func (r *BudgetRepo) AtomicMove(ctx context.Context, fromCatID, toCatID, month s
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// ActivityBreakdownRow is one line of the per-currency activity breakdown for a category in a month.
+type ActivityBreakdownRow struct {
+	CategoryID      string
+	TxnCurrency     string // currency of the source transaction/account
+	Amount          int64  // raw amount in TxnCurrency minor units
+	ConvertedAmount int64  // amount converted to the category's native currency (equals Amount when same currency)
+}
+
+// GetActivityBreakdownForMonth returns per-currency activity for a single month (used for display).
+func (r *BudgetRepo) GetActivityBreakdownForMonth(ctx context.Context, month string) ([]ActivityBreakdownRow, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT t.category_id::text,
+		       a.currency AS txn_currency,
+		       SUM(t.amount) AS amount,
+		       SUM(
+		         CASE
+		           WHEN a.currency = cat.currency THEN t.amount
+		           WHEN cat.currency = 'CRC' THEN
+		             ROUND(t.amount::numeric * COALESCE(
+		               t.exchange_rate,
+		               (SELECT er.usd_to_crc FROM exchange_rates er
+		                WHERE er.date <= t.date ORDER BY er.date DESC LIMIT 1),
+		               500
+		             ))::bigint
+		           WHEN cat.currency = 'USD' THEN
+		             ROUND(t.amount::numeric / COALESCE(
+		               t.exchange_rate,
+		               (SELECT er.usd_to_crc FROM exchange_rates er
+		                WHERE er.date <= t.date ORDER BY er.date DESC LIMIT 1),
+		               500
+		             ))::bigint
+		           ELSE t.amount
+		         END
+		       ) AS converted_amount
+		FROM transactions t
+		JOIN accounts a ON a.id = t.account_id
+		JOIN categories cat ON cat.id = t.category_id
+		WHERE a.on_budget = true
+		  AND t.category_id IS NOT NULL
+		  AND date_trunc('month', t.date) = $1::date
+		GROUP BY t.category_id, a.currency, cat.currency
+	`, month+"-01")
+	if err != nil {
+		return nil, fmt.Errorf("get activity breakdown for %s: %w", month, err)
+	}
+	defer rows.Close()
+	var out []ActivityBreakdownRow
+	for rows.Next() {
+		var row ActivityBreakdownRow
+		if err := rows.Scan(&row.CategoryID, &row.TxnCurrency, &row.Amount, &row.ConvertedAmount); err != nil {
+			return nil, fmt.Errorf("scan breakdown: %w", err)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// ClearAllAssigned deletes all budget rows for a category (used when changing category currency).
+func (r *BudgetRepo) ClearAllAssigned(ctx context.Context, categoryID string) error {
+	_, err := r.pool.Exec(ctx,
+		`DELETE FROM budgets WHERE category_id = $1::uuid`, categoryID,
+	)
+	if err != nil {
+		return fmt.Errorf("clear assigned for %s: %w", categoryID, err)
+	}
+	return nil
 }

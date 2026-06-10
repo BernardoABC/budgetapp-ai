@@ -74,3 +74,69 @@ func TestBudgetRepo_BulkInsertAssignedIfAbsent(t *testing.T) {
 		t.Errorf("bulk upsert failed: got %v", all)
 	}
 }
+
+func TestBudgetRepo_ActivityCurrencyConversion(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	repo := repository.NewBudgetRepo(pool)
+	ctx := context.Background()
+
+	// CRC category, USD transaction at rate 500 CRC/USD
+	crcCatID := testutil.SeedCategoryWithCurrency(t, pool, "CRC")
+	usdAccID := testutil.SeedOnBudgetAccountWithCurrency(t, pool, "USD", 0)
+	rate := 500.0
+	testutil.SeedTransactionWithCurrency(t, pool, usdAccID, crcCatID, "2026-06-01", -10000, "USD", &rate)
+	// -10000 USD cents × 500 = -5,000,000 CRC centimos
+
+	activity, err := repo.GetAllActivityUpToMonth(ctx, "2026-06-30")
+	if err != nil {
+		t.Fatalf("GetAllActivityUpToMonth: %v", err)
+	}
+
+	got := activity[crcCatID]["2026-06-01"]
+	if got != -5000000 {
+		t.Errorf("expected -5000000 CRC centimos, got %d", got)
+	}
+}
+
+func TestBudgetRepo_ActivityCurrencyConversionUSDCat(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	repo := repository.NewBudgetRepo(pool)
+	ctx := context.Background()
+
+	// USD category, CRC transaction at rate 500 CRC/USD
+	usdCatID := testutil.SeedCategoryWithCurrency(t, pool, "USD")
+	crcAccID := testutil.SeedOnBudgetAccountWithCurrency(t, pool, "CRC", 0)
+	rate := 500.0
+	testutil.SeedTransactionWithCurrency(t, pool, crcAccID, usdCatID, "2026-06-01", -5000000, "CRC", &rate)
+	// -5,000,000 CRC centimos / 500 = -10000 USD cents
+
+	activity, err := repo.GetAllActivityUpToMonth(ctx, "2026-06-30")
+	if err != nil {
+		t.Fatalf("GetAllActivityUpToMonth: %v", err)
+	}
+
+	got := activity[usdCatID]["2026-06-01"]
+	if got != -10000 {
+		t.Errorf("expected -10000 USD cents, got %d", got)
+	}
+}
+
+func TestBudgetRepo_GetOnBudgetBalanceByCurrency(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	repo := repository.NewBudgetRepo(pool)
+	ctx := context.Background()
+
+	testutil.SeedOnBudgetAccountWithCurrency(t, pool, "CRC", 50000000)
+	testutil.SeedOnBudgetAccountWithCurrency(t, pool, "USD", 100000)
+
+	bal, err := repo.GetOnBudgetBalanceByCurrency(ctx)
+	if err != nil {
+		t.Fatalf("GetOnBudgetBalanceByCurrency: %v", err)
+	}
+	if bal.CRC < 50000000 {
+		t.Errorf("expected CRC >= 50000000, got %d", bal.CRC)
+	}
+	if bal.USD < 100000 {
+		t.Errorf("expected USD >= 100000, got %d", bal.USD)
+	}
+}
