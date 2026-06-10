@@ -883,3 +883,130 @@ func TestTransactionRepo_LinkTransferBatch_RollbackOnError(t *testing.T) {
 		t.Errorf("pair 1 should not be linked after rollback, got peer %q", a1.TransferPeerID)
 	}
 }
+
+func TestTransactionRepo_FilterFlowType(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-06-01", 5000, "Salary", "", true)   // inflow
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-06-02", -2000, "Rent", "", false)   // outflow
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-06-03", -1000, "Groceries", "", false) // outflow
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	_, inflowTotal, _, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{FlowType: "inflow"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inflowTotal != 1 {
+		t.Errorf("inflow: want 1 got %d", inflowTotal)
+	}
+
+	_, outflowTotal, _, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{FlowType: "outflow"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outflowTotal != 2 {
+		t.Errorf("outflow: want 2 got %d", outflowTotal)
+	}
+}
+
+func TestTransactionRepo_FilterTransfers(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	accA := testutil.SeedOnBudgetAccount(t, pool)
+	accB := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	// One plain transaction + one transfer pair.
+	testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-01", -1000, "Groceries", "", false)
+	from, _, err := repo.CreateTransfer(ctx, model.CreateTransferReq{
+		FromAccountID: accA,
+		ToAccountID:   accB,
+		Date:          "2026-06-02",
+		Amount:        3000,
+		Memo:          "",
+		Cleared:       false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = from
+
+	_, onlyTotal, _, _, err := repo.ListByAccount(ctx, accA, repository.TxnFilter{Transfers: "only"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if onlyTotal != 1 {
+		t.Errorf("transfers only: want 1 got %d", onlyTotal)
+	}
+
+	_, hideTotal, _, _, err := repo.ListByAccount(ctx, accA, repository.TxnFilter{Transfers: "hide"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hideTotal != 1 {
+		t.Errorf("hide transfers: want 1 got %d", hideTotal)
+	}
+}
+
+func TestTransactionRepo_LinkTransfer_CrossCurrency(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	crcAcc := testutil.SeedOnBudgetAccountWithCurrency(t, pool, "CRC", 0)
+	usdAcc := testutil.SeedOnBudgetAccountWithCurrency(t, pool, "USD", 0)
+
+	// CRC outflow: -51250000 centimos; USD inflow: +100000 cents ($1,000)
+	// Amounts don't sum to zero — this should succeed for cross-currency.
+	idA := testutil.SeedTransactionNoCategory(t, pool, crcAcc, "2026-06-01", -51250000)
+	idB := testutil.SeedTransactionNoCategory(t, pool, usdAcc, "2026-06-01", 100000)
+
+	err := repo.LinkTransfer(ctx, idA, idB)
+	if err != nil {
+		t.Fatalf("expected cross-currency link to succeed, got: %v", err)
+	}
+}
+
+func TestTransactionRepo_LinkTransfer_SameCurrencyStillValidates(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	accA := testutil.SeedOnBudgetAccountWithCurrency(t, pool, "CRC", 0)
+	accB := testutil.SeedOnBudgetAccountWithCurrency(t, pool, "CRC", 0)
+
+	idA := testutil.SeedTransactionNoCategory(t, pool, accA, "2026-06-01", -10000)
+	idB := testutil.SeedTransactionNoCategory(t, pool, accB, "2026-06-01", 5000) // wrong: should be +10000
+
+	err := repo.LinkTransfer(ctx, idA, idB)
+	if err == nil {
+		t.Fatal("expected amount validation error for same-currency mismatch, got nil")
+	}
+}
+
+func TestTransactionRepo_FilterAmountRange(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	acc := testutil.SeedOnBudgetAccount(t, pool)
+	cat := testutil.SeedCategory(t, pool)
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-06-01", -500, "A", "", false)   // 5.00
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-06-02", -2000, "B", "", false)  // 20.00
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-06-03", -10000, "C", "", false) // 100.00
+
+	repo := repository.NewTransactionRepo(pool)
+	ctx := context.Background()
+
+	min := int64(1000) // 10.00
+	max := int64(5000) // 50.00
+	_, total, _, _, err := repo.ListByAccount(ctx, acc, repository.TxnFilter{MinAmount: &min, MaxAmount: &max})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Errorf("amount range [10,50]: want 1 got %d", total)
+	}
+}

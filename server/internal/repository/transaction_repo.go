@@ -819,23 +819,28 @@ func (r *TransactionRepo) LinkTransfer(ctx context.Context, idA, idB string) err
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	type row struct {
-		accountID string
-		amount    int64
-		peerID    *string
+		accountID  string
+		accountCur string
+		amount     int64
+		peerID     *string
 	}
 	var a, b row
 
 	if err := tx.QueryRow(ctx,
-		`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, idA,
-	).Scan(&a.accountID, &a.amount, &a.peerID); err != nil {
+		`SELECT t.account_id::text, a.currency, t.amount, t.transfer_peer_id::text
+		 FROM transactions t JOIN accounts a ON a.id = t.account_id
+		 WHERE t.id = $1::uuid`, idA,
+	).Scan(&a.accountID, &a.accountCur, &a.amount, &a.peerID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("get txn A: %w", err)
 	}
 	if err := tx.QueryRow(ctx,
-		`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, idB,
-	).Scan(&b.accountID, &b.amount, &b.peerID); err != nil {
+		`SELECT t.account_id::text, a.currency, t.amount, t.transfer_peer_id::text
+		 FROM transactions t JOIN accounts a ON a.id = t.account_id
+		 WHERE t.id = $1::uuid`, idB,
+	).Scan(&b.accountID, &b.accountCur, &b.amount, &b.peerID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -851,7 +856,7 @@ func (r *TransactionRepo) LinkTransfer(ctx context.Context, idA, idB string) err
 	if a.accountID == b.accountID {
 		return fmt.Errorf("both transactions belong to the same account")
 	}
-	if a.amount+b.amount != 0 {
+	if a.accountCur == b.accountCur && a.amount+b.amount != 0 {
 		return fmt.Errorf("amounts do not sum to zero (%d + %d = %d)", a.amount, b.amount, a.amount+b.amount)
 	}
 
@@ -885,23 +890,28 @@ func (r *TransactionRepo) LinkTransferBatch(ctx context.Context, pairs [][2]stri
 		idA, idB := pair[0], pair[1]
 
 		type row struct {
-			accountID string
-			amount    int64
-			peerID    *string
+			accountID  string
+			accountCur string
+			amount     int64
+			peerID     *string
 		}
 		var a, b row
 
 		if err := tx.QueryRow(ctx,
-			`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, idA,
-		).Scan(&a.accountID, &a.amount, &a.peerID); err != nil {
+			`SELECT t.account_id::text, a.currency, t.amount, t.transfer_peer_id::text
+			 FROM transactions t JOIN accounts a ON a.id = t.account_id
+			 WHERE t.id = $1::uuid`, idA,
+		).Scan(&a.accountID, &a.accountCur, &a.amount, &a.peerID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return 0, ErrNotFound
 			}
 			return 0, fmt.Errorf("get txn A %s: %w", idA, err)
 		}
 		if err := tx.QueryRow(ctx,
-			`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, idB,
-		).Scan(&b.accountID, &b.amount, &b.peerID); err != nil {
+			`SELECT t.account_id::text, a.currency, t.amount, t.transfer_peer_id::text
+			 FROM transactions t JOIN accounts a ON a.id = t.account_id
+			 WHERE t.id = $1::uuid`, idB,
+		).Scan(&b.accountID, &b.accountCur, &b.amount, &b.peerID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return 0, ErrNotFound
 			}
@@ -917,7 +927,7 @@ func (r *TransactionRepo) LinkTransferBatch(ctx context.Context, pairs [][2]stri
 		if a.accountID == b.accountID {
 			return 0, fmt.Errorf("transactions %s and %s belong to the same account", idA, idB)
 		}
-		if a.amount+b.amount != 0 {
+		if a.accountCur == b.accountCur && a.amount+b.amount != 0 {
 			return 0, fmt.Errorf("amounts do not sum to zero for pair (%s, %s)", idA, idB)
 		}
 
@@ -955,22 +965,27 @@ func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.L
 		if pair.TargetID != "" {
 			// ── Link existing pair ──────────────────────────────────────────
 			type row struct {
-				accountID string
-				amount    int64
-				peerID    *string
+				accountID  string
+				accountCur string
+				amount     int64
+				peerID     *string
 			}
 			var a, b row
 			if err := tx.QueryRow(ctx,
-				`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, pair.SourceID,
-			).Scan(&a.accountID, &a.amount, &a.peerID); err != nil {
+				`SELECT t.account_id::text, a.currency, t.amount, t.transfer_peer_id::text
+				 FROM transactions t JOIN accounts a ON a.id = t.account_id
+				 WHERE t.id = $1::uuid`, pair.SourceID,
+			).Scan(&a.accountID, &a.accountCur, &a.amount, &a.peerID); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					return 0, 0, ErrNotFound
 				}
 				return 0, 0, fmt.Errorf("get source %s: %w", pair.SourceID, err)
 			}
 			if err := tx.QueryRow(ctx,
-				`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, pair.TargetID,
-			).Scan(&b.accountID, &b.amount, &b.peerID); err != nil {
+				`SELECT t.account_id::text, a.currency, t.amount, t.transfer_peer_id::text
+				 FROM transactions t JOIN accounts a ON a.id = t.account_id
+				 WHERE t.id = $1::uuid`, pair.TargetID,
+			).Scan(&b.accountID, &b.accountCur, &b.amount, &b.peerID); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					return 0, 0, ErrNotFound
 				}
@@ -985,7 +1000,7 @@ func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.L
 			if a.accountID == b.accountID {
 				return 0, 0, fmt.Errorf("transactions %s and %s belong to the same account", pair.SourceID, pair.TargetID)
 			}
-			if a.amount+b.amount != 0 {
+			if a.accountCur == b.accountCur && a.amount+b.amount != 0 {
 				return 0, 0, fmt.Errorf("amounts do not sum to zero for pair (%s, %s)", pair.SourceID, pair.TargetID)
 			}
 			if _, err := tx.Exec(ctx,
@@ -1009,9 +1024,12 @@ func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.L
 			var sourceAmount int64
 			var sourcePeerID *string
 			var sourceAccountID string
+			var sourceAccountCur string
 			if err := tx.QueryRow(ctx,
-				`SELECT account_id::text, amount, transfer_peer_id::text FROM transactions WHERE id = $1::uuid`, pair.SourceID,
-			).Scan(&sourceAccountID, &sourceAmount, &sourcePeerID); err != nil {
+				`SELECT t.account_id::text, a.currency, t.amount, t.transfer_peer_id::text
+				 FROM transactions t JOIN accounts a ON a.id = t.account_id
+				 WHERE t.id = $1::uuid`, pair.SourceID,
+			).Scan(&sourceAccountID, &sourceAccountCur, &sourceAmount, &sourcePeerID); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					return 0, 0, ErrNotFound
 				}
@@ -1023,7 +1041,13 @@ func (r *TransactionRepo) LinkOrCreateBatch(ctx context.Context, pairs []model.L
 			if sourceAccountID == pair.TargetAccountID {
 				return 0, 0, fmt.Errorf("transaction %s and target account are the same account", pair.SourceID)
 			}
-			if sourceAmount+pair.TargetAmount != 0 {
+			var targetAccountCur string
+			if err := tx.QueryRow(ctx,
+				`SELECT currency FROM accounts WHERE id = $1::uuid`, pair.TargetAccountID,
+			).Scan(&targetAccountCur); err != nil {
+				return 0, 0, fmt.Errorf("get target account currency: %w", err)
+			}
+			if sourceAccountCur == targetAccountCur && sourceAmount+pair.TargetAmount != 0 {
 				return 0, 0, fmt.Errorf("source amount %d and target amount %d do not sum to zero", sourceAmount, pair.TargetAmount)
 			}
 
