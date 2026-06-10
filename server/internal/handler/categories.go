@@ -113,6 +113,10 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
 		return
 	}
+	if req.Currency != "" && req.Currency != "CRC" && req.Currency != "USD" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "currency must be CRC or USD")
+		return
+	}
 	c, err := h.repo.UpdateCategory(r.Context(), id, req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
