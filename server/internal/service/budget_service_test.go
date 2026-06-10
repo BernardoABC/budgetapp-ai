@@ -229,6 +229,77 @@ func TestBudgetService_GetMonth_MultiCurrencyRTA(t *testing.T) {
 	}
 }
 
+func TestBudgetService_ChangeCategoryBudgetCurrency(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	budgetRepo := repository.NewBudgetRepo(pool)
+	targetRepo := repository.NewTargetRepo(pool)
+	catRepo    := repository.NewCategoryRepo(pool)
+	rateRepo   := repository.NewExchangeRateRepo(pool)
+	svc := service.NewBudgetService(budgetRepo, targetRepo, catRepo, rateRepo)
+
+	ctx := context.Background()
+
+	// Create a category with CRC currency, a known name and sort_order.
+	groupID := testutil.SeedGroup(t, pool)
+	var catID string
+	err := pool.QueryRow(ctx,
+		`INSERT INTO categories (group_id, name, sort_order, currency)
+		 VALUES ($1::uuid, 'TestChangeCur', 5, 'CRC') RETURNING id::text`,
+		groupID,
+	).Scan(&catID)
+	if err != nil {
+		t.Fatalf("seed category: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM categories WHERE id = $1::uuid`, catID)
+	})
+
+	// Assign some budget.
+	if err := budgetRepo.UpsertAssigned(ctx, catID, "2026-07-01", 50000); err != nil {
+		t.Fatalf("UpsertAssigned: %v", err)
+	}
+
+	// Change currency.
+	if err := svc.ChangeCategoryBudgetCurrency(ctx, catID, "USD"); err != nil {
+		t.Fatalf("ChangeCategoryBudgetCurrency: %v", err)
+	}
+
+	// Verify currency changed.
+	var gotCurrency string
+	if err := pool.QueryRow(ctx,
+		`SELECT currency FROM categories WHERE id = $1::uuid`, catID,
+	).Scan(&gotCurrency); err != nil {
+		t.Fatalf("select currency: %v", err)
+	}
+	if gotCurrency != "USD" {
+		t.Errorf("expected currency=USD, got %s", gotCurrency)
+	}
+
+	// Verify name and sort_order are preserved.
+	var gotName string
+	var gotSort int
+	if err := pool.QueryRow(ctx,
+		`SELECT name, sort_order FROM categories WHERE id = $1::uuid`, catID,
+	).Scan(&gotName, &gotSort); err != nil {
+		t.Fatalf("select name/sort: %v", err)
+	}
+	if gotName != "TestChangeCur" {
+		t.Errorf("expected name=TestChangeCur, got %s", gotName)
+	}
+	if gotSort != 5 {
+		t.Errorf("expected sort_order=5, got %d", gotSort)
+	}
+
+	// Verify budget cleared.
+	all, err := budgetRepo.GetAllAssignedUpToMonth(ctx, "2026-12-01")
+	if err != nil {
+		t.Fatalf("GetAllAssignedUpToMonth: %v", err)
+	}
+	if len(all[catID]) != 0 {
+		t.Errorf("expected budget rows cleared, got %v", all[catID])
+	}
+}
+
 func TestBudgetService_Move_CrossCurrencyRejected(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	budgetRepo := repository.NewBudgetRepo(pool)

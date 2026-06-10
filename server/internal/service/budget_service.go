@@ -304,7 +304,7 @@ func (s *BudgetService) ChangeCategoryBudgetCurrency(ctx context.Context, catID,
 	if newCurrency != "CRC" && newCurrency != "USD" {
 		return fmt.Errorf("currency must be CRC or USD")
 	}
-	if _, err := s.catRepo.UpdateCategory(ctx, catID, model.UpdateCategoryReq{Currency: newCurrency}); err != nil {
+	if err := s.catRepo.UpdateCategoryCurrency(ctx, catID, newCurrency); err != nil {
 		return fmt.Errorf("update category currency: %w", err)
 	}
 	return s.budgetRepo.ClearAllAssigned(ctx, catID)
@@ -342,14 +342,6 @@ func lastDay(ym string) string {
 	fmt.Sscanf(ym, "%d-%d", &year, &month)
 	t := time.Date(year, time.Month(month+1), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -1)
 	return t.Format("2006-01-02")
-}
-
-// nextMonthStr advances "YYYY-MM" by one month.
-func nextMonthStr(ym string) string {
-	var year, month int
-	fmt.Sscanf(ym, "%d-%d", &year, &month)
-	t := time.Date(year, time.Month(month)+1, 1, 0, 0, 0, 0, time.UTC)
-	return t.Format("2006-01")
 }
 
 func prevMonthStr(ym string) string {

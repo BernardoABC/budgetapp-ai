@@ -168,6 +168,18 @@ func (r *CategoryRepo) UpdateCategory(ctx context.Context, id string, req model.
 	return c, nil
 }
 
+// UpdateCategoryCurrency sets the currency for a category without touching other fields.
+func (r *CategoryRepo) UpdateCategoryCurrency(ctx context.Context, id, currency string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE categories SET currency = $1, updated_at = NOW() WHERE id = $2::uuid`,
+		currency, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update category currency %s: %w", id, err)
+	}
+	return nil
+}
+
 // GetCurrencies returns a map of category ID → currency for the given IDs.
 func (r *CategoryRepo) GetCurrencies(ctx context.Context, ids []string) (map[string]string, error) {
 	rows, err := r.pool.Query(ctx,
