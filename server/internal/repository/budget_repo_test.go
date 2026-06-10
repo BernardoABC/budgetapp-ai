@@ -80,12 +80,12 @@ func TestBudgetRepo_ActivityCurrencyConversion(t *testing.T) {
 	repo := repository.NewBudgetRepo(pool)
 	ctx := context.Background()
 
-	// CRC category, USD transaction at rate 500 CRC/USD
+	// CRC category, USD transaction at rate 520 CRC/USD
 	crcCatID := testutil.SeedCategoryWithCurrency(t, pool, "CRC")
 	usdAccID := testutil.SeedOnBudgetAccountWithCurrency(t, pool, "USD", 0)
-	rate := 500.0
+	rate := 520.0
 	testutil.SeedTransactionWithCurrency(t, pool, usdAccID, crcCatID, "2026-06-01", -10000, "USD", &rate)
-	// -10000 USD cents × 500 = -5,000,000 CRC centimos
+	// -10000 USD cents × 520 = -5,200,000 CRC centimos
 
 	activity, err := repo.GetAllActivityUpToMonth(ctx, "2026-06-30")
 	if err != nil {
@@ -93,8 +93,8 @@ func TestBudgetRepo_ActivityCurrencyConversion(t *testing.T) {
 	}
 
 	got := activity[crcCatID]["2026-06-01"]
-	if got != -5000000 {
-		t.Errorf("expected -5000000 CRC centimos, got %d", got)
+	if got != -5200000 {
+		t.Errorf("expected -5200000 CRC centimos, got %d", got)
 	}
 }
 
@@ -103,12 +103,12 @@ func TestBudgetRepo_ActivityCurrencyConversionUSDCat(t *testing.T) {
 	repo := repository.NewBudgetRepo(pool)
 	ctx := context.Background()
 
-	// USD category, CRC transaction at rate 500 CRC/USD
+	// USD category, CRC transaction at rate 520 CRC/USD
 	usdCatID := testutil.SeedCategoryWithCurrency(t, pool, "USD")
 	crcAccID := testutil.SeedOnBudgetAccountWithCurrency(t, pool, "CRC", 0)
-	rate := 500.0
-	testutil.SeedTransactionWithCurrency(t, pool, crcAccID, usdCatID, "2026-06-01", -5000000, "CRC", &rate)
-	// -5,000,000 CRC centimos / 500 = -10000 USD cents
+	rate := 520.0
+	testutil.SeedTransactionWithCurrency(t, pool, crcAccID, usdCatID, "2026-06-01", -5200000, "CRC", &rate)
+	// -5,200,000 CRC centimos / 520 = -10000 USD cents
 
 	activity, err := repo.GetAllActivityUpToMonth(ctx, "2026-06-30")
 	if err != nil {
@@ -118,6 +118,65 @@ func TestBudgetRepo_ActivityCurrencyConversionUSDCat(t *testing.T) {
 	got := activity[usdCatID]["2026-06-01"]
 	if got != -10000 {
 		t.Errorf("expected -10000 USD cents, got %d", got)
+	}
+}
+
+func TestBudgetRepo_GetActivityBreakdownForMonth(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	repo := repository.NewBudgetRepo(pool)
+	ctx := context.Background()
+
+	crcCatID := testutil.SeedCategoryWithCurrency(t, pool, "CRC")
+	usdAccID := testutil.SeedOnBudgetAccountWithCurrency(t, pool, "USD", 0)
+	rate := 520.0
+	testutil.SeedTransactionWithCurrency(t, pool, usdAccID, crcCatID, "2026-07-15", -5000, "USD", &rate)
+	// -5000 USD cents × 520 = -2,600,000 CRC centimos
+
+	breakdown, err := repo.GetActivityBreakdownForMonth(ctx, "2026-07")
+	if err != nil {
+		t.Fatalf("GetActivityBreakdownForMonth: %v", err)
+	}
+
+	var found bool
+	for _, row := range breakdown {
+		if row.CategoryID == crcCatID && row.TxnCurrency == "USD" {
+			found = true
+			if row.Amount != -5000 {
+				t.Errorf("expected Amount=-5000, got %d", row.Amount)
+			}
+			if row.ConvertedAmount != -2600000 {
+				t.Errorf("expected ConvertedAmount=-2600000, got %d", row.ConvertedAmount)
+			}
+		}
+	}
+	if !found {
+		t.Error("no breakdown row found for crcCatID with USD txn currency")
+	}
+}
+
+func TestBudgetRepo_ClearAllAssigned(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	repo := repository.NewBudgetRepo(pool)
+	ctx := context.Background()
+
+	catID := testutil.SeedCategory(t, pool)
+	if err := repo.UpsertAssigned(ctx, catID, "2026-07-01", 10000); err != nil {
+		t.Fatalf("UpsertAssigned: %v", err)
+	}
+	if err := repo.UpsertAssigned(ctx, catID, "2026-08-01", 20000); err != nil {
+		t.Fatalf("UpsertAssigned: %v", err)
+	}
+
+	if err := repo.ClearAllAssigned(ctx, catID); err != nil {
+		t.Fatalf("ClearAllAssigned: %v", err)
+	}
+
+	all, err := repo.GetAllAssignedUpToMonth(ctx, "2026-12-01")
+	if err != nil {
+		t.Fatalf("GetAllAssignedUpToMonth: %v", err)
+	}
+	if len(all[catID]) != 0 {
+		t.Errorf("expected no assigned rows after clear, got %v", all[catID])
 	}
 }
 

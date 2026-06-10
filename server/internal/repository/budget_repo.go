@@ -8,6 +8,28 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// currencyConversionExpr is the SQL CASE expression that converts transaction amounts
+// to the category's native currency using the stamped exchange rate, nearest available
+// rate, or a hardcoded fallback of 500 CRC/USD.
+const currencyConversionExpr = `CASE
+  WHEN a.currency = cat.currency THEN t.amount
+  WHEN cat.currency = 'CRC' THEN
+    ROUND(t.amount::numeric * COALESCE(
+      t.exchange_rate,
+      (SELECT er.usd_to_crc FROM exchange_rates er
+       WHERE er.date <= t.date ORDER BY er.date DESC LIMIT 1),
+      500
+    ))::bigint
+  WHEN cat.currency = 'USD' THEN
+    ROUND(t.amount::numeric / COALESCE(
+      t.exchange_rate,
+      (SELECT er.usd_to_crc FROM exchange_rates er
+       WHERE er.date <= t.date ORDER BY er.date DESC LIMIT 1),
+      500
+    ))::bigint
+  ELSE t.amount
+END`
+
 type BudgetRepo struct{ pool *pgxpool.Pool }
 
 func NewBudgetRepo(pool *pgxpool.Pool) *BudgetRepo { return &BudgetRepo{pool: pool} }
@@ -86,26 +108,7 @@ func (r *BudgetRepo) GetAllActivityUpToMonth(ctx context.Context, month string) 
 	rows, err := r.pool.Query(ctx, `
 		SELECT t.category_id::text,
 		       date_trunc('month', t.date)::date::text AS m,
-		       SUM(
-		         CASE
-		           WHEN a.currency = cat.currency THEN t.amount
-		           WHEN cat.currency = 'CRC' THEN
-		             ROUND(t.amount::numeric * COALESCE(
-		               t.exchange_rate,
-		               (SELECT er.usd_to_crc FROM exchange_rates er
-		                WHERE er.date <= t.date ORDER BY er.date DESC LIMIT 1),
-		               500
-		             ))::bigint
-		           WHEN cat.currency = 'USD' THEN
-		             ROUND(t.amount::numeric / COALESCE(
-		               t.exchange_rate,
-		               (SELECT er.usd_to_crc FROM exchange_rates er
-		                WHERE er.date <= t.date ORDER BY er.date DESC LIMIT 1),
-		               500
-		             ))::bigint
-		           ELSE t.amount
-		         END
-		       ) AS activity
+		       SUM(`+currencyConversionExpr+`) AS activity
 		FROM transactions t
 		JOIN accounts a ON a.id = t.account_id
 		JOIN categories cat ON cat.id = t.category_id
@@ -227,26 +230,7 @@ func (r *BudgetRepo) GetActivityBreakdownForMonth(ctx context.Context, month str
 		SELECT t.category_id::text,
 		       a.currency AS txn_currency,
 		       SUM(t.amount) AS amount,
-		       SUM(
-		         CASE
-		           WHEN a.currency = cat.currency THEN t.amount
-		           WHEN cat.currency = 'CRC' THEN
-		             ROUND(t.amount::numeric * COALESCE(
-		               t.exchange_rate,
-		               (SELECT er.usd_to_crc FROM exchange_rates er
-		                WHERE er.date <= t.date ORDER BY er.date DESC LIMIT 1),
-		               500
-		             ))::bigint
-		           WHEN cat.currency = 'USD' THEN
-		             ROUND(t.amount::numeric / COALESCE(
-		               t.exchange_rate,
-		               (SELECT er.usd_to_crc FROM exchange_rates er
-		                WHERE er.date <= t.date ORDER BY er.date DESC LIMIT 1),
-		               500
-		             ))::bigint
-		           ELSE t.amount
-		         END
-		       ) AS converted_amount
+		       SUM(`+currencyConversionExpr+`) AS converted_amount
 		FROM transactions t
 		JOIN accounts a ON a.id = t.account_id
 		JOIN categories cat ON cat.id = t.category_id
