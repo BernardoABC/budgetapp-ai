@@ -4,7 +4,7 @@ import { compute, quickAssign as engineQuickAssign, targetLabel } from '../engin
 import { MoveMoneyModal, CategoryInspector } from './BudgetModals';
 import type { CategoryGroup, Target, BudgetMonthAPI } from '../api';
 import type { CatState, MonthState } from '../engine';
-import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate, changeCategoryCurrency } from '../api';
+import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate } from '../api';
 import type { ExchangeRate } from '../api';
 import { useToast } from './Toast';
 
