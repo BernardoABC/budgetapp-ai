@@ -186,6 +186,35 @@ func (h *BudgetHandler) DeleteTarget(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ChangeCategoryCurrency handles PUT /api/categories/{id}/currency
+// Resets all assigned budget rows when the currency changes.
+func (h *BudgetHandler) ChangeCategoryCurrency(w http.ResponseWriter, r *http.Request) {
+	catID := r.PathValue("id")
+	if catID == "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "id path param required")
+		return
+	}
+
+	var body struct {
+		Currency string `json:"currency"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	if body.Currency != "CRC" && body.Currency != "USD" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "currency must be CRC or USD")
+		return
+	}
+
+	if err := h.svc.ChangeCategoryBudgetCurrency(r.Context(), catID, body.Currency); err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"currency": body.Currency})
+}
+
 // budgetMonthToJSON converts a BudgetMonth model to JSON-serializable form
 func budgetMonthToJSON(bm *model.BudgetMonth) map[string]any {
 	groups := make([]map[string]any, len(bm.CategoryGroups))
@@ -200,15 +229,25 @@ func budgetMonthToJSON(bm *model.BudgetMonth) map[string]any {
 					"deadline": c.Target.Deadline,
 				}
 			}
+			var breakdownJSON []map[string]any
+			for _, entry := range c.ActivityBreakdown {
+				breakdownJSON = append(breakdownJSON, map[string]any{
+					"currency":         entry.Currency,
+					"amount":           entry.Amount,
+					"converted_amount": entry.ConvertedAmount,
+				})
+			}
 			cats[j] = map[string]any{
-				"id":            c.ID,
-				"name":          c.Name,
-				"assigned":      c.Assigned,
-				"activity":      c.Activity,
-				"carry_in":      c.CarryIn,
-				"available":     c.Available,
-				"underfunded":   c.Underfunded,
-				"target":        tJSON,
+				"id":                 c.ID,
+				"name":               c.Name,
+				"currency":           c.Currency,
+				"assigned":           c.Assigned,
+				"activity":           c.Activity,
+				"carry_in":           c.CarryIn,
+				"available":          c.Available,
+				"underfunded":        c.Underfunded,
+				"target":             tJSON,
+				"activity_breakdown": breakdownJSON,
 			}
 		}
 		groups[i] = map[string]any{
@@ -221,10 +260,15 @@ func budgetMonthToJSON(bm *model.BudgetMonth) map[string]any {
 		}
 	}
 	return map[string]any{
-		"month":            bm.Month,
-		"ready_to_assign":  bm.ReadyToAssign,
-		"age_of_money":     bm.AgeOfMoney,
+		"month":           bm.Month,
+		"ready_to_assign": bm.ReadyToAssign,
+		"rta_breakdown": map[string]any{
+			"crc_accounts":        bm.RTABreakdown.CRCAccounts,
+			"usd_accounts_in_crc": bm.RTABreakdown.USDAccountsCRC,
+			"usd_accounts_native": bm.RTABreakdown.USDNative,
+		},
+		"age_of_money":      bm.AgeOfMoney,
 		"total_underfunded": bm.TotalUnderfunded,
-		"category_groups":  groups,
+		"category_groups":   groups,
 	}
 }

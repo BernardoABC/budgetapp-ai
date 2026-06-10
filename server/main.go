@@ -131,6 +131,7 @@ func main() {
 	mux.HandleFunc("DELETE /api/category-groups/{id}", cats.DeleteGroup)
 	mux.HandleFunc("POST /api/categories", cats.CreateCategory)
 	mux.HandleFunc("PUT /api/categories/{id}", cats.UpdateCategory)
+	mux.HandleFunc("PUT /api/categories/{id}/currency", budgets.ChangeCategoryCurrency)
 	mux.HandleFunc("DELETE /api/categories/{id}", cats.DeleteCategory)
 
 	// Payee Rules
