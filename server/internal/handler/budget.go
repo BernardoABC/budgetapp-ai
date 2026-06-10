@@ -229,7 +229,7 @@ func budgetMonthToJSON(bm *model.BudgetMonth) map[string]any {
 					"deadline": c.Target.Deadline,
 				}
 			}
-			var breakdownJSON []map[string]any
+			breakdownJSON := make([]map[string]any, 0)
 			for _, entry := range c.ActivityBreakdown {
 				breakdownJSON = append(breakdownJSON, map[string]any{
 					"currency":         entry.Currency,
