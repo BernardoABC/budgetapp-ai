@@ -2,9 +2,9 @@ import React, { useState, useCallback, useMemo, useRef, useEffect, useImperative
 import { T, GROUP_COLORS } from '../theme';
 import { compute, quickAssign as engineQuickAssign, targetLabel } from '../engine';
 import { MoveMoneyModal, CategoryInspector } from './BudgetModals';
-import type { CategoryGroup, Target } from '../api';
+import type { CategoryGroup, Target, BudgetMonthAPI } from '../api';
 import type { CatState, MonthState } from '../engine';
-import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate } from '../api';
+import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate, changeCategoryCurrency } from '../api';
 import type { ExchangeRate } from '../api';
 import { useToast } from './Toast';
 
@@ -88,8 +88,9 @@ interface GroupBlockProps {
   onMoveCat: (gid: string, idx: number, dir: number) => void;
   onHideCat: (cat: string) => void;
   onDeleteCat: (gid: string, cat: string) => void;
-  onAddCat: (gid: string, name: string) => void;
+  onAddCat: (gid: string, name: string, currency: 'CRC' | 'USD') => void;
   onRenameGroup: (gid: string, name: string) => void;
+  catCurrencies: Record<string, string>;
   onMoveGroup: (idx: number, dir: number) => void;
   onDeleteGroup: (gid: string) => void;
   onReorderCat: (gid: string, fromIdx: number, toIdx: number) => void;
@@ -97,10 +98,11 @@ interface GroupBlockProps {
 
 function GroupBlock(props: GroupBlockProps) {
   const { group, gidx, color, catState, collapsed, onToggle, fmt, onSaveAssigned, onOpenMove, onOpenInspector,
-    rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup, onMoveGroup, onDeleteGroup, onReorderCat } = props;
+    rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup, onMoveGroup, onDeleteGroup, onReorderCat, catCurrencies } = props;
   const [hovCat, setHovCat] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newCat, setNewCat] = useState('');
+  const [newCatCurrency, setNewCatCurrency] = useState<'CRC' | 'USD'>('CRC');
   const cellRefs = useRef<Record<string, BudgetCellHandle | null>>({});
   const [dragCat, setDragCat] = useState<string | null>(null);
   const [dragOverCat, setDragOverCat] = useState<string | null>(null);
@@ -111,7 +113,7 @@ function GroupBlock(props: GroupBlockProps) {
   const totActivity = group.categories.reduce((s, c) => s + (catState[c]?.activity ?? 0), 0);
   const totAvailable = group.categories.reduce((s, c) => s + (catState[c]?.available ?? 0), 0);
 
-  const commitAdd = () => { if (newCat.trim()) { onAddCat(group.id, newCat.trim()); setNewCat(''); setAdding(false); } };
+  const commitAdd = () => { if (newCat.trim()) { onAddCat(group.id, newCat.trim(), newCatCurrency); setNewCat(''); setNewCatCurrency('CRC'); setAdding(false); } };
 
   return (
     <>
@@ -199,7 +201,14 @@ function GroupBlock(props: GroupBlockProps) {
                   </div>
                 )}
               </td>
-              <td style={{ ...st.numCell, padding: '0 16px', borderBottom: 'none' }}><BudgetCell ref={el => { cellRefs.current[cat] = el; }} value={c.assigned} onSave={v => onSaveAssigned(cat, v)} fmt={fmt} /></td>
+              <td style={{ ...st.numCell, padding: '0 16px', borderBottom: 'none' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                  <BudgetCell ref={el => { cellRefs.current[cat] = el; }} value={c.assigned} onSave={v => onSaveAssigned(cat, v)} fmt={fmt} />
+                  <span style={{ fontSize: 9, fontWeight: 700, color: T.textDim, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 3, padding: '1px 4px', letterSpacing: '0.05em', flexShrink: 0 }}>
+                    {(catCurrencies[cat] ?? 'CRC') === 'USD' ? '$' : '₡'}
+                  </span>
+                </div>
+              </td>
               <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.activity < 0 ? T.textDim : T.pos }}>{fmt(c.activity)}</td>
               <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none' }}>
                 <button onClick={e => { e.stopPropagation(); onOpenMove(cat); }}
@@ -227,9 +236,15 @@ function GroupBlock(props: GroupBlockProps) {
         <tr>
           <td colSpan={4} style={{ padding: '6px 16px 10px 40px', borderBottom: `1px solid ${T.borderSoft}` }}>
             {adding ? (
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <input autoFocus value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="Category name"
                   onKeyDown={e => { if (e.key === 'Enter') commitAdd(); if (e.key === 'Escape') setAdding(false); }} style={st.renameInput} />
+                <button
+                  onClick={(e) => { e.stopPropagation(); setNewCatCurrency(c => c === 'CRC' ? 'USD' : 'CRC'); }}
+                  style={{ fontSize: 10, padding: '2px 6px', border: `1px solid ${T.border}`, borderRadius: 4, background: newCatCurrency === 'USD' ? T.accentDim : T.surface, cursor: 'pointer', color: T.text }}
+                >
+                  {newCatCurrency}
+                </button>
                 <button onClick={commitAdd} style={st.miniBtnOn}>Add</button>
                 <button onClick={() => setAdding(false)} style={st.miniBtn}>Cancel</button>
               </div>
@@ -274,6 +289,8 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   const [editMode, setEditMode] = useState(false);
   const [moveCat, setMoveCat] = useState<string | null>(null);
   const [inspectorCat, setInspectorCat] = useState<string | null>(null);
+  const [catCurrencies, setCatCurrencies] = useState<Record<string, string>>({});
+  const [rtaBreakdown, setRtaBreakdown] = useState<BudgetMonthAPI['rta_breakdown'] | null>(null);
 
   // Sync groups when the prop arrives after mount (race condition: Budget can mount before the
   // initial fetchCategoryGroupsRaw resolves, leaving groups empty forever).
@@ -309,12 +326,22 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         }
       }
 
+      const newCatCurrencies: Record<string, string> = {};
+      for (const g of data.category_groups) {
+        for (const c of g.categories) {
+          const name = nameById[c.id] ?? c.name;
+          newCatCurrencies[name] = c.currency ?? 'CRC';
+        }
+      }
+
       setCarryIn(newCarryIn);
       serverRtaRef.current = data.ready_to_assign;
       serverAssignedTotalRef.current = Object.values(newBudgetMonth).reduce((s, e) => s + e.assigned, 0);
       setAom(data.age_of_money);
       setLocalBudget({ [currentDisplayMonth]: newBudgetMonth });
       setTargets(newTargets);
+      setCatCurrencies(newCatCurrencies);
+      setRtaBreakdown(data.rta_breakdown ?? null);
       setBudgetError(null);
     }).catch(err => {
       setBudgetError(err.message);
@@ -463,9 +490,9 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         });
     }
   };
-  const addCat = (gid: string, name: string) => {
+  const addCat = (gid: string, name: string, currency: 'CRC' | 'USD') => {
     setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: [...g.categories, name] } : g));
-    createCategory({ group_id: gid, name, sort_order: 0 })
+    createCategory({ group_id: gid, name, sort_order: 0, currency })
       .then(() => onCategoriesChanged())
       .catch(err => {
         toast.error(err.message);
@@ -543,6 +570,13 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
           <div style={{ flex: 1 }}>
             <div style={st.rtaLabel}>Ready to Assign</div>
             <div style={{ ...st.rtaAmount, color: rta < 0 ? T.neg : rta === 0 ? T.textMid : 'var(--accent)' }}>{fmt(rta)}</div>
+            {rtaBreakdown && (
+              <div style={{ fontSize: 11, color: T.textDim, marginTop: 4 }}>
+                <span>₡ {rtaBreakdown.crc_accounts.toLocaleString('en-US', { minimumFractionDigits: 0 })}</span>
+                <span style={{ margin: '0 5px', color: T.border }}>|</span>
+                <span>$ {rtaBreakdown.usd_accounts_native.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (≈₡{rtaBreakdown.usd_accounts_in_crc.toLocaleString('en-US', { minimumFractionDigits: 0 })})</span>
+              </div>
+            )}
           </div>
           <div style={st.rtaDivider} />
           <div>
@@ -598,7 +632,8 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
                     collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmtMonth} onSaveAssigned={handleSaveAssigned}
                     onOpenMove={setMoveCat} onOpenInspector={setInspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
                     onRenameCat={renameCat} onMoveCat={reorderCat} onHideCat={hideCat} onDeleteCat={deleteCat} onAddCat={addCat}
-                    onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} onReorderCat={handleReorderCat} />
+                    onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} onReorderCat={handleReorderCat}
+                    catCurrencies={catCurrencies} />
                 ))}
               </tbody>
             </table>
@@ -607,7 +642,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       )}
 
       {moveCat && (
-        <MoveMoneyModal cat={moveCat} cats={allCats} fmt={fmtMonth} onClose={() => setMoveCat(null)} onMove={handleMove} />
+        <MoveMoneyModal cat={moveCat} cats={allCats} catCurrencies={catCurrencies} fmt={fmtMonth} onClose={() => setMoveCat(null)} onMove={handleMove} />
       )}
       {inspectorCat && state.cats[inspectorCat] && (() => {
         const grpName = (groups.find(g => g.categories.includes(inspectorCat)) ?? {}).name ?? '';

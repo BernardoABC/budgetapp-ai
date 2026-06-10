@@ -13,15 +13,18 @@ interface CatWithColor extends CatState {
 interface MoveMoneyProps {
   cat: string;
   cats: CatWithColor[];
+  catCurrencies: Record<string, string>;
   fmt: (n: number) => string;
   onClose: () => void;
   onMove: (from: string, to: string, amount: number) => void;
 }
 
-export function MoveMoneyModal({ cat: current, cats, fmt, onClose, onMove }: MoveMoneyProps) {
+export function MoveMoneyModal({ cat: current, cats, catCurrencies, fmt, onClose, onMove }: MoveMoneyProps) {
   const curObj = cats.find(c => c.cat === current)!;
   const overspent = curObj.available < 0;
-  const others = cats.filter(c => c.cat !== current);
+  const sourceCur = catCurrencies[current] ?? 'CRC';
+  const sameCurrencyCats = cats.filter(c => (catCurrencies[c.cat] ?? 'CRC') === sourceCur);
+  const others = sameCurrencyCats.filter(c => c.cat !== current);
   const surplus = others.filter(c => c.available > 0).sort((a, b) => b.available - a.available);
   const deficits = others.filter(c => c.available < 0).sort((a, b) => a.available - b.available);
 
@@ -59,32 +62,40 @@ export function MoveMoneyModal({ cat: current, cats, fmt, onClose, onMove }: Mov
           <button onClick={onClose} style={mm.close}>✕</button>
         </div>
         <div style={mm.body}>
-          <div style={mm.modeToggle}>
-            <button onClick={() => setMode('in')} style={{ ...mm.modeBtn, ...(mode === 'in' ? mm.modeOn : {}) }}>Into {current}</button>
-            <button onClick={() => setMode('out')} style={{ ...mm.modeBtn, ...(mode === 'out' ? mm.modeOn : {}) }}>Out of {current}</button>
-          </div>
-          <div>
-            <div style={mm.label}>{mode === 'in' ? 'Take from' : 'Send to'}</div>
-            <select value={other} onChange={e => setOther(e.target.value)} style={mm.select}>
-              {(mode === 'in' ? [...surplus, ...others.filter(o => o.available <= 0)] : [...deficits, ...others.filter(o => o.available >= 0)]).map(c => (
-                <option key={c.cat} value={c.cat}>{c.cat} ({fmt(c.available)})</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <div style={mm.label}>Amount</div>
-            <div style={mm.amountWrap}>
-              <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))} style={mm.amountInput} autoFocus />
-              {overspent && mode === 'in' && (
-                <button onClick={() => setAmount(Math.abs(curObj.available))} style={mm.coverBtn}>Cover {fmt(Math.abs(curObj.available))}</button>
-              )}
+          {others.length === 0 ? (
+            <div style={{ color: T.textDim, fontSize: 13, padding: '20px 0', textAlign: 'center' as const }}>
+              No other {sourceCur} categories to move money to.
             </div>
-          </div>
-          <div style={mm.preview}>
-            {otherObj && <Side obj={mode === 'in' ? otherObj : curObj} after={mode === 'in' ? otherAfter : curAfter} />}
-            <div style={mm.arrow}>↓</div>
-            {otherObj && <Side obj={mode === 'in' ? curObj : otherObj} after={mode === 'in' ? curAfter : otherAfter} />}
-          </div>
+          ) : (
+            <>
+              <div style={mm.modeToggle}>
+                <button onClick={() => setMode('in')} style={{ ...mm.modeBtn, ...(mode === 'in' ? mm.modeOn : {}) }}>Into {current}</button>
+                <button onClick={() => setMode('out')} style={{ ...mm.modeBtn, ...(mode === 'out' ? mm.modeOn : {}) }}>Out of {current}</button>
+              </div>
+              <div>
+                <div style={mm.label}>{mode === 'in' ? 'Take from' : 'Send to'}</div>
+                <select value={other} onChange={e => setOther(e.target.value)} style={mm.select}>
+                  {(mode === 'in' ? [...surplus, ...others.filter(o => o.available <= 0)] : [...deficits, ...others.filter(o => o.available >= 0)]).map(c => (
+                    <option key={c.cat} value={c.cat}>{c.cat} ({fmt(c.available)})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <div style={mm.label}>Amount</div>
+                <div style={mm.amountWrap}>
+                  <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))} style={mm.amountInput} autoFocus />
+                  {overspent && mode === 'in' && (
+                    <button onClick={() => setAmount(Math.abs(curObj.available))} style={mm.coverBtn}>Cover {fmt(Math.abs(curObj.available))}</button>
+                  )}
+                </div>
+              </div>
+              <div style={mm.preview}>
+                {otherObj && <Side obj={mode === 'in' ? otherObj : curObj} after={mode === 'in' ? otherAfter : curAfter} />}
+                <div style={mm.arrow}>↓</div>
+                {otherObj && <Side obj={mode === 'in' ? curObj : otherObj} after={mode === 'in' ? curAfter : otherAfter} />}
+              </div>
+            </>
+          )}
         </div>
         <div style={mm.footer}>
           <button onClick={onClose} style={mm.cancelBtn}>Cancel</button>

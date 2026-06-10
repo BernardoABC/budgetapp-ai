@@ -56,6 +56,7 @@ export interface Target {
 export interface CategoryItemAPI {
   id: string;
   name: string;
+  currency: string;
   hidden: boolean;
   sort_order: number;
   is_system: boolean;
@@ -353,8 +354,12 @@ export async function deleteCategoryGroup(id: string): Promise<void> {
 
 // ─── Category CRUD ─────────────────────────────────────────────────────────────
 
-export async function createCategory(body: { group_id: string; name: string; sort_order?: number }): Promise<CategoryItemAPI> {
+export async function createCategory(body: { group_id: string; name: string; sort_order?: number; currency?: string }): Promise<CategoryItemAPI> {
   return apiFetch('/categories', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function changeCategoryCurrency(id: string, currency: string): Promise<void> {
+  await apiFetch(`/categories/${id}/currency`, { method: 'PUT', body: JSON.stringify({ currency }) });
 }
 
 export async function updateCategory(id: string, body: { name: string; hidden?: boolean; sort_order?: number }): Promise<CategoryItemAPI> {
@@ -373,15 +378,23 @@ export interface ExchangeRate {
   source: string;
 }
 
+export interface ActivityBreakdownEntry {
+  currency: string;
+  amount: number;
+  converted_amount: number;
+}
+
 export interface BudgetCategoryAPI {
   id: string;
   name: string;
+  currency: string;
   assigned: number;
   activity: number;
   carry_in: number;
   available: number;
   underfunded: number;
   target: { type: string; amount: number; deadline: string | null } | null;
+  activity_breakdown: ActivityBreakdownEntry[];
 }
 
 export interface BudgetGroupAPI {
@@ -396,6 +409,11 @@ export interface BudgetGroupAPI {
 export interface BudgetMonthAPI {
   month: string;
   ready_to_assign: number;
+  rta_breakdown: {
+    crc_accounts: number;
+    usd_accounts_in_crc: number;
+    usd_accounts_native: number;
+  };
   age_of_money: number | null;
   total_underfunded: number;
   category_groups: BudgetGroupAPI[];
@@ -430,6 +448,11 @@ export async function fetchBudget(month: string): Promise<BudgetMonthAPI> {
   const fromMinor = (n: number) => n / 100;
   data.ready_to_assign = fromMinor(data.ready_to_assign);
   data.total_underfunded = fromMinor(data.total_underfunded);
+  if (data.rta_breakdown) {
+    data.rta_breakdown.crc_accounts = fromMinor(data.rta_breakdown.crc_accounts);
+    data.rta_breakdown.usd_accounts_in_crc = fromMinor(data.rta_breakdown.usd_accounts_in_crc);
+    data.rta_breakdown.usd_accounts_native = fromMinor(data.rta_breakdown.usd_accounts_native);
+  }
   for (const g of data.category_groups) {
     g.assigned  = fromMinor(g.assigned);
     g.activity  = fromMinor(g.activity);
@@ -441,6 +464,12 @@ export async function fetchBudget(month: string): Promise<BudgetMonthAPI> {
       c.available   = fromMinor(c.available);
       c.underfunded = fromMinor(c.underfunded);
       if (c.target) c.target.amount = fromMinor(c.target.amount);
+      if (c.activity_breakdown) {
+        for (const entry of c.activity_breakdown) {
+          entry.amount = fromMinor(entry.amount);
+          entry.converted_amount = fromMinor(entry.converted_amount);
+        }
+      }
     }
   }
   return data as BudgetMonthAPI;
