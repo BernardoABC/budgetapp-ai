@@ -155,6 +155,65 @@ export function SplitModal({ txn, categories, fmt, onClose, onSave }: SplitProps
   );
 }
 
+// ── Payee Category Suggestion ──────────────────────────────
+
+export interface PayeeSuggestionState {
+  step: 1 | 2;
+  payee: string;
+  transactions: Transaction[];
+  categoryId: string;
+  categoryName: string;
+  hadPreviousCategory: boolean;
+}
+
+interface PayeeSuggestionProps {
+  state: PayeeSuggestionState;
+  onQ1Yes: () => void;
+  onQ1No: () => void;
+  onQ2Yes: () => void;
+  onQ2No: () => void;
+}
+
+export function PayeeSuggestionModal({ state, onQ1Yes, onQ1No, onQ2Yes, onQ2No }: PayeeSuggestionProps) {
+  return (
+    <div style={am.overlay}>
+      <div style={{ ...am.card, width: 440 }} onClick={e => e.stopPropagation()}>
+        <div style={am.header}>
+          <span style={am.title}>
+            {state.step === 1 ? 'Apply to existing transactions?' : 'Create payee rule?'}
+          </span>
+        </div>
+        <div style={am.body}>
+          {state.step === 1 && (
+            <>
+              <p style={{ ...am.lead, fontSize: 13.5, color: 'var(--text, #e8e8e8)', marginBottom: 8 }}>
+                <strong>{state.transactions.length}</strong> other transaction{state.transactions.length !== 1 ? 's' : ''} {state.transactions.length !== 1 ? 'have' : 'has'} <strong>"{state.payee}"</strong> as payee.
+              </p>
+              <p style={am.help}>Apply <strong style={{ color: 'var(--accent)' }}>{state.categoryName}</strong> to all of them?</p>
+              <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+                <button onClick={onQ1Yes} style={am.primaryBtn}>Yes, apply to all</button>
+                <button onClick={onQ1No} style={am.ghostBtn}>No, just this one</button>
+              </div>
+            </>
+          )}
+          {state.step === 2 && (
+            <>
+              <p style={{ ...am.lead, fontSize: 13.5, color: 'var(--text, #e8e8e8)', marginBottom: 8 }}>
+                Create a rule so future <strong>"{state.payee}"</strong> imports are automatically categorized?
+              </p>
+              <p style={am.help}>Category: <strong style={{ color: 'var(--accent)' }}>{state.categoryName}</strong></p>
+              <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+                <button onClick={onQ2Yes} style={am.primaryBtn}>Yes, create rule</button>
+                <button onClick={onQ2No} style={am.ghostBtn}>No thanks</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const am = {
   overlay:     { position: 'fixed' as const, inset: 0, background: 'rgba(4,6,10,0.66)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
   card:        { width: 400, maxWidth: 'calc(100vw - 40px)', background: T.surface2, border: `1px solid ${T.borderHi}`, borderRadius: T.radius, boxShadow: '0 32px 80px -20px rgba(0,0,0,0.85)', overflow: 'hidden' },
