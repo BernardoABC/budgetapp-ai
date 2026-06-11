@@ -485,16 +485,20 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
         onAccountsChanged();
         reload();
         if (!updated.payee || !updated.category || !category_id) return;
-        const others = await fetchAllPayeeTxns(updated.payee, updated.id);
-        if (others.length === 0) return;
-        setPayeeSuggestionModal({
-          step: 1,
-          payee: updated.payee,
-          transactions: others,
-          categoryId: category_id,
-          categoryName: updated.category,
-          hadPreviousCategory: previousCategory !== null && previousCategory !== updated.category,
-        });
+        try {
+          const others = await fetchAllPayeeTxns(updated.payee, updated.id);
+          if (others.length === 0) return;
+          setPayeeSuggestionModal({
+            step: 1,
+            payee: updated.payee,
+            transactions: others,
+            categoryId: category_id,
+            categoryName: updated.category,
+            hadPreviousCategory: previousCategory !== null && previousCategory !== updated.category,
+          });
+        } catch {
+          // suggestion fetch failed silently; save already succeeded
+        }
       })
       .catch(err => { console.error('save transaction failed:', err); toast.error('Save failed: ' + err.message); reload(); });
   };
