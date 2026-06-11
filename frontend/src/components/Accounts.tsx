@@ -503,6 +503,52 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
       .catch(err => { console.error('save transaction failed:', err); toast.error('Save failed: ' + err.message); reload(); });
   };
 
+  const handlePayeeSuggestionQ1Yes = async () => {
+    if (!payeeSuggestionModal) return;
+    try {
+      const ids = payeeSuggestionModal.transactions.map(t => t.id);
+      await batchTransactions(ids, 'categorize', payeeSuggestionModal.categoryId);
+      toast.success(`Applied to ${ids.length} transaction${ids.length !== 1 ? 's' : ''}`);
+      onAccountsChanged();
+      reload();
+    } catch (err) {
+      toast.error('Batch update failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
+    if (payeeSuggestionModal.hadPreviousCategory) {
+      setPayeeSuggestionModal(m => m ? { ...m, step: 2 } : null);
+    } else {
+      setPayeeSuggestionModal(null);
+    }
+  };
+
+  const handlePayeeSuggestionQ1No = () => {
+    if (!payeeSuggestionModal) return;
+    if (payeeSuggestionModal.hadPreviousCategory) {
+      setPayeeSuggestionModal(m => m ? { ...m, step: 2 } : null);
+    } else {
+      setPayeeSuggestionModal(null);
+    }
+  };
+
+  const handlePayeeSuggestionQ2Yes = async () => {
+    if (!payeeSuggestionModal) return;
+    try {
+      const existingRules = await fetchPayeeRules();
+      const existing = existingRules.find(r => r.pattern === payeeSuggestionModal.payee);
+      if (existing) {
+        await updatePayeeRule(existing.id, payeeSuggestionModal.payee, payeeSuggestionModal.categoryId);
+      } else {
+        await createPayeeRule(payeeSuggestionModal.payee, payeeSuggestionModal.categoryId);
+      }
+      toast.success('Payee rule saved');
+    } catch (err) {
+      toast.error('Rule save failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
+    setPayeeSuggestionModal(null);
+  };
+
+  const handlePayeeSuggestionQ2No = () => setPayeeSuggestionModal(null);
+
   const toggleCleared = (t: Transaction) => {
     const amount = t.inflow > 0 ? t.inflow : -t.outflow;
     const category_id = t.category ? (categoryIdByName[t.category] ?? undefined) : undefined;
@@ -1056,6 +1102,15 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
             </div>
           </div>
         </div>
+      )}
+      {payeeSuggestionModal && (
+        <PayeeSuggestionModal
+          state={payeeSuggestionModal}
+          onQ1Yes={handlePayeeSuggestionQ1Yes}
+          onQ1No={handlePayeeSuggestionQ1No}
+          onQ2Yes={handlePayeeSuggestionQ2Yes}
+          onQ2No={handlePayeeSuggestionQ2No}
+        />
       )}
       {showAddTxn && (
         <div style={stModal.overlay} onClick={e => e.target === e.currentTarget && setShowAddTxn(false)}>
