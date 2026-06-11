@@ -45,14 +45,30 @@ function InlineRename({ value, onCommit, style }: { value: string; onCommit: (v:
 
 interface BudgetCellHandle { startEdit: () => void; }
 
-const BudgetCell = forwardRef<BudgetCellHandle, { value: number; onSave: (v: number) => void; fmt: (n: number) => string }>(
-  ({ value, onSave, fmt }, ref) => {
+const BudgetCell = forwardRef<BudgetCellHandle, { value: number; onSave: (v: number) => void; fmt: (n: number) => string; toDisplay?: (raw: number) => number; toRaw?: (display: number) => number }>(
+  ({ value, onSave, fmt, toDisplay, toRaw }, ref) => {
     const [editing, setEditing] = useState(false);
     const [input, setInput] = useState('');
     const [hovered, setHovered] = useState(false);
-    const startEdit = () => { setInput(String(value)); setEditing(true); };
+    const startEdit = () => { const displayVal = toDisplay ? +(toDisplay(value).toFixed(2)) : value; setInput(String(displayVal)); setEditing(true); };
     useImperativeHandle(ref, () => ({ startEdit }));
-    const commit = () => { const num = parseFloat(input.replace(/[^0-9.-]/g, '')); if (!isNaN(num)) onSave(num); setEditing(false); };
+    const commit = () => {
+      const sanitized = input.replace(/[^0-9+\-*/.() ]/g, '');
+      let num: number | null = null;
+      if (sanitized.trim()) {
+        try {
+          // eslint-disable-next-line no-new-func
+          const result = new Function('return ' + sanitized)() as number;
+          if (typeof result === 'number' && isFinite(result)) num = result;
+        } catch { /* invalid expression */ }
+        if (num === null) {
+          const fallback = parseFloat(sanitized.replace(/[^0-9.-]/g, ''));
+          if (!isNaN(fallback)) num = fallback;
+        }
+      }
+      if (num !== null) onSave(toRaw ? toRaw(num) : num);
+      setEditing(false);
+    };
     if (editing) {
       return <input autoFocus value={input} onChange={e => setInput(e.target.value)} onBlur={commit}
         onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }} style={st.cellInput} />;
@@ -94,11 +110,13 @@ interface GroupBlockProps {
   onMoveGroup: (idx: number, dir: number) => void;
   onDeleteGroup: (gid: string) => void;
   onReorderCat: (gid: string, fromIdx: number, toIdx: number) => void;
+  toDisplay?: (raw: number) => number;
+  toRaw?: (display: number) => number;
 }
 
 function GroupBlock(props: GroupBlockProps) {
   const { group, gidx, color, catState, collapsed, onToggle, fmt, onSaveAssigned, onOpenMove, onOpenInspector,
-    rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup, onMoveGroup, onDeleteGroup, onReorderCat, catCurrencies } = props;
+    rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup, onMoveGroup, onDeleteGroup, onReorderCat, catCurrencies, toDisplay, toRaw } = props;
   const [hovCat, setHovCat] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newCat, setNewCat] = useState('');
@@ -203,7 +221,7 @@ function GroupBlock(props: GroupBlockProps) {
               </td>
               <td style={{ ...st.numCell, padding: '0 16px', borderBottom: 'none' }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
-                  <BudgetCell ref={el => { cellRefs.current[cat] = el; }} value={c.assigned} onSave={v => onSaveAssigned(cat, v)} fmt={fmt} />
+                  <BudgetCell ref={el => { cellRefs.current[cat] = el; }} value={c.assigned} onSave={v => onSaveAssigned(cat, v)} fmt={fmt} toDisplay={toDisplay} toRaw={toRaw} />
                   <span style={{ fontSize: 9, fontWeight: 700, color: T.textDim, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 3, padding: '1px 4px', letterSpacing: '0.05em', flexShrink: 0 }}>
                     {(catCurrencies[cat] ?? 'CRC') === 'USD' ? '$' : '₡'}
                   </span>
@@ -366,6 +384,18 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       return (amount < 0 ? '-' : '') + '$' + Math.abs(usd).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     };
   }, [currency, monthRate, fmt]);
+
+  const toDisplayFn = useMemo<((raw: number) => number) | undefined>(() => {
+    if (currency !== 'USD' || monthRate === null) return undefined;
+    const rate = monthRate.usd_to_crc;
+    return (crc: number) => crc / rate;
+  }, [currency, monthRate]);
+
+  const toRawFn = useMemo<((display: number) => number) | undefined>(() => {
+    if (currency !== 'USD' || monthRate === null) return undefined;
+    const rate = monthRate.usd_to_crc;
+    return (usd: number) => Math.round(usd * rate);
+  }, [currency, monthRate]);
 
   const dataT = useMemo(() => ({
     months: [currentDisplayMonth],
@@ -633,7 +663,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
                     onOpenMove={setMoveCat} onOpenInspector={setInspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
                     onRenameCat={renameCat} onMoveCat={reorderCat} onHideCat={hideCat} onDeleteCat={deleteCat} onAddCat={addCat}
                     onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} onReorderCat={handleReorderCat}
-                    catCurrencies={catCurrencies} />
+                    catCurrencies={catCurrencies} toDisplay={toDisplayFn} toRaw={toRawFn} />
                 ))}
               </tbody>
             </table>
