@@ -122,6 +122,8 @@ function GroupBlock(props: GroupBlockProps) {
   const [adding, setAdding] = useState(false);
   const [newCat, setNewCat] = useState('');
   const [newCatCurrency, setNewCatCurrency] = useState<'CRC' | 'USD'>('CRC');
+  const [renamingCat, setRenamingCat] = useState<string | null>(null);
+  const [renameVal, setRenameVal] = useState('');
   const cellRefs = useRef<Record<string, BudgetCellHandle | null>>({});
   const [dragCat, setDragCat] = useState<string | null>(null);
   const [dragOverCat, setDragOverCat] = useState<string | null>(null);
@@ -214,7 +216,20 @@ function GroupBlock(props: GroupBlockProps) {
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ ...st.dragHandle, opacity: hovCat === cat ? 0.35 : 0 }}>⠿</span>
-                    <button onClick={e => { e.stopPropagation(); onOpenInspector(cat); }} style={{ ...st.catName, color: over ? T.neg : T.textMid }}>{cat}</button>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (inspectorCat === cat) {
+                          setRenamingCat(cat);
+                          setRenameVal(cat);
+                        } else {
+                          onOpenInspector(cat);
+                        }
+                      }}
+                      style={{ ...st.catName, color: over ? T.neg : inspectorCat === cat ? T.text : T.textMid }}
+                    >
+                      {cat}
+                    </button>
                     {tLabel && <span style={st.targetChip} title="Target">◎ {tLabel}</span>}
                     {c.underfunded > 0 && <span style={st.underBadge}>−{fmt(c.underfunded)}</span>}
                   </div>
