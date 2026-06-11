@@ -96,6 +96,7 @@ interface GroupBlockProps {
   onSaveAssigned: (cat: string, v: number) => void;
   onOpenMove: (cat: string) => void;
   onOpenInspector: (cat: string) => void;
+  inspectorCat: string | null;
   rowPad: string;
   editMode: boolean;
   hidden: Set<string>;
@@ -116,7 +117,7 @@ interface GroupBlockProps {
 
 function GroupBlock(props: GroupBlockProps) {
   const { group, gidx, color, catState, collapsed, onToggle, fmt, onSaveAssigned, onOpenMove, onOpenInspector,
-    rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup, onMoveGroup, onDeleteGroup, onReorderCat, catCurrencies, toDisplay, toRaw } = props;
+    inspectorCat, rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup, onMoveGroup, onDeleteGroup, onReorderCat, catCurrencies, toDisplay, toRaw } = props;
   const [hovCat, setHovCat] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newCat, setNewCat] = useState('');
@@ -660,7 +661,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
                 {groups.map((g, gi) => (
                   <GroupBlock key={g.id} group={g} gidx={gi} color={colorFor(g.name, gi)} catState={state.cats}
                     collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmtMonth} onSaveAssigned={handleSaveAssigned}
-                    onOpenMove={setMoveCat} onOpenInspector={setInspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
+                    onOpenMove={setMoveCat} onOpenInspector={setInspectorCat} inspectorCat={inspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
                     onRenameCat={renameCat} onMoveCat={reorderCat} onHideCat={hideCat} onDeleteCat={deleteCat} onAddCat={addCat}
                     onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} onReorderCat={handleReorderCat}
                     catCurrencies={catCurrencies} toDisplay={toDisplayFn} toRaw={toRawFn} />
