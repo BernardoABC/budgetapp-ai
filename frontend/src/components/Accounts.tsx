@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { updateTransaction, deleteTransaction, createTransaction, createTransfer, fetchTransactionsPage, batchTransactions, reconcileAccount, fetchTransferCandidates, linkTransfer, linkOrCreateBatch, updateAccount, deleteAccount, type TxnPage, type TxnFilterParams, type LinkOrCreatePair } from '../api';
+import { updateTransaction, deleteTransaction, createTransaction, createTransfer, fetchTransactionsPage, batchTransactions, reconcileAccount, fetchTransferCandidates, linkTransfer, linkOrCreateBatch, updateAccount, deleteAccount, fetchPayeeRules, createPayeeRule, updatePayeeRule, type TxnPage, type TxnFilterParams, type LinkOrCreatePair } from '../api';
 import { useToast } from './Toast';
 import { T, GROUP_COLORS } from '../theme';
-import { ReconcileModal, RulesManager, SplitModal } from './AccountsModals';
+import { ReconcileModal, RulesManager, SplitModal, PayeeSuggestionModal, type PayeeSuggestionState } from './AccountsModals';
 import type { PayeeRule } from './AccountsModals';
 import type { Transaction, Account, CategoryGroup, CategoryGroupAPI } from '../api';
 
@@ -365,6 +365,7 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
     targetAccountId: string;
     pairs: Array<{ source: Transaction; candidate: Transaction | null; include: boolean }>;
   } | null>(null);
+  const [payeeSuggestionModal, setPayeeSuggestionModal] = useState<PayeeSuggestionState | null>(null);
 
   const txns = page?.transactions ?? [];
 
@@ -458,14 +459,43 @@ export function Accounts({ accounts, accountId, categoryGroups, fmt, density, ca
   const sortCol = (() => { const k = sort.replace(/_(asc|desc)$/, ''); return k === 'amount' ? 'outflow' : k; })();
   const sortDir = sort.endsWith('_asc') ? 'asc' : 'desc';
 
+  const fetchAllPayeeTxns = async (payee: string, excludeId: string): Promise<Transaction[]> => {
+    const all: Transaction[] = [];
+    let p = 1;
+    const perPage = 100;
+    while (true) {
+      const result = await fetchTransactionsPage(accountId, { search: payee, page: p, per_page: perPage });
+      all.push(...result.transactions.filter(t => t.payee === payee && t.id !== excludeId));
+      if (p >= result.pagination.total_pages) break;
+      p++;
+    }
+    return all;
+  };
+
   const handleSave = (updated: Transaction) => {
+    const previousCategory = page?.transactions.find(t => t.id === updated.id)?.category ?? null;
     const amount = updated.inflow > 0 ? updated.inflow : -updated.outflow;
     const category_id = updated.category ? (categoryIdByName[updated.category] ?? undefined) : undefined;
     updateTransaction(updated.id, {
       date: updated.date, payee: updated.payee, category_id, amount,
       memo: updated.memo, cleared: updated.cleared,
     })
-      .then(() => { toast.success('Transaction updated'); onAccountsChanged(); reload(); })
+      .then(async () => {
+        toast.success('Transaction updated');
+        onAccountsChanged();
+        reload();
+        if (!updated.payee || !updated.category || !category_id) return;
+        const others = await fetchAllPayeeTxns(updated.payee, updated.id);
+        if (others.length === 0) return;
+        setPayeeSuggestionModal({
+          step: 1,
+          payee: updated.payee,
+          transactions: others,
+          categoryId: category_id,
+          categoryName: updated.category,
+          hadPreviousCategory: previousCategory !== null && previousCategory !== updated.category,
+        });
+      })
       .catch(err => { console.error('save transaction failed:', err); toast.error('Save failed: ' + err.message); reload(); });
   };
 
