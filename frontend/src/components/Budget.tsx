@@ -753,9 +753,14 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     }));
   }, [categoryIdByName, undoPush]);
   const hideCat = (name: string) => {
+    const wasHidden = hidden.has(name);
     undoPush({
-      label: hidden.has(name) ? `Unhide '${name}'` : `Hide '${name}'`,
-      undo: () => setHidden(h => { const n = new Set(h); n.has(name) ? n.delete(name) : n.add(name); return n; }),
+      label: wasHidden ? `Unhide '${name}'` : `Hide '${name}'`,
+      undo: () => setHidden(h => {
+        const n = new Set(h);
+        if (wasHidden) n.add(name); else n.delete(name);
+        return n;
+      }),
     });
     setHidden(h => { const n = new Set(h); n.has(name) ? n.delete(name) : n.add(name); return n; });
   };
@@ -764,29 +769,29 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     const capturedCurrency = catCurrencies[name] ?? 'CRC';
     const capturedAssigned = localBudget[currentDisplayMonth]?.[name]?.assigned ?? 0;
     const capturedYM = currentYM;
-    const capturedMonth = currentDisplayMonth;
-    const grp = groups.find(g => g.id === gid);
-    const capturedSortIdx = grp ? grp.categories.indexOf(name) : 0;
-    undoPush({
-      label: `Delete '${name}'`,
-      undo: async () => {
-        try {
-          const newCat = await createCategory({ group_id: gid, name, sort_order: capturedSortIdx, currency: capturedCurrency as 'CRC' | 'USD' });
-          if (capturedAssigned !== 0) {
-            await apiSetAssigned(capturedYM, newCat.id, capturedAssigned);
-          }
-          onCategoriesChanged();
-        } catch (err: unknown) {
-          toast.error((err as Error).message);
-          onCategoriesChanged();
-        }
-      },
-    });
+    const capturedSortIdx = groups.find(g => g.id === gid)?.categories.indexOf(name) ?? 0;
     setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
     setSelectedCats(prev => { if (!prev.has(name)) return prev; const next = new Set(prev); next.delete(name); return next; });
     if (catId) {
       deleteCategory(catId)
-        .then(() => onCategoriesChanged())
+        .then(() => {
+          undoPush({
+            label: `Delete '${name}'`,
+            undo: async () => {
+              try {
+                const newCat = await createCategory({ group_id: gid, name, sort_order: capturedSortIdx, currency: capturedCurrency as 'CRC' | 'USD' });
+                if (capturedAssigned !== 0) {
+                  await apiSetAssigned(capturedYM, newCat.id, capturedAssigned);
+                }
+                onCategoriesChanged();
+              } catch (err: unknown) {
+                toast.error((err as Error).message);
+                onCategoriesChanged();
+              }
+            },
+          });
+          onCategoriesChanged();
+        })
         .catch(err => { toast.error(err.message); onCategoriesChanged(); });
     }
   };
