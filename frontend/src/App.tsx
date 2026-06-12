@@ -10,6 +10,7 @@ import { Budget } from './components/Budget';
 import { Accounts } from './components/Accounts';
 import { ImportWizard } from './components/Import';
 import { Reports } from './components/Reports';
+import { CashFlow } from './components/CashFlow';
 import { ToastProvider } from './components/Toast';
 
 
@@ -182,6 +183,7 @@ function App() {
           )}
           {page === 'import' && <ImportWizard accounts={accounts} categoryGroups={categoryGroups} categoryIdByName={categoryIdByName} fmt={fmtBound} onNavigate={navigate} rawCategoryGroups={rawCategoryGroups} />}
           {page === 'reports' && <Reports fmt={fmtBound} />}
+          {page === 'cashflow' && <CashFlow fmt={fmtBound} />}
         </div>
       </Layout>
 

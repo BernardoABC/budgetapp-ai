@@ -72,6 +72,7 @@ function Sidebar({ currentPage, currentAccountId, onNavigate, accounts, exchange
         <nav style={{ padding: '4px 12px 8px' }}>
           <NavItem active={currentPage === 'dashboard'} onClick={() => onNavigate('dashboard')} icon={ICONS.dashboard} label="Dashboard" />
           <NavItem active={currentPage === 'budget'} onClick={() => onNavigate('budget')} icon={ICONS.budget} label="Budget" />
+          <NavItem active={currentPage === 'cashflow'} onClick={() => onNavigate('cashflow')} icon={ICONS.reports} label="Cash Flow" />
           <NavItem active={currentPage === 'reports'} onClick={() => onNavigate('reports')} icon={ICONS.reports} label="Reports" />
         </nav>
         <div style={st.section}>
