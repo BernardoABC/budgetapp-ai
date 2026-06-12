@@ -767,21 +767,50 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   };
   const deleteCat = (gid: string, name: string) => {
     const catId = categoryIdByName[name];
+    const capturedCurrency = catCurrencies[name] ?? 'CRC';
+    const capturedAssigned = localBudget[currentDisplayMonth]?.[name]?.assigned ?? 0;
+    const capturedYM = currentYM;
+    const capturedMonth = currentDisplayMonth;
+    const grp = groups.find(g => g.id === gid);
+    const capturedSortIdx = grp ? grp.categories.indexOf(name) : 0;
+    undoPush({
+      label: `Delete '${name}'`,
+      undo: async () => {
+        try {
+          const newCat = await createCategory({ group_id: gid, name, sort_order: capturedSortIdx, currency: capturedCurrency as 'CRC' | 'USD' });
+          if (capturedAssigned !== 0) {
+            await apiSetAssigned(capturedYM, newCat.id, capturedAssigned);
+          }
+          onCategoriesChanged();
+        } catch (err: unknown) {
+          toast.error((err as Error).message);
+          onCategoriesChanged();
+        }
+      },
+    });
     setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
     setSelectedCats(prev => { if (!prev.has(name)) return prev; const next = new Set(prev); next.delete(name); return next; });
     if (catId) {
       deleteCategory(catId)
         .then(() => onCategoriesChanged())
-        .catch(err => {
-          toast.error(err.message);
-          onCategoriesChanged();
-        });
+        .catch(err => { toast.error(err.message); onCategoriesChanged(); });
     }
   };
   const addCat = (gid: string, name: string, currency: 'CRC' | 'USD') => {
     setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: [...g.categories, name] } : g));
     createCategory({ group_id: gid, name, sort_order: 0, currency })
-      .then(() => onCategoriesChanged())
+      .then(newCat => {
+        undoPush({
+          label: `Add '${name}'`,
+          undo: () => {
+            setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
+            deleteCategory(newCat.id)
+              .then(() => onCategoriesChanged())
+              .catch(err => { toast.error(err.message); onCategoriesChanged(); });
+          },
+        });
+        onCategoriesChanged();
+      })
       .catch(err => {
         toast.error(err.message);
         setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
