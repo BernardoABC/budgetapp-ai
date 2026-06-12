@@ -56,12 +56,6 @@ const BudgetCell = forwardRef<BudgetCellHandle, { value: number; onSave: (v: num
     const startEdit = () => { const displayVal = toDisplay ? +(toDisplay(value).toFixed(2)) : value; setInput(String(displayVal)); setEditing(true); setHovered(false); };
     useImperativeHandle(ref, () => ({ startEdit }));
     const commit = () => {
-      const plain = parseFloat(input.trim());
-      if (isFinite(plain)) {
-        onSave(toRaw ? toRaw(plain) : plain);
-        setEditing(false);
-        return;
-      }
       const sanitized = input.replace(/[^0-9+\-*/.() ]/g, '');
       let num: number | null = null;
       if (sanitized.trim()) {
