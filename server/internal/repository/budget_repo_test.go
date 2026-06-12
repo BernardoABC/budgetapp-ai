@@ -180,22 +180,40 @@ func TestBudgetRepo_ClearAllAssigned(t *testing.T) {
 	}
 }
 
-func TestBudgetRepo_GetOnBudgetBalanceByCurrency(t *testing.T) {
+func TestBudgetRepo_ActualIncomeAndSpending(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	repo := repository.NewBudgetRepo(pool)
 	ctx := context.Background()
 
-	testutil.SeedOnBudgetAccountWithCurrency(t, pool, "CRC", 50000000)
-	testutil.SeedOnBudgetAccountWithCurrency(t, pool, "USD", 100000)
+	// Income system category.
+	var incomeCat string
+	if err := pool.QueryRow(ctx,
+		`SELECT id::text FROM categories WHERE is_system=true AND name='Income' LIMIT 1`).Scan(&incomeCat); err != nil {
+		t.Skipf("Income system category not seeded: %v", err)
+	}
 
-	bal, err := repo.GetOnBudgetBalanceByCurrency(ctx)
+	accID := testutil.SeedOnBudgetAccount(t, pool)
+	spendCat := testutil.SeedCategory(t, pool)
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM transactions WHERE account_id=$1::uuid`, accID)
+	})
+
+	testutil.SeedTransaction(t, pool, accID, incomeCat, "2026-05-10", 1200000) // income
+	testutil.SeedTransaction(t, pool, accID, spendCat, "2026-05-12", -300000)  // spending
+
+	income, err := repo.GetActualIncomeForMonth(ctx, "2026-05")
 	if err != nil {
-		t.Fatalf("GetOnBudgetBalanceByCurrency: %v", err)
+		t.Fatalf("GetActualIncomeForMonth: %v", err)
 	}
-	if bal.CRC < 50000000 {
-		t.Errorf("expected CRC >= 50000000, got %d", bal.CRC)
+	if income != 1200000 {
+		t.Errorf("income = %d, want 1200000", income)
 	}
-	if bal.USD < 100000 {
-		t.Errorf("expected USD >= 100000, got %d", bal.USD)
+
+	spending, err := repo.GetActualSpendingForMonth(ctx, "2026-05")
+	if err != nil {
+		t.Fatalf("GetActualSpendingForMonth: %v", err)
+	}
+	if spending != 300000 {
+		t.Errorf("spending = %d, want 300000 (positive)", spending)
 	}
 }

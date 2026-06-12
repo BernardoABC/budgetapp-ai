@@ -136,84 +136,53 @@ func (r *BudgetRepo) GetAllActivityUpToMonth(ctx context.Context, month string) 
 	return out, rows.Err()
 }
 
-// GetOnBudgetBalance returns the sum of balances of all open on-budget accounts.
-func (r *BudgetRepo) GetOnBudgetBalance(ctx context.Context) (int64, error) {
+// crcConvExpr converts a transaction amount to CRC centimos using the stamped
+// rate, nearest available rate, or fallback 500. Used for cross-category CRC rollups.
+const crcConvExpr = `CASE
+  WHEN a.currency = 'CRC' THEN t.amount
+  ELSE ROUND(t.amount::numeric * COALESCE(
+    t.exchange_rate,
+    (SELECT er.usd_to_crc FROM exchange_rates er WHERE er.date <= t.date ORDER BY er.date DESC LIMIT 1),
+    500))::bigint
+END`
+
+// GetActualIncomeForMonth returns total inflow (CRC) booked to the Income system
+// category in the given YYYY-MM month, on on-budget accounts.
+func (r *BudgetRepo) GetActualIncomeForMonth(ctx context.Context, month string) (int64, error) {
 	var total int64
-	if err := r.pool.QueryRow(ctx,
-		`SELECT COALESCE(SUM(balance), 0) FROM accounts WHERE on_budget = true AND closed = false`,
-	).Scan(&total); err != nil {
-		return 0, fmt.Errorf("get on-budget balance: %w", err)
-	}
-	return total, nil
-}
-
-// CurrencyBalance holds on-budget account balances split by currency.
-type CurrencyBalance struct {
-	CRC int64
-	USD int64
-}
-
-// GetOnBudgetBalanceByCurrency returns on-budget account balances split into CRC and USD minor units.
-func (r *BudgetRepo) GetOnBudgetBalanceByCurrency(ctx context.Context) (CurrencyBalance, error) {
-	var bal CurrencyBalance
 	err := r.pool.QueryRow(ctx, `
-		SELECT
-		  COALESCE(SUM(balance) FILTER (WHERE currency = 'CRC'), 0),
-		  COALESCE(SUM(balance) FILTER (WHERE currency = 'USD'), 0)
-		FROM accounts
-		WHERE on_budget = true AND closed = false
-	`).Scan(&bal.CRC, &bal.USD)
-	if err != nil {
-		return bal, fmt.Errorf("get balance by currency: %w", err)
-	}
-	return bal, nil
-}
-
-// GetOutflow30Days returns the sum of absolute values of negative transactions
-// on on-budget accounts within the past 30 days.
-func (r *BudgetRepo) GetOutflow30Days(ctx context.Context) (int64, error) {
-	var total int64
-	if err := r.pool.QueryRow(ctx, `
-		SELECT COALESCE(SUM(ABS(t.amount)), 0)
+		SELECT COALESCE(SUM(`+crcConvExpr+`), 0)
 		FROM transactions t
 		JOIN accounts a ON a.id = t.account_id
+		JOIN categories cat ON cat.id = t.category_id
 		WHERE a.on_budget = true
-		  AND t.amount < 0
-		  AND t.date >= CURRENT_DATE - INTERVAL '30 days'
-	`).Scan(&total); err != nil {
-		return 0, fmt.Errorf("get outflow 30 days: %w", err)
+		  AND cat.is_system = true AND cat.name = 'Income'
+		  AND date_trunc('month', t.date) = ($1 || '-01')::date
+	`, month).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("actual income %s: %w", month, err)
 	}
 	return total, nil
 }
 
-// AtomicMove adjusts assigned for two categories in the same month atomically.
-// from's assigned decreases by amount; to's assigned increases by amount.
-func (r *BudgetRepo) AtomicMove(ctx context.Context, fromCatID, toCatID, month string, amount int64) error {
-	tx, err := r.pool.Begin(ctx)
+// GetActualSpendingForMonth returns total outflow (CRC, positive) in non-system
+// categories for the given YYYY-MM month, on on-budget accounts.
+func (r *BudgetRepo) GetActualSpendingForMonth(ctx context.Context, month string) (int64, error) {
+	var total int64
+	err := r.pool.QueryRow(ctx, `
+		SELECT COALESCE(-SUM(`+crcConvExpr+`), 0)
+		FROM transactions t
+		JOIN accounts a ON a.id = t.account_id
+		JOIN categories cat ON cat.id = t.category_id
+		WHERE a.on_budget = true
+		  AND cat.is_system = false
+		  AND t.amount < 0
+		  AND date_trunc('month', t.date) = ($1 || '-01')::date
+	`, month).Scan(&total)
 	if err != nil {
-		return fmt.Errorf("begin move tx: %w", err)
+		return 0, fmt.Errorf("actual spending %s: %w", month, err)
 	}
-	defer tx.Rollback(ctx)
-
-	for _, q := range []struct {
-		catID string
-		delta int64
-	}{
-		{fromCatID, -amount},
-		{toCatID, +amount},
-	} {
-		_, err := tx.Exec(ctx, `
-			INSERT INTO budgets (category_id, month, assigned)
-			VALUES ($1::uuid, $2::date, $3)
-			ON CONFLICT (category_id, month) DO UPDATE
-			SET assigned   = budgets.assigned + EXCLUDED.assigned,
-			    updated_at = NOW()
-		`, q.catID, month, q.delta)
-		if err != nil {
-			return fmt.Errorf("move delta for %s: %w", q.catID, err)
-		}
-	}
-	return tx.Commit(ctx)
+	return total, nil
 }
 
 // ActivityBreakdownRow is one line of the per-currency activity breakdown for a category in a month.
