@@ -1,12 +1,16 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { T, GROUP_COLORS } from '../theme';
-import { compute, quickAssign as engineQuickAssign, targetLabel } from '../engine';
-import { MoveMoneyModal, CategoryInspector } from './BudgetModals';
+import { computePlan, resetAllPlanned } from '../engine';
+import { CategoryInspector } from './BudgetModals';
 import { BudgetSummaryPane } from './BudgetSummaryPane';
 import type { SummaryStats } from './BudgetSummaryPane';
-import type { CategoryGroup, Target, BudgetMonthAPI } from '../api';
-import type { CatState, MonthState } from '../engine';
-import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate } from '../api';
+import type { CategoryGroup, PlanMonthAPI } from '../api';
+import type { PlanState, PlanCatState } from '../engine';
+import {
+  fetchPlan, setPlanned as apiSetPlanned, copyPreviousPlan, setExpectedIncome as apiSetIncome,
+  setFlexBudget as apiSetFlexBudget, fetchBudgetMode, setBudgetMode as apiSetBudgetMode,
+  createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate,
+} from '../api';
 import type { ExchangeRate } from '../api';
 import { useToast } from './Toast';
 import { useUndoStack } from '../hooks/useUndoStack';
@@ -24,12 +28,6 @@ function prevYM(ym: string): string {
 function nextYM(ym: string): string {
   const [y, m] = ym.split('-').map(Number);
   return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
-}
-function futureMonthDisplays(fromYM: string, count = 24): string[] {
-  const result: string[] = [];
-  let cur = fromYM;
-  for (let i = 0; i < count; i++) { result.push(toDisplayMonth(cur)); cur = nextYM(cur); }
-  return result;
 }
 
 function colorFor(groupName: string, idx: number): string {
@@ -89,16 +87,24 @@ const BudgetCell = forwardRef<BudgetCellHandle, { value: number; onSave: (v: num
   }
 );
 
+function HeaderStat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={st.headerStat}>
+      <div style={st.headerStatLabel}>{label}</div>
+      <div style={st.headerStatValue}>{children}</div>
+    </div>
+  );
+}
+
 interface GroupBlockProps {
   group: CategoryGroup;
   gidx: number;
   color: string;
-  catState: MonthState['cats'];
+  catState: PlanState['cats'];
   collapsed: boolean;
   onToggle: () => void;
   fmt: (n: number) => string;
-  onSaveAssigned: (cat: string, v: number) => void;
-  onOpenMove: (cat: string) => void;
+  onSavePlanned: (cat: string, v: number) => void;
   onOpenInspector: (cat: string) => void;
   inspectorCat: string | null;
   rowPad: string;
@@ -123,7 +129,7 @@ interface GroupBlockProps {
 }
 
 function GroupBlock(props: GroupBlockProps) {
-  const { group, gidx, color, catState, collapsed, onToggle, fmt, onSaveAssigned, onOpenMove, onOpenInspector,
+  const { group, gidx, color, catState, collapsed, onToggle, fmt, onSavePlanned, onOpenInspector,
     inspectorCat, rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup,
     onMoveGroup, onDeleteGroup, onReorderCat, catCurrencies, toDisplay, toRaw,
     selectedCats, onToggleCatSelection, onToggleGroupSelection } = props;
@@ -151,9 +157,9 @@ function GroupBlock(props: GroupBlockProps) {
     setRenamingCat(null);
   }, [inspectorCat]);
 
-  const totAssigned = group.categories.reduce((s, c) => s + (catState[c]?.assigned ?? 0), 0);
+  const totPlanned = group.categories.reduce((s, c) => s + (catState[c]?.planned ?? 0), 0);
   const totActivity = group.categories.reduce((s, c) => s + (catState[c]?.activity ?? 0), 0);
-  const totAvailable = group.categories.reduce((s, c) => s + (catState[c]?.available ?? 0), 0);
+  const totRemaining = group.categories.reduce((s, c) => s + (catState[c]?.remaining ?? 0), 0);
 
   const commitAdd = () => { if (newCat.trim()) { onAddCat(group.id, newCat.trim(), newCatCurrency); setNewCat(''); setNewCatCurrency('CRC'); setAdding(false); } };
 
@@ -187,20 +193,19 @@ function GroupBlock(props: GroupBlockProps) {
             </span>
           ) : group.name}
         </td>
-        <td style={st.groupNum}>{fmt(totAssigned)}</td>
-        <td style={{ ...st.groupNum, color: T.textDim }}>{fmt(totActivity)}</td>
-        <td style={{ ...st.groupNum, color: totAvailable < 0 ? T.neg : T.text }}>{fmt(totAvailable)}</td>
+        <td style={st.groupNum}>{fmt(totPlanned)}</td>
+        <td style={{ ...st.groupNum, color: T.textDim }}>{fmt(-totActivity)}</td>
+        <td style={{ ...st.groupNum, color: totRemaining < 0 ? T.neg : T.text }}>{fmt(totRemaining)}</td>
       </tr>
 
       {!collapsed && visibleCats.map(cat => {
-        const c: CatState = catState[cat] ?? { cat, assigned: 0, activity: 0, carryIn: 0, available: 0, target: null, underfunded: 0, targetNeed: 0, fundedPct: null };
-        const over = c.available < 0;
-        const near = !over && c.assigned > 0 && c.available / c.assigned < 0.15;
+        const c: PlanCatState = catState[cat] ?? { cat, id: '', currency: 'CRC', flexibility: 'flexible', rollover: false, planned: 0, activity: 0, remaining: 0, rolloverBalance: 0 };
+        const over = c.remaining < 0;
         const spent = Math.abs(Math.min(c.activity, 0));
-        const pct = c.assigned > 0 ? Math.min((spent / c.assigned) * 100, 100) : 0;
+        const pct = c.planned > 0 ? Math.min((spent / c.planned) * 100, 100) : 0;
+        const near = !over && c.planned > 0 && pct > 85;
         const barColor = over ? T.neg : near ? T.warn : color;
         const rowBg = over ? T.negDim : hovCat === cat ? 'rgba(255,255,255,0.02)' : 'transparent';
-        const tLabel = targetLabel(c.target, fmt);
         const isHidden = hidden.has(cat);
         const realIdx = group.categories.indexOf(cat);
 
@@ -289,27 +294,20 @@ function GroupBlock(props: GroupBlockProps) {
                         {cat}
                       </button>
                     )}
-                    {tLabel && <span style={st.targetChip} title="Target">◎ {tLabel}</span>}
-                    {c.underfunded > 0 && <span style={st.underBadge}>−{fmt(c.underfunded)}</span>}
+                    {c.rollover && <span style={st.rolloverChip} title="Rollover balance">↻ {fmt(c.rolloverBalance)}</span>}
                   </div>
                 )}
               </td>
               <td style={{ ...st.numCell, padding: '0 16px', borderBottom: 'none' }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
-                  <BudgetCell ref={el => { cellRefs.current[cat] = el; }} value={c.assigned} onSave={v => onSaveAssigned(cat, v)} fmt={fmt} toDisplay={toDisplay} toRaw={toRaw} />
+                  <BudgetCell ref={el => { cellRefs.current[cat] = el; }} value={c.planned} onSave={v => onSavePlanned(cat, v)} fmt={fmt} toDisplay={toDisplay} toRaw={toRaw} />
                   <span style={{ fontSize: 9, fontWeight: 700, color: T.textDim, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 3, padding: '1px 4px', letterSpacing: '0.05em', flexShrink: 0 }}>
                     {(catCurrencies[cat] ?? 'CRC') === 'USD' ? '$' : '₡'}
                   </span>
                 </div>
               </td>
-              <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.activity < 0 ? T.textDim : T.pos }}>{fmt(c.activity)}</td>
-              <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none' }}>
-                <button onClick={e => { e.stopPropagation(); onOpenMove(cat); }}
-                  style={{ ...st.pillBtn, ...(over ? st.pillNeg : near ? st.pillWarn : st.pillPos) }}>
-                  {hovCat === cat && <span style={{ opacity: 0.65, fontSize: 11 }}>⇄</span>}
-                  {fmt(c.available)}
-                </button>
-              </td>
+              <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.activity < 0 ? T.neg : T.textDim }}>{fmt(-c.activity)}</td>
+              <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.remaining < 0 ? T.neg : T.text }}>{fmt(c.remaining)}</td>
             </tr>
             <tr style={{ background: rowBg, cursor: editMode ? 'default' : 'text' }} onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}
               onClick={editMode ? undefined : () => { if (dragHappened.current) { dragHappened.current = false; return; } cellRefs.current[cat]?.startEdit(); }}
@@ -317,7 +315,7 @@ function GroupBlock(props: GroupBlockProps) {
               <td colSpan={5} style={{ padding: '0 16px ' + rowPad, borderBottom: `1px solid ${T.borderSoft}` }}>
                 <div style={st.barRowWrap}>
                   <div style={st.barTrack}><div style={{ ...st.barFill, width: pct + '%', background: barColor, boxShadow: pct > 0 ? `0 0 8px ${barColor}66` : 'none' }} /></div>
-                  <span style={st.barPct}>{c.assigned > 0 ? Math.round((spent / c.assigned) * 100) + '%' : '—'}</span>
+                  <span style={st.barPct}>{c.planned > 0 ? Math.round(pct) + '%' : '—'}</span>
                 </div>
               </td>
             </tr>
@@ -351,6 +349,25 @@ function GroupBlock(props: GroupBlockProps) {
   );
 }
 
+// ── Flex-mode rows ─────────────────────────────────────────
+
+function FlexEditRow({ c, fmt, onSavePlanned, toDisplay, toRaw, showRollover }:
+  { c: PlanCatState; fmt: (n: number) => string; onSavePlanned: (cat: string, v: number) => void; toDisplay?: (raw: number) => number; toRaw?: (display: number) => number; showRollover?: boolean }) {
+  const spent = -c.activity;
+  return (
+    <div style={st.flexRow}>
+      <span style={st.flexRowName}>{c.cat}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        {showRollover && <span style={st.flexAccrued} title="Accumulated funds">↻ {fmt(c.rolloverBalance)}</span>}
+        <span style={{ fontSize: 12.5, fontFamily: T.mono, color: spent > 0 ? T.neg : T.textDim, minWidth: 70, textAlign: 'right' as const }}>{fmt(spent)}</span>
+        <div style={{ minWidth: 110, display: 'flex', justifyContent: 'flex-end' }}>
+          <BudgetCell value={c.planned} onSave={v => onSavePlanned(c.cat, v)} fmt={fmt} toDisplay={toDisplay} toRaw={toRaw} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   categoryGroups: CategoryGroup[];
   fmt: (n: number) => string;
@@ -363,16 +380,27 @@ interface Props {
 export function Budget({ categoryGroups, fmt, currency, density, categoryIdByName, onCategoriesChanged }: Props) {
   const [currentYM, setCurrentYM] = useState(() => new Date().toISOString().slice(0, 7));
   const currentDisplayMonth = toDisplayMonth(currentYM);
-  const [localBudget, setLocalBudget] = useState<Record<string, Record<string, { assigned: number; activity: number }>>>({});
-  const [targets, setTargets] = useState<Record<string, Target>>({});
-  const [carryIn, setCarryIn] = useState<Record<string, number>>({});
-  const serverRtaRef = useRef<number>(0);
-  const serverAssignedTotalRef = useRef<number>(0);
-  const [aom, setAom] = useState<number | null>(null);
+  const [server, setServer] = useState<PlanMonthAPI | null>(null);
+  const [localPlanned, setLocalPlanned] = useState<Record<string, number> | null>(null);
+  const [expectedIncome, setExpectedIncome] = useState(0);
+  const [mode, setMode] = useState<'category' | 'flex'>('category');
+  const [flexBudget, setFlexBudget] = useState(0);
   const [loading, setLoading] = useState(true);
   const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [monthRate, setMonthRate] = useState<ExchangeRate | null>(null);
   const toast = useToast();
   const { push: undoPush, pop: undoPop } = useUndoStack();
+
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [groups, setGroups] = useState(() => categoryGroups.map(g => ({ ...g, categories: [...g.categories] })));
+  const [hidden, setHidden] = useState(new Set<string>());
+  const [showHidden, setShowHidden] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [inspectorCat, setInspectorCat] = useState<string | null>(null);
+  const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
+  const [fetchCounter, setFetchCounter] = useState(0);
+
+  // Ctrl-Z handler — unchanged from previous implementation.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key !== 'z' || e.shiftKey) return;
@@ -385,152 +413,143 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [undoPop, toast]);
-  const [fetchCounter, setFetchCounter] = useState(0);
-  const [monthRate, setMonthRate] = useState<ExchangeRate | null>(null);
 
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [groups, setGroups] = useState(() => categoryGroups.map(g => ({ ...g, categories: [...g.categories] })));
-  const [hidden, setHidden] = useState(new Set<string>());
-  const [showHidden, setShowHidden] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [moveCat, setMoveCat] = useState<string | null>(null);
-  const [inspectorCat, setInspectorCat] = useState<string | null>(null);
-  const [catCurrencies, setCatCurrencies] = useState<Record<string, string>>({});
-  const [rtaBreakdown, setRtaBreakdown] = useState<BudgetMonthAPI['rta_breakdown'] | null>(null);
-  const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
+  const nameById = useMemo(
+    () => Object.fromEntries(Object.entries(categoryIdByName).map(([n, id]) => [id, n])),
+    [categoryIdByName],
+  );
 
-  // Sync groups when the prop arrives after mount (race condition: Budget can mount before the
-  // initial fetchCategoryGroupsRaw resolves, leaving groups empty forever).
+  // Sync groups when the prop arrives after mount.
   useEffect(() => {
     if (categoryGroups.length > 0) {
       setGroups(categoryGroups.map(g => ({ ...g, categories: [...g.categories] })));
     }
   }, [categoryGroups]);
 
+  useEffect(() => { fetchBudgetMode().then(setMode).catch(() => {}); }, []);
+
   useEffect(() => {
     setLoading(true);
-    const nameById: Record<string, string> = Object.fromEntries(
-      Object.entries(categoryIdByName).map(([name, id]) => [id, name])
-    );
-    fetchBudget(currentYM).then(data => {
-      const newCarryIn: Record<string, number> = {};
-      const newBudgetMonth: Record<string, { assigned: number; activity: number }> = {};
-      const newTargets: Record<string, Target> = {};
+    fetchPlan(currentYM)
+      .then(data => {
+        setServer(data);
+        setExpectedIncome(data.expected_income);
+        setFlexBudget(data.flex_budget);
+        setLocalPlanned(null);
+        setBudgetError(null);
+      })
+      .catch(err => setBudgetError(err.message))
+      .finally(() => setLoading(false));
+    fetchNearestRate(currentYM + '-15').then(setMonthRate).catch(() => {});
+  }, [currentYM, fetchCounter]);
 
-      for (const g of data.category_groups) {
-        for (const c of g.categories) {
-          const name = nameById[c.id] ?? c.name;
-          newCarryIn[name] = c.carry_in;
-          newBudgetMonth[name] = { assigned: c.assigned, activity: c.activity };
-          if (c.target) {
-            let by: string | undefined;
-            if (c.target.deadline) {
-              const [y, m] = c.target.deadline.split('-').map(Number);
-              by = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-            }
-            newTargets[name] = { type: c.target.type as Target['type'], amount: c.target.amount, ...(by ? { by } : {}) };
-          }
-        }
-      }
+  const rate = monthRate?.usd_to_crc ?? 500;
 
-      const newCatCurrencies: Record<string, string> = {};
-      for (const g of data.category_groups) {
-        for (const c of g.categories) {
-          const name = nameById[c.id] ?? c.name;
-          newCatCurrencies[name] = c.currency ?? 'CRC';
-        }
-      }
+  const state: PlanState = useMemo(() => computePlan({
+    groups: server?.category_groups ?? [],
+    expectedIncome,
+    rate,
+    localPlanned,
+    nameById,
+  }), [server, expectedIncome, rate, localPlanned, nameById]);
 
-      setCarryIn(newCarryIn);
-      serverRtaRef.current = data.ready_to_assign;
-      serverAssignedTotalRef.current = Object.values(newBudgetMonth).reduce((s, e) => s + e.assigned, 0);
-      setAom(data.age_of_money);
-      setLocalBudget({ [currentDisplayMonth]: newBudgetMonth });
-      setTargets(newTargets);
-      setCatCurrencies(newCatCurrencies);
-      setRtaBreakdown(data.rta_breakdown ?? null);
-      setBudgetError(null);
-    }).catch(err => {
-      setBudgetError(err.message);
-    }).finally(() => setLoading(false));
-  }, [currentYM, categoryIdByName, fetchCounter]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchNearestRate(`${currentYM}-01`)
-      .then(rate => { if (!cancelled) setMonthRate(rate); })
-      .catch(() => { if (!cancelled) setMonthRate(null); });
-    return () => { cancelled = true; };
-  }, [currentYM]);
+  const catCurrencies = useMemo<Record<string, string>>(() => {
+    const out: Record<string, string> = {};
+    for (const [name, c] of Object.entries(state.cats)) out[name] = c.currency;
+    return out;
+  }, [state.cats]);
 
   const month = currentDisplayMonth;
   const rowPad = density === 'compact' ? '6px' : '11px';
+
   const fmtMonth = useMemo<(n: number) => string>(() => {
     if (currency !== 'USD' || monthRate === null) return fmt;
-    const rate = monthRate.usd_to_crc;
+    const r = monthRate.usd_to_crc;
     return (amount: number) => {
-      const usd = amount / rate;
+      const usd = amount / r;
       return (amount < 0 ? '-' : '') + '$' + Math.abs(usd).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     };
   }, [currency, monthRate, fmt]);
 
   const toDisplayFn = useMemo<((raw: number) => number) | undefined>(() => {
     if (currency !== 'USD' || monthRate === null) return undefined;
-    const rate = monthRate.usd_to_crc;
-    return (crc: number) => crc / rate;
+    const r = monthRate.usd_to_crc;
+    return (crc: number) => crc / r;
   }, [currency, monthRate]);
 
   const toRawFn = useMemo<((display: number) => number) | undefined>(() => {
     if (currency !== 'USD' || monthRate === null) return undefined;
-    const rate = monthRate.usd_to_crc;
-    return (usd: number) => Math.round(usd * rate);
+    const r = monthRate.usd_to_crc;
+    return (usd: number) => Math.round(usd * r);
   }, [currency, monthRate]);
 
-  const dataT = useMemo(() => ({
-    months: [currentDisplayMonth],
-    budget: {},
-    openingCarryover: carryIn,
-    targets,
-    categoryGroups: groups,
-  }), [currentDisplayMonth, carryIn, targets, groups]);
+  // ── Plan handlers ────────────────────────────────────────
 
-  const state = useMemo(
-    () => compute(dataT, localBudget, currentDisplayMonth, groups),
-    [dataT, localBudget, currentDisplayMonth, groups]
-  );
-
-  const rta = useMemo(() => {
-    const localTotal = Object.values(state.cats).reduce((s, c) => s + c.assigned, 0);
-    return serverRtaRef.current - (localTotal - serverAssignedTotalRef.current);
-  }, [state.cats]);
-
-  const handleSaveAssigned = useCallback((cat: string, value: number) => {
-    const prevAssigned = localBudget[currentDisplayMonth]?.[cat]?.assigned ?? 0;
-    const capturedMonth = currentDisplayMonth;
-    const capturedYM = currentYM;
-    const capturedCatId = categoryIdByName[cat];
+  const handleSavePlanned = useCallback((catName: string, value: number) => {
+    const catId = categoryIdByName[catName];
+    const prev = state.cats[catName]?.planned ?? 0;
+    setLocalPlanned(p => ({ ...(p ?? {}), [catName]: value }));
+    if (catId) apiSetPlanned(currentYM, catId, value).catch(err => toast.error(err.message));
     undoPush({
-      label: `Assign ${cat}`,
+      label: `Budget ${catName}`,
       undo: () => {
-        setLocalBudget(b => ({
-          ...b,
-          [capturedMonth]: { ...b[capturedMonth], [cat]: { ...(b[capturedMonth]?.[cat] ?? {}), assigned: prevAssigned } },
-        }));
-        if (capturedCatId) apiSetAssigned(capturedYM, capturedCatId, prevAssigned).catch(err => toast.error(err.message));
+        setLocalPlanned(p => ({ ...(p ?? {}), [catName]: prev }));
+        if (catId) apiSetPlanned(currentYM, catId, prev).catch(err => toast.error(err.message));
       },
     });
-    setLocalBudget(prev => ({
-      ...prev,
-      [currentDisplayMonth]: {
-        ...prev[currentDisplayMonth],
-        [cat]: { ...(prev[currentDisplayMonth]?.[cat] ?? {}), assigned: value },
-      },
-    }));
-    const catId = categoryIdByName[cat];
-    if (catId) {
-      apiSetAssigned(currentYM, catId, value).catch(err => toast.error(err.message));
-    }
-  }, [currentDisplayMonth, currentYM, categoryIdByName, localBudget, undoPush]);
+  }, [state, categoryIdByName, currentYM, toast, undoPush]);
+
+  const handleSaveIncome = useCallback((value: number) => {
+    const prev = expectedIncome;
+    setExpectedIncome(value);
+    apiSetIncome(currentYM, value).catch(err => toast.error(err.message));
+    undoPush({
+      label: 'Expected income',
+      undo: () => { setExpectedIncome(prev); apiSetIncome(currentYM, prev).catch(() => {}); },
+    });
+  }, [expectedIncome, currentYM, toast, undoPush]);
+
+  const handleSaveFlexBudget = useCallback((value: number) => {
+    const prev = flexBudget;
+    setFlexBudget(value);
+    apiSetFlexBudget(currentYM, value).catch(err => toast.error(err.message));
+    undoPush({
+      label: 'Flex budget',
+      undo: () => { setFlexBudget(prev); apiSetFlexBudget(currentYM, prev).catch(() => {}); },
+    });
+  }, [flexBudget, currentYM, toast, undoPush]);
+
+  const handleModeChange = useCallback((m: 'category' | 'flex') => {
+    setMode(m);
+    apiSetBudgetMode(m).catch(err => toast.error(err.message));
+  }, [toast]);
+
+  const handleCopyPrevious = useCallback(() => {
+    copyPreviousPlan(currentYM)
+      .then(() => fetchPlan(currentYM))
+      .then(data => { setServer(data); setExpectedIncome(data.expected_income); setFlexBudget(data.flex_budget); setLocalPlanned(null); })
+      .catch(err => toast.error(err.message));
+  }, [currentYM, toast]);
+
+  const handleResetAll = useCallback(() => {
+    const updates = resetAllPlanned(state);
+    setLocalPlanned(updates);
+    Object.entries(updates).forEach(([name, v]) => {
+      const id = categoryIdByName[name];
+      if (id) apiSetPlanned(currentYM, id, v).catch(() => {});
+    });
+  }, [state, categoryIdByName, currentYM]);
+
+  const handleUpdateCategoryMeta = useCallback((catId: string, meta: { rollover: boolean; flexibility: 'fixed' | 'flexible' | 'non_monthly' }) => {
+    const name = nameById[catId];
+    const grp = groups.find(g => g.categories.includes(name));
+    const sortOrder = grp ? grp.categories.indexOf(name) : 0;
+    updateCategory(catId, { name, hidden: hidden.has(name), sort_order: sortOrder, rollover: meta.rollover, flexibility: meta.flexibility })
+      .then(() => { onCategoriesChanged(); setFetchCounter(c => c + 1); })
+      .catch(err => toast.error(err.message));
+  }, [nameById, groups, hidden, onCategoriesChanged, toast]);
+
+  // ── Selection ────────────────────────────────────────────
 
   const toggleCatSelection = useCallback((name: string) => {
     setSelectedCats(prev => {
@@ -551,16 +570,20 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   }, []);
 
   const summaryStats = useMemo<SummaryStats>(() => {
-    const cats = selectedCats.size === 0
-      ? Object.values(state.cats)
-      : ([...selectedCats].map(n => state.cats[n]).filter(Boolean) as CatState[]);
-    return {
-      carryIn:  cats.reduce((s, c) => s + c.carryIn, 0),
-      assigned: cats.reduce((s, c) => s + c.assigned, 0),
-      activity: cats.reduce((s, c) => s + c.activity, 0),
-      available: cats.reduce((s, c) => s + c.available, 0),
-    };
-  }, [selectedCats, state.cats]);
+    const sel = selectedCats.size ? [...selectedCats] : Object.keys(state.cats);
+    let planned = 0, actual = 0, remaining = 0, roll = 0;
+    let allRoll = sel.length > 0;
+    for (const name of sel) {
+      const c = state.cats[name];
+      if (!c) continue;
+      const k = (n: number) => c.currency === 'USD' ? n * rate : n;
+      planned += k(c.planned);
+      actual += k(-c.activity);
+      remaining += k(c.remaining);
+      if (c.rollover) roll += k(c.rolloverBalance); else allRoll = false;
+    }
+    return { planned, actual, remaining, rolloverBalance: allRoll ? roll : null };
+  }, [selectedCats, state, rate]);
 
   const selectionLabel = useMemo(() => {
     const totalCount = Object.keys(state.cats).length;
@@ -583,92 +606,20 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     return `${label} · ${selectedCats.size} ${selectedCats.size === 1 ? 'category' : 'categories'}`;
   }, [selectedCats, state.cats, groups]);
 
-  const mergeAssigned = (updates: Record<string, number>) => {
-    setLocalBudget(prev => {
-      const m = { ...(prev[currentDisplayMonth] ?? {}) };
-      Object.entries(updates).forEach(([cat, val]) => { m[cat] = { ...(m[cat] ?? {}), assigned: val }; });
-      return { ...prev, [currentDisplayMonth]: m };
-    });
-  };
-
-  const doQuickAssign = (strategy: 'underfunded' | 'reset' | 'lastMonth') => {
-    const capturedMonth = currentDisplayMonth;
-    const capturedYM = currentYM;
-    const capturedSnapshot = { ...(localBudget[capturedMonth] ?? {}) };
-
-    if (strategy === 'lastMonth') {
-      const capturedCategoryIdByName = { ...categoryIdByName };
-      undoPush({
-        label: 'Copy last month',
-        undo: () => {
-          setLocalBudget(b => ({ ...b, [capturedMonth]: capturedSnapshot }));
-          Object.entries(capturedSnapshot).forEach(([cat, entry]) => {
-            const catId = capturedCategoryIdByName[cat];
-            if (catId) apiSetAssigned(capturedYM, catId, entry.assigned ?? 0).catch(err => toast.error(err.message));
-          });
-        },
-      });
-      copyPreviousBudget(capturedYM)
-        .then(() => setFetchCounter(c => c + 1))
-        .catch(err => toast.error(err.message));
-      return;
-    }
-
-    undoPush({
-      label: strategy === 'underfunded' ? 'Auto-assign underfunded' : 'Reset all',
-      undo: () => {
-        setLocalBudget(b => ({ ...b, [capturedMonth]: capturedSnapshot }));
-      },
-    });
-    mergeAssigned(engineQuickAssign(strategy, dataT, state, null));
-  };
-
-  const handleMove = useCallback((fromCat: string, toCat: string, amount: number) => {
-    const capturedMonth = currentDisplayMonth;
-    const capturedYM = currentYM;
-    const capturedFromId = categoryIdByName[fromCat];
-    const capturedToId = categoryIdByName[toCat];
-    undoPush({
-      label: `Move money: ${fromCat} → ${toCat}`,
-      undo: () => {
-        setLocalBudget(b => {
-          const m = { ...(b[capturedMonth] ?? {}) };
-          m[fromCat] = { ...(m[fromCat] ?? {}), assigned: ((m[fromCat] ?? {}).assigned ?? 0) + amount };
-          m[toCat]   = { ...(m[toCat]   ?? {}), assigned: ((m[toCat]   ?? {}).assigned ?? 0) - amount };
-          return { ...b, [capturedMonth]: m };
-        });
-        if (capturedFromId && capturedToId) {
-          moveBudgetMoney(capturedYM, capturedToId, capturedFromId, amount).catch(err => toast.error(err.message));
-        }
-      },
-    });
-    setLocalBudget(prev => {
-      const m = { ...(prev[currentDisplayMonth] ?? {}) };
-      m[fromCat] = { ...(m[fromCat] ?? {}), assigned: ((m[fromCat] ?? {}).assigned ?? 0) - amount };
-      m[toCat]   = { ...(m[toCat]   ?? {}), assigned: ((m[toCat]   ?? {}).assigned ?? 0) + amount };
-      return { ...prev, [currentDisplayMonth]: m };
-    });
-    const fromId = categoryIdByName[fromCat];
-    const toId   = categoryIdByName[toCat];
-    if (fromId && toId) {
-      moveBudgetMoney(currentYM, fromId, toId, amount).catch(err => {
-        toast.error(err.message);
-        setLocalBudget(prev => {
-          const m = { ...(prev[currentDisplayMonth] ?? {}) };
-          m[fromCat] = { ...(m[fromCat] ?? {}), assigned: ((m[fromCat] ?? {}).assigned ?? 0) + amount };
-          m[toCat]   = { ...(m[toCat]   ?? {}), assigned: ((m[toCat]   ?? {}).assigned ?? 0) - amount };
-          return { ...prev, [currentDisplayMonth]: m };
-        });
-      });
-    }
-  }, [currentDisplayMonth, currentYM, categoryIdByName, undoPush]);
+  // ── Category edit handlers (rename/hide/delete/reorder/groups) ──
 
   const toggleGroup = (gid: string) => setCollapsed(c => ({ ...c, [gid]: !c[gid] }));
+
+  const metaFor = (name: string) => {
+    const c = state.cats[name];
+    return { rollover: c?.rollover ?? false, flexibility: c?.flexibility ?? 'flexible' as const };
+  };
 
   const renameCat = (gid: string, oldName: string, newName: string) => {
     const catId = categoryIdByName[oldName];
     const grp = groups.find(g => g.id === gid);
     const sortOrder = grp ? grp.categories.indexOf(oldName) : 0;
+    const meta = metaFor(oldName);
     undoPush({
       label: `Rename '${oldName}'`,
       undo: () => {
@@ -676,7 +627,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
           g.id === gid ? { ...g, categories: g.categories.map(c => c === newName ? oldName : c) } : g
         ));
         if (catId) {
-          updateCategory(catId, { name: oldName, hidden: false, sort_order: sortOrder })
+          updateCategory(catId, { name: oldName, hidden: hidden.has(oldName), sort_order: sortOrder, rollover: meta.rollover, flexibility: meta.flexibility })
             .then(() => onCategoriesChanged())
             .catch(err => toast.error(err.message));
         }
@@ -693,11 +644,12 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     });
     setInspectorCat(newName);
     if (catId) {
-      updateCategory(catId, { name: newName, hidden: false, sort_order: sortOrder })
+      updateCategory(catId, { name: newName, hidden: hidden.has(oldName), sort_order: sortOrder, rollover: meta.rollover, flexibility: meta.flexibility })
         .then(() => onCategoriesChanged())
         .catch(err => toast.error(err.message));
     }
   };
+
   const reorderCat = (gid: string, idx: number, dir: number) => {
     undoPush({
       label: 'Reorder category',
@@ -724,6 +676,10 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
 
   const handleReorderCat = useCallback((gid: string, fromIdx: number, toIdx: number) => {
     const capturedCategoryIdByName = { ...categoryIdByName };
+    const metaByName = (name: string) => {
+      const c = state.cats[name];
+      return { rollover: c?.rollover ?? false, flexibility: c?.flexibility ?? 'flexible' as const };
+    };
     undoPush({
       label: 'Reorder category',
       undo: () => {
@@ -734,7 +690,8 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
           arr.splice(fromIdx, 0, moved);
           arr.forEach((catName, idx) => {
             const catId = capturedCategoryIdByName[catName];
-            if (catId) updateCategory(catId, { name: catName, hidden: false, sort_order: idx }).catch(err => toast.error(err.message));
+            const m = metaByName(catName);
+            if (catId) updateCategory(catId, { name: catName, hidden: hidden.has(catName), sort_order: idx, rollover: m.rollover, flexibility: m.flexibility }).catch(err => toast.error(err.message));
           });
           return { ...g, categories: arr };
         }));
@@ -747,11 +704,13 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       arr.splice(toIdx, 0, moved);
       arr.forEach((catName, idx) => {
         const catId = categoryIdByName[catName];
-        if (catId) updateCategory(catId, { name: catName, hidden: false, sort_order: idx }).catch(err => toast.error(err.message));
+        const m = metaByName(catName);
+        if (catId) updateCategory(catId, { name: catName, hidden: hidden.has(catName), sort_order: idx, rollover: m.rollover, flexibility: m.flexibility }).catch(err => toast.error(err.message));
       });
       return { ...g, categories: arr };
     }));
-  }, [categoryIdByName, undoPush]);
+  }, [categoryIdByName, undoPush, state, hidden, toast]);
+
   const hideCat = (name: string) => {
     const wasHidden = hidden.has(name);
     undoPush({
@@ -764,10 +723,11 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     });
     setHidden(h => { const n = new Set(h); n.has(name) ? n.delete(name) : n.add(name); return n; });
   };
+
   const deleteCat = (gid: string, name: string) => {
     const catId = categoryIdByName[name];
-    const capturedCurrency = catCurrencies[name] ?? 'CRC';
-    const capturedAssigned = localBudget[currentDisplayMonth]?.[name]?.assigned ?? 0;
+    const capturedCurrency = (state.cats[name]?.currency ?? 'CRC');
+    const capturedPlanned = state.cats[name]?.planned ?? 0;
     const capturedYM = currentYM;
     const capturedSortIdx = groups.find(g => g.id === gid)?.categories.indexOf(name) ?? 0;
     setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
@@ -780,8 +740,8 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
             undo: async () => {
               try {
                 const newCat = await createCategory({ group_id: gid, name, sort_order: capturedSortIdx, currency: capturedCurrency as 'CRC' | 'USD' });
-                if (capturedAssigned !== 0) {
-                  await apiSetAssigned(capturedYM, newCat.id, capturedAssigned);
+                if (capturedPlanned !== 0) {
+                  await apiSetPlanned(capturedYM, newCat.id, capturedPlanned);
                 }
                 onCategoriesChanged();
               } catch (err: unknown) {
@@ -795,9 +755,10 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         .catch(err => { toast.error(err.message); onCategoriesChanged(); });
     }
   };
-  const addCat = (gid: string, name: string, currency: 'CRC' | 'USD') => {
+
+  const addCat = (gid: string, name: string, cur: 'CRC' | 'USD') => {
     setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: [...g.categories, name] } : g));
-    createCategory({ group_id: gid, name, sort_order: 0, currency })
+    createCategory({ group_id: gid, name, sort_order: 0, currency: cur })
       .then(newCat => {
         undoPush({
           label: `Add '${name}'`,
@@ -815,6 +776,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
       });
   };
+
   const renameGroup = (gid: string, name: string) => {
     const prev = groups.find(g => g.id === gid)?.name ?? '';
     undoPush({
@@ -823,6 +785,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     });
     setGroups(gs => gs.map(g => g.id === gid ? { ...g, name } : g));
   };
+
   const moveGroup = (idx: number, dir: number) => {
     undoPush({
       label: 'Reorder group',
@@ -842,17 +805,17 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       return arr;
     });
   };
+
   const deleteGroup = (gid: string) => {
     const grp = groups.find(g => g.id === gid);
     if (!grp) return;
     const capturedGroupName = grp.name;
     const capturedGroupSortOrder = groups.findIndex(g => g.id === gid);
     const capturedYM = currentYM;
-    const capturedMonth = currentDisplayMonth;
     const capturedCats = grp.categories.map((name, i) => ({
       name,
-      currency: (catCurrencies[name] ?? 'CRC') as 'CRC' | 'USD',
-      assigned: localBudget[capturedMonth]?.[name]?.assigned ?? 0,
+      currency: (state.cats[name]?.currency ?? 'CRC') as 'CRC' | 'USD',
+      planned: state.cats[name]?.planned ?? 0,
       sortOrder: i,
     }));
     undoPush({
@@ -862,8 +825,8 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
           const newGroup = await createCategoryGroup({ name: capturedGroupName, sort_order: capturedGroupSortOrder });
           for (const cat of capturedCats) {
             const newCat = await createCategory({ group_id: newGroup.id, name: cat.name, sort_order: cat.sortOrder, currency: cat.currency });
-            if (cat.assigned !== 0) {
-              await apiSetAssigned(capturedYM, newCat.id, cat.assigned);
+            if (cat.planned !== 0) {
+              await apiSetPlanned(capturedYM, newCat.id, cat.planned);
             }
           }
           onCategoriesChanged();
@@ -878,6 +841,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       .then(() => onCategoriesChanged())
       .catch(err => { toast.error(err.message); onCategoriesChanged(); });
   };
+
   const addGroup = () => {
     createCategoryGroup({ name: 'New Group', sort_order: groups.length })
       .then(g => {
@@ -895,62 +859,24 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       })
       .catch(err => toast.error(err.message));
   };
-  const setTarget = (cat: string, target: Target | null) => {
-    const prevTarget = targets[cat] ?? null;
-    undoPush({
-      label: target ? `Set target: ${cat}` : `Remove target: ${cat}`,
-      undo: () => {
-        setTargets(t => {
-          const nt = { ...t };
-          if (prevTarget) nt[cat] = prevTarget;
-          else delete nt[cat];
-          return nt;
-        });
-        const catId = categoryIdByName[cat];
-        if (!catId) return;
-        if (prevTarget === null) {
-          deleteCategoryTarget(catId).catch(err => toast.error(err.message));
-        } else {
-          let deadline: string | null = null;
-          if (prevTarget.type === 'savings' && prevTarget.by) {
-            const d = new Date(prevTarget.by + ' 1');
-            if (!isNaN(d.getTime())) deadline = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-          }
-          upsertCategoryTarget(catId, { type: prevTarget.type, amount: prevTarget.amount, deadline })
-            .catch(err => toast.error(err.message));
-        }
-      },
-    });
-    setTargets(t => { const nt = { ...t }; if (target) nt[cat] = target; else delete nt[cat]; return nt; });
-    const catId = categoryIdByName[cat];
-    if (!catId) return;
-    if (target === null) {
-      deleteCategoryTarget(catId).catch(err => toast.error(err.message));
-    } else {
-      let deadline: string | null = null;
-      if (target.type === 'savings' && target.by) {
-        const d = new Date(target.by + ' 1');
-        if (!isNaN(d.getTime())) {
-          deadline = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-        }
-      }
-      upsertCategoryTarget(catId, { type: target.type, amount: target.amount, deadline })
-        .catch(err => toast.error(err.message));
-    }
-  };
 
-  const futureMonths = useMemo(() => futureMonthDisplays(currentYM), [currentYM]);
+  // ── Flex-mode partitioning ───────────────────────────────
 
-  const allCats = groups.flatMap((g, gi) => g.categories.map(cat => ({
-    color: colorFor(g.name, gi),
-    ...(state.cats[cat] ?? { cat, assigned: 0, activity: 0, carryIn: 0, available: 0, target: null, underfunded: 0, targetNeed: 0, fundedPct: null })
-  })));
+  const fixedCats = useMemo(() => Object.values(state.cats).filter(c => c.flexibility === 'fixed' && (showHidden || !hidden.has(c.cat))), [state.cats, hidden, showHidden]);
+  const flexibleCats = useMemo(() => Object.values(state.cats).filter(c => c.flexibility === 'flexible' && (showHidden || !hidden.has(c.cat))), [state.cats, hidden, showHidden]);
+  const nonMonthlyCats = useMemo(() => Object.values(state.cats).filter(c => c.flexibility === 'non_monthly' && (showHidden || !hidden.has(c.cat))), [state.cats, hidden, showHidden]);
+
+  const leftToBudget = state.leftToBudget;
+  const plannedSavings = leftToBudget > 0 ? leftToBudget : 0;
+
+  const flexPct = flexBudget > 0 ? Math.min(((server?.flexible_actual ?? 0) / flexBudget) * 100, 100) : 0;
+  const flexOver = (server?.flexible_actual ?? 0) > flexBudget && flexBudget > 0;
 
   return (
     <div>
       {budgetError && (
         <div style={{ margin: '12px 16px 0', padding: '12px 16px', background: 'rgba(255,80,80,0.08)', border: `1px solid rgba(255,80,80,0.2)`, borderRadius: 8, color: T.neg, fontSize: 13, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ flex: 1 }}>Failed to load budget: {budgetError}</span>
+          <span style={{ flex: 1 }}>Failed to load plan: {budgetError}</span>
           <button onClick={() => setFetchCounter(c => c + 1)} style={{ background: 'none', border: 'none', color: T.neg, cursor: 'pointer', fontWeight: 700, fontSize: 13, textDecoration: 'underline' }}>Retry</button>
         </div>
       )}
@@ -968,45 +894,78 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
           <button onClick={() => setCurrentYM(ym => nextYM(ym))} style={st.monthBtn}>›</button>
         </div>
 
-        <div style={st.rtaCard}>
-          <div style={{ flex: 1 }}>
-            <div style={st.rtaLabel}>Ready to Assign</div>
-            <div style={{ ...st.rtaAmount, color: rta < 0 ? T.neg : rta === 0 ? T.textMid : 'var(--accent)' }}>{fmt(rta)}</div>
-            {rtaBreakdown && (
-              <div style={{ fontSize: 11, color: T.textDim, marginTop: 4 }}>
-                <span>₡ {rtaBreakdown.crc_accounts.toLocaleString('en-US', { minimumFractionDigits: 0 })}</span>
-                <span style={{ margin: '0 5px', color: T.border }}>|</span>
-                <span>$ {rtaBreakdown.usd_accounts_native.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (≈₡{rtaBreakdown.usd_accounts_in_crc.toLocaleString('en-US', { minimumFractionDigits: 0 })})</span>
-              </div>
-            )}
-          </div>
-          <div style={st.rtaDivider} />
-          <div>
-            <div style={st.rtaLabel}>Underfunded</div>
-            <div style={{ ...st.rtaSub, color: state.totalUnderfunded > 0 ? T.warn : T.textDim }}>{fmt(state.totalUnderfunded)}</div>
-          </div>
-          <div style={st.rtaDivider} />
-          <div>
-            <div style={st.rtaLabel}>Age of Money</div>
-            <div style={st.rtaSub}>
-              {aom != null ? <>{aom} <span style={{ fontSize: 11, color: T.textDim }}>days</span></> : <span style={{ color: T.textDim }}>—</span>}
-            </div>
+        <div style={st.summaryHeader}>
+          <HeaderStat label="Expected income">
+            <BudgetCell value={expectedIncome} onSave={handleSaveIncome} fmt={fmt} />
+          </HeaderStat>
+          <HeaderStat label="Planned"><span>{fmt(state.plannedTotalCRC)}</span></HeaderStat>
+          <HeaderStat label="Left to budget">
+            <span style={{ color: leftToBudget < 0 ? T.neg : T.pos }}>{fmt(leftToBudget)}</span>
+          </HeaderStat>
+          <HeaderStat label="Planned savings"><span>{fmt(plannedSavings)}</span></HeaderStat>
+          <div style={st.modeToggle}>
+            {(['category', 'flex'] as const).map(m => (
+              <button key={m} onClick={() => handleModeChange(m)} style={{ ...st.modePill, ...(mode === m ? st.modePillOn : {}) }}>
+                {m === 'category' ? 'Category' : 'Flex'}
+              </button>
+            ))}
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button onClick={() => doQuickAssign('underfunded')} disabled={state.totalUnderfunded <= 0}
-            style={{ ...st.primaryBtn, opacity: state.totalUnderfunded > 0 ? 1 : 0.45 }}>
-            Auto-assign {state.totalUnderfunded > 0 ? fmt(state.totalUnderfunded) : ''}
-          </button>
-          <button onClick={() => doQuickAssign('lastMonth')} style={st.actionBtn}>Last month</button>
-          <button onClick={() => doQuickAssign('reset')} style={{ ...st.actionBtn, color: T.neg, borderColor: T.negDim }}>Reset</button>
+          <button onClick={handleCopyPrevious} style={st.actionBtn}>Copy last month</button>
+          <button onClick={handleResetAll} style={{ ...st.actionBtn, color: T.neg, borderColor: T.negDim }}>Reset all</button>
           <button onClick={() => setEditMode(e => !e)} style={{ ...st.actionBtn, ...(editMode ? st.actionOn : {}) }}>{editMode ? 'Done' : 'Edit'}</button>
         </div>
       </div>
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center' as const, color: T.textDim }}>Loading budget…</div>
+        <div style={{ padding: 40, textAlign: 'center' as const, color: T.textDim }}>Loading plan…</div>
+      ) : mode === 'flex' ? (
+        <div style={{ padding: '20px 28px', maxWidth: 900, margin: '0 auto' }}>
+          {/* Fixed */}
+          <div style={st.flexSection}>
+            <div style={st.flexSectionHead}>
+              <span style={st.flexSectionTitle}>Fixed</span>
+              <span style={st.flexSectionSums}>{fmt(server?.fixed_actual ?? 0)} <span style={{ color: T.textFaint }}>/ {fmt(server?.fixed_planned ?? 0)}</span></span>
+            </div>
+            <div style={st.flexHeaderRow}><span>Category</span><div style={{ display: 'flex', gap: 16 }}><span style={{ minWidth: 70, textAlign: 'right' as const }}>Actual</span><span style={{ minWidth: 110, textAlign: 'right' as const }}>Budgeted</span></div></div>
+            {fixedCats.length === 0 ? <div style={st.flexEmpty}>No fixed categories</div> :
+              fixedCats.map(c => <FlexEditRow key={c.cat} c={c} fmt={fmtMonth} onSavePlanned={handleSavePlanned} toDisplay={c.currency === 'USD' ? toDisplayFn : undefined} toRaw={c.currency === 'USD' ? toRawFn : undefined} />)}
+          </div>
+
+          {/* Flexible */}
+          <div style={st.flexSection}>
+            <div style={st.flexSectionHead}>
+              <span style={st.flexSectionTitle}>Flexible</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 12, fontFamily: T.mono, color: flexOver ? T.neg : T.textMid }}>{fmt(server?.flexible_actual ?? 0)} <span style={{ color: T.textFaint }}>spent</span></span>
+                <BudgetCell value={flexBudget} onSave={handleSaveFlexBudget} fmt={fmt} />
+              </div>
+            </div>
+            <div style={{ padding: '4px 0 12px' }}>
+              <div style={st.barTrack}><div style={{ ...st.barFill, width: flexPct + '%', background: flexOver ? T.neg : '#f6c45a', boxShadow: flexPct > 0 ? `0 0 8px ${flexOver ? T.neg : '#f6c45a'}66` : 'none' }} /></div>
+            </div>
+            {flexibleCats.length === 0 ? <div style={st.flexEmpty}>No flexible categories</div> :
+              flexibleCats.map(c => (
+                <div key={c.cat} style={st.flexRow}>
+                  <span style={st.flexRowName}>{c.cat}</span>
+                  <span style={{ fontSize: 12.5, fontFamily: T.mono, color: c.activity < 0 ? T.neg : T.textDim }}>{fmtMonth(-c.activity)}</span>
+                </div>
+              ))}
+          </div>
+
+          {/* Non-monthly */}
+          <div style={st.flexSection}>
+            <div style={st.flexSectionHead}>
+              <span style={st.flexSectionTitle}>Non-monthly</span>
+              <span style={st.flexSectionSums}>{fmt(server?.non_monthly_actual ?? 0)} <span style={{ color: T.textFaint }}>/ {fmt(server?.non_monthly_planned ?? 0)}</span></span>
+            </div>
+            <div style={st.flexHeaderRow}><span>Category</span><div style={{ display: 'flex', gap: 16 }}><span style={{ minWidth: 70, textAlign: 'right' as const }}>Funds</span><span style={{ minWidth: 70, textAlign: 'right' as const }}>Actual</span><span style={{ minWidth: 110, textAlign: 'right' as const }}>Budgeted</span></div></div>
+            {nonMonthlyCats.length === 0 ? <div style={st.flexEmpty}>No non-monthly categories</div> :
+              nonMonthlyCats.map(c => <FlexEditRow key={c.cat} c={c} fmt={fmtMonth} onSavePlanned={handleSavePlanned} toDisplay={c.currency === 'USD' ? toDisplayFn : undefined} toRaw={c.currency === 'USD' ? toRawFn : undefined} showRollover />)}
+          </div>
+        </div>
       ) : (
         <div style={{ padding: '20px 28px', maxWidth: 1400, margin: '0 auto' }}>
           {editMode && (
@@ -1025,16 +984,16 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
                   <tr>
                     <th style={{ ...st.th, width: 28, padding: '12px 4px 12px 12px' }}></th>
                     <th style={{ ...st.th, textAlign: 'left', width: '46%' }}>Category</th>
-                    <th style={{ ...st.th, textAlign: 'right' }}>Assigned</th>
-                    <th style={{ ...st.th, textAlign: 'right' }}>Activity</th>
-                    <th style={{ ...st.th, textAlign: 'right' }}>Available</th>
+                    <th style={{ ...st.th, textAlign: 'right' }}>Budgeted</th>
+                    <th style={{ ...st.th, textAlign: 'right' }}>Actual</th>
+                    <th style={{ ...st.th, textAlign: 'right' }}>Remaining</th>
                   </tr>
                 </thead>
                 <tbody>
                   {groups.map((g, gi) => (
                     <GroupBlock key={g.id} group={g} gidx={gi} color={colorFor(g.name, gi)} catState={state.cats}
-                      collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmtMonth} onSaveAssigned={handleSaveAssigned}
-                      onOpenMove={setMoveCat} onOpenInspector={setInspectorCat} inspectorCat={inspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
+                      collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmtMonth} onSavePlanned={handleSavePlanned}
+                      onOpenInspector={setInspectorCat} inspectorCat={inspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
                       onRenameCat={renameCat} onMoveCat={reorderCat} onHideCat={hideCat} onDeleteCat={deleteCat} onAddCat={addCat}
                       onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} onReorderCat={handleReorderCat}
                       catCurrencies={catCurrencies} toDisplay={toDisplayFn} toRaw={toRawFn}
@@ -1054,16 +1013,13 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         </div>
       )}
 
-      {moveCat && (
-        <MoveMoneyModal cat={moveCat} cats={allCats} catCurrencies={catCurrencies} fmt={fmtMonth} onClose={() => setMoveCat(null)} onMove={handleMove} />
-      )}
       {inspectorCat && state.cats[inspectorCat] && (() => {
         const grpName = (groups.find(g => g.categories.includes(inspectorCat)) ?? {}).name ?? '';
         const grpIdx = groups.findIndex(g => g.categories.includes(inspectorCat));
         return (
           <CategoryInspector cat={inspectorCat} color={colorFor(grpName, grpIdx)} c={state.cats[inspectorCat]}
-            months={futureMonths} monthIdx={0} fmt={fmtMonth} onClose={() => setInspectorCat(null)}
-            onSetTarget={setTarget} onMoveMoney={cat => setMoveCat(cat)} onHide={hideCat}
+            fmt={fmtMonth} onClose={() => setInspectorCat(null)}
+            onUpdateCategoryMeta={handleUpdateCategoryMeta} onHide={hideCat}
             onDelete={cat => { const g = groups.find(x => x.categories.includes(cat)); if (g) deleteCat(g.id, cat); }} />
         );
       })()}
@@ -1077,12 +1033,13 @@ const st = {
   monthBtn:    { width: 32, height: 32, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 18, color: T.textMid, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.12s' },
   monthCenter: { minWidth: 130, textAlign: 'center' as const },
   curMonth:    { fontSize: 16, fontWeight: 700, color: T.text, letterSpacing: '-0.02em' },
-  rtaCard:     { flex: 1, display: 'flex', alignItems: 'center', gap: 18, background: `linear-gradient(135deg, ${T.accentDim}, transparent)`, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: '9px 22px', minWidth: 360, maxWidth: 520 },
-  rtaDivider:  { width: 1, height: 34, background: T.border },
-  rtaLabel:    { fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 3 },
-  rtaAmount:   { fontSize: 22, fontWeight: 700, fontFamily: T.mono, letterSpacing: '-0.02em', lineHeight: 1 },
-  rtaSub:      { fontSize: 15, fontWeight: 700, fontFamily: T.mono, color: T.text, lineHeight: 1 },
-  primaryBtn:  { padding: '8px 14px', fontSize: 12.5, fontWeight: 700, background: 'var(--accent)', color: '#06140d', border: 'none', borderRadius: 8, cursor: 'pointer', boxShadow: '0 0 16px var(--accent-glow)' },
+  summaryHeader:{ flex: 1, display: 'flex', alignItems: 'stretch', gap: 14, background: `linear-gradient(135deg, ${T.accentDim}, transparent)`, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: '9px 22px', minWidth: 360, flexWrap: 'wrap' as const },
+  headerStat:  { display: 'flex', flexDirection: 'column' as const, justifyContent: 'center', gap: 3, minWidth: 96 },
+  headerStatLabel: { fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: '0.08em', textTransform: 'uppercase' as const },
+  headerStatValue: { fontSize: 16, fontWeight: 700, fontFamily: T.mono, letterSpacing: '-0.02em', lineHeight: 1.1, color: T.text },
+  modeToggle:  { display: 'flex', gap: 3, alignItems: 'center', marginLeft: 'auto', background: T.surface, border: `1px solid ${T.border}`, borderRadius: 9, padding: 3, alignSelf: 'center' },
+  modePill:    { padding: '6px 13px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', borderRadius: 6, cursor: 'pointer', color: T.textDim, transition: 'all 0.12s' },
+  modePillOn:  { background: T.accentDim, color: 'var(--accent)' },
   actionBtn:   { padding: '8px 13px', fontSize: 12.5, fontWeight: 600, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', color: T.textMid, transition: 'all 0.12s' },
   actionOn:    { background: T.accentDim, borderColor: 'var(--accent)', color: 'var(--accent)' },
   editBar:     { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', marginBottom: 12, background: T.accentDim, border: `1px solid ${T.borderHi}`, borderRadius: T.radiusSm },
@@ -1097,8 +1054,7 @@ const st = {
   catRow:      { transition: 'background 0.1s' },
   catCell:     { fontSize: 13, fontWeight: 500, borderBottom: `1px solid ${T.borderSoft}`, verticalAlign: 'middle' as const },
   catName:     { background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: T.sans, textAlign: 'left' as const },
-  targetChip:  { fontSize: 10.5, fontWeight: 600, color: T.textDim, fontFamily: T.mono, background: 'rgba(255,255,255,0.04)', padding: '1px 7px', borderRadius: 5 },
-  underBadge:  { fontSize: 10.5, fontWeight: 700, color: T.warn, fontFamily: T.mono, background: T.warnDim, padding: '1px 7px', borderRadius: 5 },
+  rolloverChip:{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent)', fontFamily: T.mono, background: T.accentDim, padding: '1px 7px', borderRadius: 5 },
   barRowWrap:  { display: 'flex', alignItems: 'center', gap: 10 },
   barTrack:    { flex: 1, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' },
   barFill:     { height: '100%', borderRadius: 3, transition: 'width 0.5s cubic-bezier(0.22,1,0.36,1)' },
@@ -1108,10 +1064,6 @@ const st = {
   cellHovered: { background: T.accentDim, boxShadow: `inset 0 0 0 1px ${T.borderHi}` },
   pencil:      { color: 'var(--accent)', display: 'flex', transition: 'opacity 0.1s' },
   cellInput:   { width: 96, textAlign: 'right' as const, border: `1px solid var(--accent)`, borderRadius: 6, padding: '4px 8px', fontSize: 12.5, fontFamily: T.mono, background: T.surface2, color: T.text, boxShadow: '0 0 0 3px var(--accent-dim)' },
-  pillBtn:     { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 11px', borderRadius: 20, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: T.mono, transition: 'filter 0.12s, box-shadow 0.12s' },
-  pillPos:     { background: 'rgba(255,255,255,0.05)', color: T.textMid },
-  pillNeg:     { background: T.negDim, color: T.neg },
-  pillWarn:    { background: T.warnDim, color: T.warn },
   renameInput: { padding: '4px 8px', fontSize: 13, border: `1px solid var(--accent)`, borderRadius: 6, background: T.surface2, color: T.text, fontFamily: T.sans, width: 150 },
   reorder:     { display: 'inline-flex', flexDirection: 'column' as const, gap: 1 },
   iconBtn:     { background: T.surface, border: `1px solid ${T.border}`, borderRadius: 4, color: T.textDim, cursor: 'pointer', fontSize: 8, lineHeight: 1, padding: '2px 4px' },
@@ -1121,4 +1073,13 @@ const st = {
   dragHandle:  { fontSize: 14, color: T.textDim, cursor: 'grab', transition: 'opacity 0.1s', userSelect: 'none' as const, lineHeight: 1 },
   checkCell:   { width: 28, padding: '0 4px 0 12px', verticalAlign: 'middle' as const },
   check:       { accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer', display: 'block' as const },
+  flexSection: { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, boxShadow: T.shadow, padding: '16px 20px', marginBottom: 16 },
+  flexSectionHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingBottom: 10, borderBottom: `1px solid ${T.border}` },
+  flexSectionTitle:{ fontSize: 13, fontWeight: 800, color: T.text, letterSpacing: '-0.01em' },
+  flexSectionSums: { fontSize: 12.5, fontFamily: T.mono, color: T.textMid },
+  flexHeaderRow:{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '0 0 6px' },
+  flexRow:     { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${T.borderSoft}` },
+  flexRowName: { fontSize: 13, fontWeight: 500, color: T.textMid },
+  flexAccrued: { fontSize: 11, fontWeight: 600, color: 'var(--accent)', fontFamily: T.mono, minWidth: 70, textAlign: 'right' as const },
+  flexEmpty:   { fontSize: 12.5, color: T.textDim, padding: '10px 0', fontStyle: 'italic' as const },
 };
