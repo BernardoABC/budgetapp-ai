@@ -33,6 +33,8 @@ For a given month:
 - **Planned amount per category** — reuses the existing `budgets` table and its
   per-month upsert. `assigned` is reinterpreted as the planned/budgeted amount,
   in the category's native currency (CRC or USD), as today.
+  *(Update 2026-06-12: the column was subsequently renamed to `planned` in
+  migration 011, completing the alignment.)*
 - **Left to budget** = expected income − Σ planned across all categories
   (USD planned amounts converted to CRC at the current rate, reusing the existing
   conversion approach in the budget service). May go negative — displayed as

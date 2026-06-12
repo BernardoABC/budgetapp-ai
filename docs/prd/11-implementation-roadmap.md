@@ -200,6 +200,7 @@ Plan: `docs/superpowers/plans/2026-06-11-spending-plan.md`
 
 ### Step 6.1: Schema & Backend
 - [x] DB: `010_spending_plan.sql` — `monthly_plans`, `app_settings`, `categories.rollover`/`flexibility`; wipes `budgets`, drops `category_targets`, renames system category to "Income"
+- [x] DB: `011_rename_assigned_to_planned.sql` — `budgets.assigned` → `budgets.planned`, aligning the column with the API/UI naming
 - [x] Go: `monthly_plans` + `app_settings` repositories
 - [x] Go: Plan service — left to budget, opt-in rollover with negative carry, flex rollups, actual income/spending in CRC
 - [x] API: `/api/plan/*`, `/api/settings/budget-mode`, `/api/reports/savings`; old `/api/budgets/*`, targets, and move-money removed

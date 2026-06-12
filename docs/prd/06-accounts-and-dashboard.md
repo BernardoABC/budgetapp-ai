@@ -127,7 +127,7 @@ Net Worth card has an accent-gradient background and glowing value color.
 ### Spending by Category Panel (left, 2-col layout)
 - One progress bar per category group
 - Bar color = group color, turns amber >88% spent, red when overspent
-- "spent / assigned" amounts on the right, spent amount turns red when overspent
+- "spent / budgeted" amounts on the right, spent amount turns red when over budget
 
 ### This Month Panel (right)
 - Expected income for the current month
