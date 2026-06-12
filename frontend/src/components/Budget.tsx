@@ -150,6 +150,11 @@ function GroupBlock(props: GroupBlockProps) {
   useEffect(() => {
     if (groupCheckRef.current) groupCheckRef.current.indeterminate = groupIndeterminate;
   }, [groupIndeterminate]);
+
+  useEffect(() => {
+    setRenamingCat(null);
+  }, [inspectorCat]);
+
   const totAssigned = group.categories.reduce((s, c) => s + (catState[c]?.assigned ?? 0), 0);
   const totActivity = group.categories.reduce((s, c) => s + (catState[c]?.activity ?? 0), 0);
   const totAvailable = group.categories.reduce((s, c) => s + (catState[c]?.available ?? 0), 0);
@@ -603,6 +608,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         ? { ...g, categories: g.categories.map(c => c === oldName ? newName : c) }
         : g
     ));
+    setInspectorCat(newName);   // keep inspector open for the renamed category
     const catId = categoryIdByName[oldName];
     if (catId) {
       const grp = groups.find(g => g.id === gid);
