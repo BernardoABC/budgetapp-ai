@@ -202,7 +202,7 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
                         ? <span style={{ ...st.catTag, color: catColor }}><span style={{ width: 6, height: 6, borderRadius: 2, background: 'currentColor', opacity: 0.9 }} />{t.category}</span>
                         : <span style={{ color: T.textFaint, fontSize: 12 }}>—</span>}
                     </td>
-                    <td style={{ ...st.td, textAlign: 'right', fontFamily: T.mono, fontSize: 13, fontWeight: 500 }}>
+                    <td style={{ ...st.td, textAlign: 'right', fontFamily: T.mono, fontSize: 14, fontWeight: 500 }}>
                       {t.inflow > 0 ? <span style={{ color: T.pos }}>+{fmt(t.inflow, t.currency)}</span> : <span style={{ color: T.textMid }}>−{fmt(t.outflow, t.currency)}</span>}
                     </td>
                   </tr>
@@ -221,27 +221,27 @@ const st = {
   card:        { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: '18px 20px', boxShadow: T.shadow + ', ' + T.insetTop },
   cardAccent:  { background: `linear-gradient(135deg, ${T.accentDim}, ${T.surface} 60%)`, borderColor: T.borderHi },
   cardTop:     { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 },
-  cardLabel:   { fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: '0.08em', textTransform: 'uppercase' as const },
-  cardValue:   { fontSize: 28, fontWeight: 700, fontFamily: T.mono, letterSpacing: '-0.02em', lineHeight: 1 },
-  cardSub:     { fontSize: 12, marginTop: 8, fontWeight: 500 },
+  cardLabel:   { fontSize: 9, fontWeight: 700, color: T.textDim, letterSpacing: '0.08em', textTransform: 'uppercase' as const },
+  cardValue:   { fontSize: 30, fontWeight: 700, fontFamily: T.mono, letterSpacing: '-0.02em', lineHeight: 1 },
+  cardSub:     { fontSize: 11, marginTop: 8, fontWeight: 500 },
   twoCol:      { display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, marginBottom: 16 },
   panel:       { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, overflow: 'hidden', boxShadow: T.shadow, display: 'flex', flexDirection: 'column' as const },
-  panelHeader: { padding: '14px 18px', fontSize: 13, fontWeight: 700, color: T.text, borderBottom: `1px solid ${T.border}`, letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  panelMeta:   { fontSize: 11.5, fontWeight: 500, color: T.textDim, fontFamily: T.mono },
+  panelHeader: { padding: '14px 18px', fontSize: 12, fontWeight: 700, color: T.text, borderBottom: `1px solid ${T.border}`, letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  panelMeta:   { fontSize: 10, fontWeight: 500, color: T.textDim, fontFamily: T.mono },
   panelCta:    { marginTop: 'auto', padding: '11px 18px', background: 'rgba(255,255,255,0.02)', border: 'none', borderTop: `1px solid ${T.border}`, color: T.textMid, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textAlign: 'left' as const },
   linkBtn:     { background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
   barRow:      { padding: '8px 0' },
   barHead:     { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 },
-  barLabel:    { fontSize: 13, color: T.textMid, fontWeight: 600 },
+  barLabel:    { fontSize: 12, color: T.textMid, fontWeight: 600 },
   barTrack:    { height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' },
   barFill:     { height: '100%', borderRadius: 4, transition: 'width 0.5s cubic-bezier(0.22,1,0.36,1)' },
-  barAmt:      { fontSize: 12, fontFamily: T.mono, fontWeight: 500 },
+  barAmt:      { fontSize: 13, fontFamily: T.mono, fontWeight: 500 },
   monthRow:    { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  monthLabel:  { fontSize: 13, color: T.textMid, fontWeight: 500 },
-  monthVal:    { fontSize: 13, fontFamily: T.mono, fontWeight: 600, color: T.text },
+  monthLabel:  { fontSize: 11, color: T.textMid, fontWeight: 500 },
+  monthVal:    { fontSize: 14, fontFamily: T.mono, fontWeight: 600, color: T.text },
   table:       { width: '100%', borderCollapse: 'collapse' as const },
-  th:          { padding: '9px 18px', fontSize: 10.5, fontWeight: 700, color: T.textDim, textAlign: 'left' as const, letterSpacing: '0.08em', textTransform: 'uppercase' as const, borderBottom: `1px solid ${T.border}` },
+  th:          { padding: '9px 18px', fontSize: 9, fontWeight: 700, color: T.textDim, textAlign: 'left' as const, letterSpacing: '0.08em', textTransform: 'uppercase' as const, borderBottom: `1px solid ${T.border}` },
   tr:          { transition: 'background 0.1s' },
-  td:          { padding: '10px 18px', fontSize: 13, color: T.textMid, borderBottom: `1px solid ${T.borderSoft}` },
-  catTag:      { display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: '3px 9px', fontSize: 11.5, fontWeight: 600 },
+  td:          { padding: '10px 18px', fontSize: 12, color: T.textMid, borderBottom: `1px solid ${T.borderSoft}` },
+  catTag:      { display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: '3px 9px', fontSize: 10.5, fontWeight: 600 },
 };
