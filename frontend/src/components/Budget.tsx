@@ -52,7 +52,7 @@ const BudgetCell = forwardRef<BudgetCellHandle, { value: number; onSave: (v: num
     const [editing, setEditing] = useState(false);
     const [input, setInput] = useState('');
     const [hovered, setHovered] = useState(false);
-    const startEdit = () => { const displayVal = toDisplay ? +(toDisplay(value).toFixed(2)) : value; setInput(String(displayVal)); setEditing(true); };
+    const startEdit = () => { const displayVal = toDisplay ? +(toDisplay(value).toFixed(2)) : value; setInput(String(displayVal)); setEditing(true); setHovered(false); };
     useImperativeHandle(ref, () => ({ startEdit }));
     const commit = () => {
       const plain = parseFloat(input.trim());
@@ -79,6 +79,7 @@ const BudgetCell = forwardRef<BudgetCellHandle, { value: number; onSave: (v: num
     };
     if (editing) {
       return <input autoFocus value={input} onChange={e => setInput(e.target.value)} onBlur={commit}
+        onFocus={e => e.target.select()}
         onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }} style={st.cellInput} />;
     }
     return (
