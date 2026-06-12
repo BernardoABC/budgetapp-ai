@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { T, GROUP_COLORS } from '../theme';
 import type { MonthlySpendingRow } from '../api';
-import { fetchSpendingReport, groupKey, fetchIncomeExpense, fetchNetWorth, fetchAgeOfMoney } from '../api';
+import { fetchSpendingReport, groupKey, fetchIncomeExpense, fetchNetWorth } from '../api';
 
 function LineChart({ data }: { data: MonthlySpendingRow[] }) {
   const W = 660, H = 240, PL = 64, PR = 16, PT = 16, PB = 34;
@@ -195,7 +195,6 @@ export function Reports({ fmt }: Props) {
   const [monthlySpending, setMonthlySpending] = useState<MonthlySpendingRow[]>([]);
   const [incomeExpense, setIncomeExpense] = useState<{ month: string; income: number; expense: number }[]>([]);
   const [netWorthData, setNetWorthData] = useState<{ month: string; net_worth: number }[]>([]);
-  const [ageOfMoney, setAgeOfMoney] = useState<{ month: string; days: number }[]>([]);
   const [loadingReport, setLoadingReport] = useState(true);
   const [reportError, setReportError] = useState<string | null>(null);
 
@@ -210,13 +209,11 @@ export function Reports({ fmt }: Props) {
       fetchSpendingReport(from, to),
       fetchIncomeExpense(from, to),
       fetchNetWorth(from, to),
-      fetchAgeOfMoney(6),
     ])
-      .then(([spending, ie, nw, aom]) => {
+      .then(([spending, ie, nw]) => {
         setMonthlySpending(spending);
         setIncomeExpense(ie);
         setNetWorthData(nw);
-        setAgeOfMoney(aom);
         setLoadingReport(false);
       })
       .catch(err => { setReportError(err.message); setLoadingReport(false); });
@@ -224,7 +221,6 @@ export function Reports({ fmt }: Props) {
 
   useEffect(() => { loadReport(); }, []);
 
-  const latestAge = ageOfMoney[ageOfMoney.length - 1];
   // Convert centimos to major units for chart display (api.ts returns raw centimos)
   const incomeExpenseMajor = incomeExpense.map(d => ({
     month: d.month,
@@ -243,7 +239,6 @@ export function Reports({ fmt }: Props) {
     { id: 'donut',    label: 'Spending Breakdown',   desc: 'Share of total spend',     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 1 0 9 9h-9V3z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M14 3.5a9 9 0 0 1 6.5 6.5H14V3.5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg> },
     { id: 'income',   label: 'Income vs Expense',    desc: 'Cash flow per month',      icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M7 14V9M12 14V5M17 14v-3M4 18h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> },
     { id: 'networth', label: 'Net Worth',             desc: 'Assets minus debt',        icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 15l5-5 4 3 7-7M4 19h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg> },
-    { id: 'age',      label: 'Age of Money',          desc: 'Days before spending',     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8"/><path d="M12 8v4l3 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg> },
   ];
 
   return (
@@ -316,12 +311,6 @@ export function Reports({ fmt }: Props) {
             <>
               <div style={st.panelHeader}><span>Net Worth</span><span style={st.panelMeta}>{latestNW ? fmt(latestNW.net_worth) : '—'} today</span></div>
               <div style={{ padding: '12px 14px 16px' }}><AreaLineChart data={netWorthMajor} valueOf={d => (d as { month: string; net_worth: number }).net_worth} color="#5b9dff" fmt={fmt} /></div>
-            </>
-          )}
-          {activeReport === 'age' && (
-            <>
-              <div style={st.panelHeader}><span>Age of Money</span><span style={st.panelMeta}>{latestAge ? latestAge.days + ' days' : '—'}</span></div>
-              <div style={{ padding: '12px 14px 16px' }}><AreaLineChart data={ageOfMoney} valueOf={d => (d as { month: string; days: number }).days} color="#3ddc97" fmt={fmt} suffix="d" /></div>
             </>
           )}
         </>}
