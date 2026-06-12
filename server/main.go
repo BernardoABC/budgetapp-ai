@@ -55,7 +55,7 @@ func main() {
 	bccrClient := bccr.NewClient(cfg.BCCRAPIToken)
 	rateSvc := service.NewExchangeRateService(rateRepo, bccrClient)
 	importSvc := service.NewImportService(pool, accountRepo, ruleRepo, importRepo, rateSvc)
-	budgetSvc := service.NewBudgetService(budgetRepo, planRepo, catRepo, rateRepo, settingsRepo)
+	budgetSvc := service.NewPlanService(budgetRepo, planRepo, catRepo, rateRepo, settingsRepo)
 
 	// Fetch today's rate on startup (non-blocking)
 	go func() {
@@ -87,7 +87,7 @@ func main() {
 	rules := handler.NewPayeeRuleHandler(ruleRepo)
 	imports := handler.NewImportHandler(importSvc, importRepo)
 	rates := handler.NewExchangeRateHandler(rateSvc)
-	budgets := handler.NewBudgetHandler(budgetSvc)
+	budgets := handler.NewPlanHandler(budgetSvc)
 	settings := handler.NewSettingsHandler(settingsRepo)
 	reports := handler.NewReportsHandler(txnRepo, budgetRepo)
 

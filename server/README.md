@@ -15,7 +15,7 @@ Go HTTP API server for budgetapp.
 
 ```bash
 podman build -t budgetapp-server -f Containerfile .
-podman run -e DATABASE_URL=postgres://ynab:ynab_dev@localhost:5432/ynab -p 8080:8080 budgetapp-server
+podman run -e DATABASE_URL=postgres://budgetapp:budgetapp@localhost:5432/budgetapp -p 8080:8080 budgetapp-server
 ```
 
 Or via the project root:

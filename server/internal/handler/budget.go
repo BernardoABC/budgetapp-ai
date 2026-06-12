@@ -10,15 +10,15 @@ import (
 
 var monthRe = regexp.MustCompile(`^\d{4}-\d{2}$`)
 
-type BudgetHandler struct {
-	svc *service.BudgetService
+type PlanHandler struct {
+	svc *service.PlanService
 }
 
-func NewBudgetHandler(svc *service.BudgetService) *BudgetHandler {
-	return &BudgetHandler{svc: svc}
+func NewPlanHandler(svc *service.PlanService) *PlanHandler {
+	return &PlanHandler{svc: svc}
 }
 
-func (h *BudgetHandler) GetMonth(w http.ResponseWriter, r *http.Request) {
+func (h *PlanHandler) GetMonth(w http.ResponseWriter, r *http.Request) {
 	month := r.PathValue("month")
 	if !monthRe.MatchString(month) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month must be YYYY-MM")
@@ -32,7 +32,7 @@ func (h *BudgetHandler) GetMonth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, planMonthToJSON(pm))
 }
 
-func (h *BudgetHandler) SetPlanned(w http.ResponseWriter, r *http.Request) {
+func (h *PlanHandler) SetPlanned(w http.ResponseWriter, r *http.Request) {
 	month := r.PathValue("month")
 	if !monthRe.MatchString(month) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month must be YYYY-MM")
@@ -57,7 +57,7 @@ func (h *BudgetHandler) SetPlanned(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"planned": body.Planned})
 }
 
-func (h *BudgetHandler) SetIncome(w http.ResponseWriter, r *http.Request) {
+func (h *PlanHandler) SetIncome(w http.ResponseWriter, r *http.Request) {
 	month := r.PathValue("month")
 	if !monthRe.MatchString(month) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month must be YYYY-MM")
@@ -77,7 +77,7 @@ func (h *BudgetHandler) SetIncome(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"amount": body.Amount})
 }
 
-func (h *BudgetHandler) SetFlexBudget(w http.ResponseWriter, r *http.Request) {
+func (h *PlanHandler) SetFlexBudget(w http.ResponseWriter, r *http.Request) {
 	month := r.PathValue("month")
 	if !monthRe.MatchString(month) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month must be YYYY-MM")
@@ -97,7 +97,7 @@ func (h *BudgetHandler) SetFlexBudget(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"amount": body.Amount})
 }
 
-func (h *BudgetHandler) CopyPrevious(w http.ResponseWriter, r *http.Request) {
+func (h *PlanHandler) CopyPrevious(w http.ResponseWriter, r *http.Request) {
 	month := r.PathValue("month")
 	if !monthRe.MatchString(month) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month must be YYYY-MM")
@@ -111,7 +111,7 @@ func (h *BudgetHandler) CopyPrevious(w http.ResponseWriter, r *http.Request) {
 }
 
 // ChangeCategoryCurrency handles PUT /api/categories/{id}/currency.
-func (h *BudgetHandler) ChangeCategoryCurrency(w http.ResponseWriter, r *http.Request) {
+func (h *PlanHandler) ChangeCategoryCurrency(w http.ResponseWriter, r *http.Request) {
 	catID := r.PathValue("id")
 	if catID == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "id required")
@@ -128,7 +128,7 @@ func (h *BudgetHandler) ChangeCategoryCurrency(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "currency must be CRC or USD")
 		return
 	}
-	if err := h.svc.ChangeCategoryBudgetCurrency(r.Context(), catID, body.Currency); err != nil {
+	if err := h.svc.ChangeCategoryCurrency(r.Context(), catID, body.Currency); err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}

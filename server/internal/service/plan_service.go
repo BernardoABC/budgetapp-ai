@@ -10,7 +10,7 @@ import (
 	"budgetapp/internal/repository"
 )
 
-type BudgetService struct {
+type PlanService struct {
 	budgetRepo *repository.BudgetRepo
 	planRepo   *repository.MonthlyPlanRepo
 	catRepo    *repository.CategoryRepo
@@ -18,17 +18,17 @@ type BudgetService struct {
 	settings   *repository.SettingsRepo
 }
 
-func NewBudgetService(
+func NewPlanService(
 	budgetRepo *repository.BudgetRepo,
 	planRepo *repository.MonthlyPlanRepo,
 	catRepo *repository.CategoryRepo,
 	rateRepo *repository.ExchangeRateRepo,
 	settings *repository.SettingsRepo,
-) *BudgetService {
-	return &BudgetService{budgetRepo: budgetRepo, planRepo: planRepo, catRepo: catRepo, rateRepo: rateRepo, settings: settings}
+) *PlanService {
+	return &PlanService{budgetRepo: budgetRepo, planRepo: planRepo, catRepo: catRepo, rateRepo: rateRepo, settings: settings}
 }
 
-func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.PlanMonth, error) {
+func (s *PlanService) GetMonth(ctx context.Context, month string) (*model.PlanMonth, error) {
 	firstOfMonth := month + "-01"
 	lastOfMonth := lastDay(month)
 
@@ -152,7 +152,7 @@ func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.Plan
 // computeRolloverBalances sums Planned+Activity over every month up to firstOfMonth
 // for rollover categories and non-monthly categories (which accumulate in flex mode
 // regardless of the rollover flag). Negative balances carry as-is (no clamp).
-func (s *BudgetService) computeRolloverBalances(
+func (s *PlanService) computeRolloverBalances(
 	groups []model.CategoryGroup,
 	plannedByCat, activity map[string]map[string]int64,
 	firstOfMonth string,
@@ -197,22 +197,22 @@ func (s *BudgetService) computeRolloverBalances(
 	return bal
 }
 
-func (s *BudgetService) SetPlanned(ctx context.Context, catID, month string, planned int64) error {
+func (s *PlanService) SetPlanned(ctx context.Context, catID, month string, planned int64) error {
 	return s.budgetRepo.UpsertPlanned(ctx, catID, month+"-01", planned)
 }
 
-func (s *BudgetService) SetExpectedIncome(ctx context.Context, month string, amount int64) error {
+func (s *PlanService) SetExpectedIncome(ctx context.Context, month string, amount int64) error {
 	return s.planRepo.SetExpectedIncome(ctx, month+"-01", amount)
 }
 
-func (s *BudgetService) SetFlexBudget(ctx context.Context, month string, amount int64) error {
+func (s *PlanService) SetFlexBudget(ctx context.Context, month string, amount int64) error {
 	return s.planRepo.SetFlexBudget(ctx, month+"-01", amount)
 }
 
 // CopyPrevious copies planned amounts from the previous month (only for categories
 // with a positive planned value and no current-month row) and seeds expected income
 // from the previous month when the current month has none.
-func (s *BudgetService) CopyPrevious(ctx context.Context, month string) error {
+func (s *PlanService) CopyPrevious(ctx context.Context, month string) error {
 	prev := prevMonthStr(month)
 	prevPlanned, err := s.budgetRepo.GetAllPlannedUpToMonth(ctx, prev+"-01")
 	if err != nil {
@@ -247,7 +247,7 @@ func (s *BudgetService) CopyPrevious(ctx context.Context, month string) error {
 	return nil
 }
 
-func (s *BudgetService) ChangeCategoryBudgetCurrency(ctx context.Context, catID, newCurrency string) error {
+func (s *PlanService) ChangeCategoryCurrency(ctx context.Context, catID, newCurrency string) error {
 	if newCurrency != "CRC" && newCurrency != "USD" {
 		return fmt.Errorf("currency must be CRC or USD")
 	}

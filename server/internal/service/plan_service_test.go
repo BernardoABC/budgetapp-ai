@@ -11,7 +11,7 @@ import (
 
 func TestPlanService_LeftToBudget(t *testing.T) {
 	pool := testutil.NewTestPool(t)
-	svc := service.NewBudgetService(
+	svc := service.NewPlanService(
 		repository.NewBudgetRepo(pool),
 		repository.NewMonthlyPlanRepo(pool),
 		repository.NewCategoryRepo(pool),
@@ -50,7 +50,7 @@ func TestPlanService_LeftToBudget(t *testing.T) {
 
 func TestPlanService_RolloverAccumulatesWithNegativeCarry(t *testing.T) {
 	pool := testutil.NewTestPool(t)
-	svc := service.NewBudgetService(
+	svc := service.NewPlanService(
 		repository.NewBudgetRepo(pool),
 		repository.NewMonthlyPlanRepo(pool),
 		repository.NewCategoryRepo(pool),
@@ -104,7 +104,7 @@ func TestPlanService_RolloverAccumulatesWithNegativeCarry(t *testing.T) {
 
 func TestPlanService_NonMonthlyAccumulatesWithoutRolloverFlag(t *testing.T) {
 	pool := testutil.NewTestPool(t)
-	svc := service.NewBudgetService(
+	svc := service.NewPlanService(
 		repository.NewBudgetRepo(pool),
 		repository.NewMonthlyPlanRepo(pool),
 		repository.NewCategoryRepo(pool),
@@ -157,7 +157,7 @@ func TestPlanService_NonMonthlyAccumulatesWithoutRolloverFlag(t *testing.T) {
 
 func TestPlanService_GetMonth_Empty(t *testing.T) {
 	pool := testutil.NewTestPool(t)
-	svc := service.NewBudgetService(
+	svc := service.NewPlanService(
 		repository.NewBudgetRepo(pool),
 		repository.NewMonthlyPlanRepo(pool),
 		repository.NewCategoryRepo(pool),
