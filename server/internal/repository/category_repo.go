@@ -16,7 +16,8 @@ func NewCategoryRepo(pool *pgxpool.Pool) *CategoryRepo { return &CategoryRepo{po
 func (r *CategoryRepo) ListGroups(ctx context.Context) ([]model.CategoryGroup, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT g.id::text, g.name, g.sort_order, g.hidden, g.is_system,
-		       c.id::text, c.name, c.hidden, c.sort_order, c.is_system, c.currency
+		       c.id::text, c.name, c.hidden, c.sort_order, c.is_system, c.currency,
+		       c.rollover, c.flexibility
 		FROM category_groups g
 		LEFT JOIN categories c ON c.group_id = g.id AND c.hidden = false
 		ORDER BY g.sort_order, g.name, c.sort_order, c.name
@@ -38,9 +39,11 @@ func (r *CategoryRepo) ListGroups(ctx context.Context) ([]model.CategoryGroup, e
 		var cSort *int
 		var cSystem *bool
 		var cCurrency *string
+		var cRollover *bool
+		var cFlexibility *string
 
 		if err := rows.Scan(&gID, &gName, &gSort, &gHidden, &gSystem,
-			&cID, &cName, &cHidden, &cSort, &cSystem, &cCurrency); err != nil {
+			&cID, &cName, &cHidden, &cSort, &cSystem, &cCurrency, &cRollover, &cFlexibility); err != nil {
 			return nil, fmt.Errorf("scan category row: %w", err)
 		}
 
@@ -60,9 +63,18 @@ func (r *CategoryRepo) ListGroups(ctx context.Context) ([]model.CategoryGroup, e
 			if cCurrency != nil {
 				cur = *cCurrency
 			}
+			roll := false
+			if cRollover != nil {
+				roll = *cRollover
+			}
+			flex := "flexible"
+			if cFlexibility != nil {
+				flex = *cFlexibility
+			}
 			groupMap[gID].Categories = append(groupMap[gID].Categories, model.Category{
 				ID: *cID, GroupID: gID, Name: *cName,
 				Currency: cur, Hidden: *cHidden, SortOrder: *cSort, IsSystem: sys,
+				Rollover: roll, Flexibility: flex,
 			})
 		}
 	}
@@ -154,13 +166,18 @@ func (r *CategoryRepo) UpdateCategory(ctx context.Context, id string, req model.
 			return model.Category{}, fmt.Errorf("get existing currency: %w", err)
 		}
 	}
+	flexibility := req.Flexibility
+	if flexibility == "" {
+		flexibility = "flexible"
+	}
 	var c model.Category
 	err := r.pool.QueryRow(ctx, `
-		UPDATE categories SET name=$1, hidden=$2, sort_order=$3, currency=$4, updated_at=NOW()
-		WHERE id=$5
-		RETURNING id::text, group_id::text, name, hidden, sort_order, currency
-	`, req.Name, req.Hidden, req.SortOrder, currency, id).Scan(
-		&c.ID, &c.GroupID, &c.Name, &c.Hidden, &c.SortOrder, &c.Currency,
+		UPDATE categories
+		SET name=$1, hidden=$2, sort_order=$3, currency=$4, rollover=$5, flexibility=$6, updated_at=NOW()
+		WHERE id=$7
+		RETURNING id::text, group_id::text, name, hidden, sort_order, currency, rollover, flexibility
+	`, req.Name, req.Hidden, req.SortOrder, currency, req.Rollover, flexibility, id).Scan(
+		&c.ID, &c.GroupID, &c.Name, &c.Hidden, &c.SortOrder, &c.Currency, &c.Rollover, &c.Flexibility,
 	)
 	if err != nil {
 		return c, fmt.Errorf("update category: %w", err)
