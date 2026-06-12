@@ -98,6 +98,10 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "currency must be CRC or USD")
 		return
 	}
+	if req.Flexibility != "" && req.Flexibility != "fixed" && req.Flexibility != "flexible" && req.Flexibility != "non_monthly" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "flexibility must be fixed, flexible, or non_monthly")
+		return
+	}
 	c, err := h.repo.CreateCategory(r.Context(), req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
@@ -115,6 +119,10 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 	}
 	if req.Currency != "" && req.Currency != "CRC" && req.Currency != "USD" {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "currency must be CRC or USD")
+		return
+	}
+	if req.Flexibility != "" && req.Flexibility != "fixed" && req.Flexibility != "flexible" && req.Flexibility != "non_monthly" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "flexibility must be fixed, flexible, or non_monthly")
 		return
 	}
 	c, err := h.repo.UpdateCategory(r.Context(), id, req)
