@@ -47,12 +47,6 @@ export interface MonthlySpendingRow {
   savings: number;
 }
 
-export interface Target {
-  type: 'monthly' | 'refill' | 'savings';
-  amount: number;
-  by?: string;
-}
-
 export interface CategoryItemAPI {
   id: string;
   name: string;
@@ -60,6 +54,8 @@ export interface CategoryItemAPI {
   hidden: boolean;
   sort_order: number;
   is_system: boolean;
+  rollover: boolean;
+  flexibility: 'fixed' | 'flexible' | 'non_monthly';
 }
 
 export interface CategoryGroupAPI {
@@ -362,7 +358,7 @@ export async function changeCategoryCurrency(id: string, currency: string): Prom
   await apiFetch(`/categories/${id}/currency`, { method: 'PUT', body: JSON.stringify({ currency }) });
 }
 
-export async function updateCategory(id: string, body: { name: string; hidden?: boolean; sort_order?: number }): Promise<CategoryItemAPI> {
+export async function updateCategory(id: string, body: { name: string; hidden?: boolean; sort_order?: number; rollover?: boolean; flexibility?: 'fixed' | 'flexible' | 'non_monthly' }): Promise<CategoryItemAPI> {
   return apiFetch(`/categories/${id}`, { method: 'PUT', body: JSON.stringify(body) });
 }
 
@@ -384,39 +380,44 @@ export interface ActivityBreakdownEntry {
   converted_amount: number;
 }
 
-export interface BudgetCategoryAPI {
+export interface PlanCategoryAPI {
   id: string;
   name: string;
   currency: string;
-  assigned: number;
+  flexibility: 'fixed' | 'flexible' | 'non_monthly';
+  rollover: boolean;
+  planned: number;
   activity: number;
-  carry_in: number;
-  available: number;
-  underfunded: number;
-  target: { type: string; amount: number; deadline: string | null } | null;
+  remaining: number;
+  rollover_balance: number;
   activity_breakdown: ActivityBreakdownEntry[];
 }
 
-export interface BudgetGroupAPI {
+export interface PlanGroupAPI {
   id: string;
   name: string;
-  assigned: number;
+  planned: number;
   activity: number;
-  available: number;
-  categories: BudgetCategoryAPI[];
+  remaining: number;
+  categories: PlanCategoryAPI[];
 }
 
-export interface BudgetMonthAPI {
+export interface PlanMonthAPI {
   month: string;
-  ready_to_assign: number;
-  rta_breakdown: {
-    crc_accounts: number;
-    usd_accounts_in_crc: number;
-    usd_accounts_native: number;
-  };
-  age_of_money: number | null;
-  total_underfunded: number;
-  category_groups: BudgetGroupAPI[];
+  mode: 'category' | 'flex';
+  expected_income: number;
+  flex_budget: number;
+  planned_total: number;
+  left_to_budget: number;
+  actual_income: number;
+  actual_spending: number;
+  actual_savings: number;
+  fixed_planned: number;
+  fixed_actual: number;
+  flexible_actual: number;
+  non_monthly_planned: number;
+  non_monthly_actual: number;
+  category_groups: PlanGroupAPI[];
 }
 
 export async function fetchCurrentRate(): Promise<ExchangeRate> {
@@ -440,79 +441,77 @@ export async function upsertRate(date: string, usd_to_crc: number): Promise<Exch
   });
 }
 
-// ─── Budget ───────────────────────────────────────────────────────────────────
+// ─── Plan ─────────────────────────────────────────────────────────────────────
 
-export async function fetchBudget(month: string): Promise<BudgetMonthAPI> {
-  const data = await apiFetch<any>(`/budgets/${month}`);
-  // Convert centimos → major units throughout
-  const fromMinor = (n: number) => n / 100;
-  data.ready_to_assign = fromMinor(data.ready_to_assign);
-  data.total_underfunded = fromMinor(data.total_underfunded);
-  if (data.rta_breakdown) {
-    data.rta_breakdown.crc_accounts = fromMinor(data.rta_breakdown.crc_accounts);
-    data.rta_breakdown.usd_accounts_in_crc = fromMinor(data.rta_breakdown.usd_accounts_in_crc);
-    data.rta_breakdown.usd_accounts_native = fromMinor(data.rta_breakdown.usd_accounts_native);
-  }
+export async function fetchPlan(month: string): Promise<PlanMonthAPI> {
+  const data = await apiFetch<any>(`/plan/${month}`);
+  const m = (n: number) => n / 100;
+  data.expected_income = m(data.expected_income);
+  data.flex_budget = m(data.flex_budget);
+  data.planned_total = m(data.planned_total);
+  data.left_to_budget = m(data.left_to_budget);
+  data.actual_income = m(data.actual_income);
+  data.actual_spending = m(data.actual_spending);
+  data.actual_savings = m(data.actual_savings);
+  data.fixed_planned = m(data.fixed_planned);
+  data.fixed_actual = m(data.fixed_actual);
+  data.flexible_actual = m(data.flexible_actual);
+  data.non_monthly_planned = m(data.non_monthly_planned);
+  data.non_monthly_actual = m(data.non_monthly_actual);
   for (const g of data.category_groups) {
-    g.assigned  = fromMinor(g.assigned);
-    g.activity  = fromMinor(g.activity);
-    g.available = fromMinor(g.available);
+    g.planned = m(g.planned); g.activity = m(g.activity); g.remaining = m(g.remaining);
     for (const c of g.categories) {
-      c.assigned    = fromMinor(c.assigned);
-      c.activity    = fromMinor(c.activity);
-      c.carry_in    = fromMinor(c.carry_in);
-      c.available   = fromMinor(c.available);
-      c.underfunded = fromMinor(c.underfunded);
-      if (c.target) c.target.amount = fromMinor(c.target.amount);
-      if (c.activity_breakdown) {
-        for (const entry of c.activity_breakdown) {
-          entry.amount = fromMinor(entry.amount);
-          entry.converted_amount = fromMinor(entry.converted_amount);
-        }
+      c.planned = m(c.planned); c.activity = m(c.activity);
+      c.remaining = m(c.remaining); c.rollover_balance = m(c.rollover_balance);
+      for (const e of (c.activity_breakdown ?? [])) {
+        e.amount = m(e.amount); e.converted_amount = m(e.converted_amount);
       }
     }
   }
-  return data as BudgetMonthAPI;
+  return data as PlanMonthAPI;
 }
 
-export async function setAssigned(month: string, categoryId: string, amount: number): Promise<void> {
-  await apiFetch(`/budgets/${month}/categories/${categoryId}`, {
+export async function setPlanned(month: string, categoryId: string, amount: number): Promise<void> {
+  await apiFetch(`/plan/${month}/categories/${categoryId}`, {
     method: 'PUT',
-    body: JSON.stringify({ assigned: Math.round(amount * 100) }),
+    body: JSON.stringify({ planned: Math.round(amount * 100) }),
   });
 }
 
-export async function copyPreviousBudget(month: string): Promise<void> {
-  await apiFetch(`/budgets/${month}/copy-previous`, { method: 'POST' });
-}
-
-export async function moveBudgetMoney(month: string, fromId: string, toId: string, amount: number): Promise<void> {
-  await apiFetch(`/budgets/${month}/move`, {
-    method: 'POST',
-    body: JSON.stringify({
-      from_category_id: fromId,
-      to_category_id: toId,
-      amount: Math.round(amount * 100),
-    }),
-  });
-}
-
-export async function upsertCategoryTarget(
-  categoryId: string,
-  target: { type: string; amount: number; deadline: string | null }
-): Promise<void> {
-  await apiFetch(`/categories/${categoryId}/target`, {
+export async function setExpectedIncome(month: string, amount: number): Promise<void> {
+  await apiFetch(`/plan/${month}/income`, {
     method: 'PUT',
-    body: JSON.stringify({
-      type: target.type,
-      amount: Math.round(target.amount * 100),
-      deadline: target.deadline,
-    }),
+    body: JSON.stringify({ amount: Math.round(amount * 100) }),
   });
 }
 
-export async function deleteCategoryTarget(categoryId: string): Promise<void> {
-  await apiFetch(`/categories/${categoryId}/target`, { method: 'DELETE' });
+export async function setFlexBudget(month: string, amount: number): Promise<void> {
+  await apiFetch(`/plan/${month}/flex-budget`, {
+    method: 'PUT',
+    body: JSON.stringify({ amount: Math.round(amount * 100) }),
+  });
+}
+
+export async function copyPreviousPlan(month: string): Promise<void> {
+  await apiFetch(`/plan/${month}/copy-previous`, { method: 'POST' });
+}
+
+export async function fetchBudgetMode(): Promise<'category' | 'flex'> {
+  const data = await apiFetch<{ mode: 'category' | 'flex' }>(`/settings/budget-mode`);
+  return data.mode;
+}
+
+export async function setBudgetMode(mode: 'category' | 'flex'): Promise<void> {
+  await apiFetch(`/settings/budget-mode`, { method: 'PUT', body: JSON.stringify({ mode }) });
+}
+
+export async function fetchSavings(
+  from: string, to: string,
+): Promise<{ month: string; income: number; expense: number; savings: number; rate: number }[]> {
+  const data = await apiFetch<{ month: string; income: number; expense: number; savings: number; rate: number }[]>(
+    `/reports/savings?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+  return data ?? [];
 }
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
@@ -561,27 +560,6 @@ export async function fetchNetWorth(
     `/reports/net-worth?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
   );
   return data ?? [];
-}
-
-// fetchAgeOfMoney calls fetchBudget for the trailing `months` months in parallel
-// and extracts age_of_money. Months where age_of_money is null are omitted.
-export async function fetchAgeOfMoney(
-  months: number,
-): Promise<{ month: string; days: number }[]> {
-  const now = new Date();
-  const monthStrings: string[] = [];
-  for (let i = months - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    monthStrings.push(
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    );
-  }
-  const budgets = await Promise.all(
-    monthStrings.map(m => fetchBudget(m).catch(() => null))
-  );
-  return budgets
-    .map((b, i) => ({ month: monthStrings[i], days: b?.age_of_money ?? null }))
-    .filter((r): r is { month: string; days: number } => r.days !== null);
 }
 
 // ─── Recent Transactions ──────────────────────────────────────────────────────
