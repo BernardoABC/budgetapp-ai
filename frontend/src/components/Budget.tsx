@@ -897,6 +897,31 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       .catch(err => toast.error(err.message));
   };
   const setTarget = (cat: string, target: Target | null) => {
+    const prevTarget = targets[cat] ?? null;
+    undoPush({
+      label: target ? `Set target: ${cat}` : `Remove target: ${cat}`,
+      undo: () => {
+        setTargets(t => {
+          const nt = { ...t };
+          if (prevTarget) nt[cat] = prevTarget;
+          else delete nt[cat];
+          return nt;
+        });
+        const catId = categoryIdByName[cat];
+        if (!catId) return;
+        if (prevTarget === null) {
+          deleteCategoryTarget(catId).catch(err => toast.error(err.message));
+        } else {
+          let deadline: string | null = null;
+          if (prevTarget.type === 'savings' && prevTarget.by) {
+            const d = new Date(prevTarget.by + ' 1');
+            if (!isNaN(d.getTime())) deadline = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+          }
+          upsertCategoryTarget(catId, { type: prevTarget.type, amount: prevTarget.amount, deadline })
+            .catch(err => toast.error(err.message));
+        }
+      },
+    });
     setTargets(t => { const nt = { ...t }; if (target) nt[cat] = target; else delete nt[cat]; return nt; });
     const catId = categoryIdByName[cat];
     if (!catId) return;
