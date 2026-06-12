@@ -2,6 +2,8 @@ import React, { useState, useCallback, useMemo, useRef, useEffect, useImperative
 import { T, GROUP_COLORS } from '../theme';
 import { compute, quickAssign as engineQuickAssign, targetLabel } from '../engine';
 import { MoveMoneyModal, CategoryInspector } from './BudgetModals';
+import { BudgetSummaryPane } from './BudgetSummaryPane';
+import type { SummaryStats } from './BudgetSummaryPane';
 import type { CategoryGroup, Target, BudgetMonthAPI } from '../api';
 import type { CatState, MonthState } from '../engine';
 import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate } from '../api';
@@ -119,11 +121,16 @@ interface GroupBlockProps {
   onReorderCat: (gid: string, fromIdx: number, toIdx: number) => void;
   toDisplay?: (raw: number) => number;
   toRaw?: (display: number) => number;
+  selectedCats: Set<string>;
+  onToggleCatSelection: (name: string) => void;
+  onToggleGroupSelection: (catNames: string[]) => void;
 }
 
 function GroupBlock(props: GroupBlockProps) {
   const { group, gidx, color, catState, collapsed, onToggle, fmt, onSaveAssigned, onOpenMove, onOpenInspector,
-    inspectorCat, rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup, onMoveGroup, onDeleteGroup, onReorderCat, catCurrencies, toDisplay, toRaw } = props;
+    inspectorCat, rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup,
+    onMoveGroup, onDeleteGroup, onReorderCat, catCurrencies, toDisplay, toRaw,
+    selectedCats, onToggleCatSelection, onToggleGroupSelection } = props;
   const [hovCat, setHovCat] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newCat, setNewCat] = useState('');
@@ -134,8 +141,15 @@ function GroupBlock(props: GroupBlockProps) {
   const [dragCat, setDragCat] = useState<string | null>(null);
   const [dragOverCat, setDragOverCat] = useState<string | null>(null);
   const dragHappened = useRef(false);
-
   const visibleCats = group.categories.filter(c => showHidden || !hidden.has(c));
+  const groupCheckRef = useRef<HTMLInputElement>(null);
+  const groupCheckedCount = visibleCats.filter(c => selectedCats.has(c)).length;
+  const groupChecked = groupCheckedCount === visibleCats.length && visibleCats.length > 0;
+  const groupIndeterminate = groupCheckedCount > 0 && !groupChecked;
+
+  useEffect(() => {
+    if (groupCheckRef.current) groupCheckRef.current.indeterminate = groupIndeterminate;
+  }, [groupIndeterminate]);
   const totAssigned = group.categories.reduce((s, c) => s + (catState[c]?.assigned ?? 0), 0);
   const totActivity = group.categories.reduce((s, c) => s + (catState[c]?.activity ?? 0), 0);
   const totAvailable = group.categories.reduce((s, c) => s + (catState[c]?.available ?? 0), 0);
@@ -145,6 +159,16 @@ function GroupBlock(props: GroupBlockProps) {
   return (
     <>
       <tr style={st.groupRow}>
+        <td style={st.checkCell}>
+          <input
+            ref={groupCheckRef}
+            type="checkbox"
+            checked={groupChecked}
+            onChange={() => onToggleGroupSelection(visibleCats)}
+            onClick={e => e.stopPropagation()}
+            style={st.check}
+          />
+        </td>
         <td style={st.groupCell} onClick={editMode ? undefined : onToggle}>
           {!editMode && <span style={{ ...st.chevron, transform: collapsed ? 'rotate(-90deg)' : 'none' }}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -208,6 +232,15 @@ function GroupBlock(props: GroupBlockProps) {
               onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}
               onClick={editMode ? undefined : () => { if (dragHappened.current) { dragHappened.current = false; return; } cellRefs.current[cat]?.startEdit(); }}
               {...dragHandlers}>
+              <td style={{ ...st.checkCell, padding: rowPad + ' 0 5px 8px', borderBottom: 'none', verticalAlign: 'middle' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedCats.has(cat)}
+                  onChange={() => onToggleCatSelection(cat)}
+                  onClick={e => e.stopPropagation()}
+                  style={st.check}
+                />
+              </td>
               <td style={{ ...st.catCell, padding: rowPad + ' 16px 5px 40px', borderBottom: 'none' }}>
                 {editMode ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -222,20 +255,39 @@ function GroupBlock(props: GroupBlockProps) {
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ ...st.dragHandle, opacity: hovCat === cat ? 0.35 : 0 }}>⠿</span>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        if (inspectorCat === cat) {
-                          setRenamingCat(cat);
-                          setRenameVal(cat);
-                        } else {
-                          onOpenInspector(cat);
-                        }
-                      }}
-                      style={{ ...st.catName, color: over ? T.neg : inspectorCat === cat ? T.text : T.textMid }}
-                    >
-                      {cat}
-                    </button>
+                    {renamingCat === cat ? (
+                      <input
+                        autoFocus
+                        value={renameVal}
+                        onChange={e => setRenameVal(e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        onBlur={() => {
+                          const trimmed = renameVal.trim();
+                          if (trimmed && trimmed !== cat) onRenameCat(group.id, cat, trimmed);
+                          setRenamingCat(null);
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          if (e.key === 'Escape') { setRenameVal(cat); setRenamingCat(null); }
+                        }}
+                        style={st.renameInput}
+                      />
+                    ) : (
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (inspectorCat === cat) {
+                            setRenamingCat(cat);
+                            setRenameVal(cat);
+                          } else {
+                            onOpenInspector(cat);
+                          }
+                        }}
+                        style={{ ...st.catName, color: over ? T.neg : inspectorCat === cat ? T.text : T.textMid }}
+                      >
+                        {cat}
+                      </button>
+                    )}
                     {tLabel && <span style={st.targetChip} title="Target">◎ {tLabel}</span>}
                     {c.underfunded > 0 && <span style={st.underBadge}>−{fmt(c.underfunded)}</span>}
                   </div>
@@ -261,7 +313,7 @@ function GroupBlock(props: GroupBlockProps) {
             <tr style={{ background: rowBg, cursor: editMode ? 'default' : 'text' }} onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}
               onClick={editMode ? undefined : () => { if (dragHappened.current) { dragHappened.current = false; return; } cellRefs.current[cat]?.startEdit(); }}
               {...dragHandlers}>
-              <td colSpan={4} style={{ padding: '0 16px ' + rowPad, borderBottom: `1px solid ${T.borderSoft}` }}>
+              <td colSpan={5} style={{ padding: '0 16px ' + rowPad, borderBottom: `1px solid ${T.borderSoft}` }}>
                 <div style={st.barRowWrap}>
                   <div style={st.barTrack}><div style={{ ...st.barFill, width: pct + '%', background: barColor, boxShadow: pct > 0 ? `0 0 8px ${barColor}66` : 'none' }} /></div>
                   <span style={st.barPct}>{c.assigned > 0 ? Math.round((spent / c.assigned) * 100) + '%' : '—'}</span>
@@ -274,7 +326,7 @@ function GroupBlock(props: GroupBlockProps) {
 
       {editMode && !collapsed && (
         <tr>
-          <td colSpan={4} style={{ padding: '6px 16px 10px 40px', borderBottom: `1px solid ${T.borderSoft}` }}>
+          <td colSpan={5} style={{ padding: '6px 16px 10px 40px', borderBottom: `1px solid ${T.borderSoft}` }}>
             {adding ? (
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <input autoFocus value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="Category name"
@@ -331,6 +383,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   const [inspectorCat, setInspectorCat] = useState<string | null>(null);
   const [catCurrencies, setCatCurrencies] = useState<Record<string, string>>({});
   const [rtaBreakdown, setRtaBreakdown] = useState<BudgetMonthAPI['rta_breakdown'] | null>(null);
+  const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
 
   // Sync groups when the prop arrives after mount (race condition: Budget can mount before the
   // initial fetchCategoryGroupsRaw resolves, leaving groups empty forever).
@@ -450,6 +503,57 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       apiSetAssigned(currentYM, catId, value).catch(err => toast.error(err.message));
     }
   }, [currentDisplayMonth, currentYM, categoryIdByName]);
+
+  const toggleCatSelection = useCallback((name: string) => {
+    setSelectedCats(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }, []);
+
+  const toggleGroupSelection = useCallback((catNames: string[]) => {
+    setSelectedCats(prev => {
+      const next = new Set(prev);
+      const allSelected = catNames.every(c => next.has(c));
+      if (allSelected) catNames.forEach(c => next.delete(c));
+      else catNames.forEach(c => next.add(c));
+      return next;
+    });
+  }, []);
+
+  const summaryStats = useMemo<SummaryStats>(() => {
+    const cats = selectedCats.size === 0
+      ? Object.values(state.cats)
+      : ([...selectedCats].map(n => state.cats[n]).filter(Boolean) as CatState[]);
+    return {
+      carryIn:  cats.reduce((s, c) => s + c.carryIn, 0),
+      assigned: cats.reduce((s, c) => s + c.assigned, 0),
+      activity: cats.reduce((s, c) => s + c.activity, 0),
+      available: cats.reduce((s, c) => s + c.available, 0),
+    };
+  }, [selectedCats, state.cats]);
+
+  const selectionLabel = useMemo(() => {
+    const totalCount = Object.keys(state.cats).length;
+    if (selectedCats.size === 0) return `All categories · ${totalCount}`;
+    const parts: string[] = [];
+    const handledCats = new Set<string>();
+    for (const g of groups) {
+      const inGroup = g.categories.filter(c => selectedCats.has(c));
+      if (inGroup.length > 0 && inGroup.length === g.categories.length) {
+        parts.push(g.name);
+        inGroup.forEach(c => handledCats.add(c));
+      }
+    }
+    for (const c of selectedCats) {
+      if (!handledCats.has(c)) parts.push(c);
+    }
+    const label = parts.length <= 2
+      ? parts.join(' + ')
+      : `${parts.slice(0, 2).join(' + ')} +${parts.length - 2} more`;
+    return `${label} · ${selectedCats.size} ${selectedCats.size === 1 ? 'category' : 'categories'}`;
+  }, [selectedCats, state.cats, groups]);
 
   const mergeAssigned = (updates: Record<string, number>) => {
     setLocalBudget(prev => {
@@ -658,7 +762,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center' as const, color: T.textDim }}>Loading budget…</div>
       ) : (
-        <div style={{ padding: '20px 28px', maxWidth: 1180, margin: '0 auto' }}>
+        <div style={{ padding: '20px 28px', maxWidth: 1400, margin: '0 auto' }}>
           {editMode && (
             <div style={st.editBar}>
               <span style={{ fontSize: 12.5, color: T.textMid, fontWeight: 600 }}>Editing categories — rename, reorder, hide or delete.</span>
@@ -668,27 +772,38 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
               </div>
             </div>
           )}
-          <div style={st.tableWrap}>
-            <table style={st.table}>
-              <thead>
-                <tr>
-                  <th style={{ ...st.th, textAlign: 'left', width: '46%' }}>Category</th>
-                  <th style={{ ...st.th, textAlign: 'right' }}>Assigned</th>
-                  <th style={{ ...st.th, textAlign: 'right' }}>Activity</th>
-                  <th style={{ ...st.th, textAlign: 'right' }}>Available</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groups.map((g, gi) => (
-                  <GroupBlock key={g.id} group={g} gidx={gi} color={colorFor(g.name, gi)} catState={state.cats}
-                    collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmtMonth} onSaveAssigned={handleSaveAssigned}
-                    onOpenMove={setMoveCat} onOpenInspector={setInspectorCat} inspectorCat={inspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
-                    onRenameCat={renameCat} onMoveCat={reorderCat} onHideCat={hideCat} onDeleteCat={deleteCat} onAddCat={addCat}
-                    onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} onReorderCat={handleReorderCat}
-                    catCurrencies={catCurrencies} toDisplay={toDisplayFn} toRaw={toRawFn} />
-                ))}
-              </tbody>
-            </table>
+          <div style={{ ...st.tableWrap, display: 'flex', alignItems: 'stretch', overflow: 'visible' }}>
+            <div style={{ flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', borderRadius: `${T.radius} 0 0 ${T.radius}` }}>
+              <table style={st.table}>
+                <thead>
+                  <tr>
+                    <th style={{ ...st.th, width: 28, padding: '12px 4px 12px 12px' }}></th>
+                    <th style={{ ...st.th, textAlign: 'left', width: '46%' }}>Category</th>
+                    <th style={{ ...st.th, textAlign: 'right' }}>Assigned</th>
+                    <th style={{ ...st.th, textAlign: 'right' }}>Activity</th>
+                    <th style={{ ...st.th, textAlign: 'right' }}>Available</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups.map((g, gi) => (
+                    <GroupBlock key={g.id} group={g} gidx={gi} color={colorFor(g.name, gi)} catState={state.cats}
+                      collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmtMonth} onSaveAssigned={handleSaveAssigned}
+                      onOpenMove={setMoveCat} onOpenInspector={setInspectorCat} inspectorCat={inspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
+                      onRenameCat={renameCat} onMoveCat={reorderCat} onHideCat={hideCat} onDeleteCat={deleteCat} onAddCat={addCat}
+                      onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} onReorderCat={handleReorderCat}
+                      catCurrencies={catCurrencies} toDisplay={toDisplayFn} toRaw={toRawFn}
+                      selectedCats={selectedCats} onToggleCatSelection={toggleCatSelection} onToggleGroupSelection={toggleGroupSelection} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <BudgetSummaryPane
+              stats={summaryStats}
+              selectionLabel={selectionLabel}
+              hasSelection={selectedCats.size > 0}
+              onClear={() => setSelectedCats(new Set())}
+              fmt={fmtMonth}
+            />
           </div>
         </div>
       )}
@@ -758,4 +873,6 @@ const st = {
   miniBtnOn:   { padding: '3px 9px', fontSize: 11, fontWeight: 700, background: 'var(--accent)', color: '#06140d', border: 'none', borderRadius: 6, cursor: 'pointer' },
   addCatBtn:   { background: 'none', border: `1px dashed ${T.border}`, borderRadius: 7, color: T.textDim, cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '6px 12px' },
   dragHandle:  { fontSize: 14, color: T.textDim, cursor: 'grab', transition: 'opacity 0.1s', userSelect: 'none' as const, lineHeight: 1 },
+  checkCell:   { width: 28, padding: '0 4px 0 12px', verticalAlign: 'middle' as const },
+  check:       { accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer', display: 'block' as const },
 };
