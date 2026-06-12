@@ -9,6 +9,7 @@ import type { CatState, MonthState } from '../engine';
 import { fetchBudget, setAssigned as apiSetAssigned, copyPreviousBudget, moveBudgetMoney, upsertCategoryTarget, deleteCategoryTarget, createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate } from '../api';
 import type { ExchangeRate } from '../api';
 import { useToast } from './Toast';
+import { useUndoStack } from '../hooks/useUndoStack';
 
 const FALLBACK_COLORS = ['#5b9dff', '#3ddc97', '#f6c45a', '#c084fc', '#ff7a85', '#38d6e8', '#fb923c', '#a78bfa'];
 
@@ -377,6 +378,19 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   const [loading, setLoading] = useState(true);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const toast = useToast();
+  const { push: undoPush, pop: undoPop } = useUndoStack();
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 'z' || e.shiftKey) return;
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return;
+      e.preventDefault();
+      const label = undoPop();
+      if (label) toast.success(`Undone: ${label}`);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [undoPop, toast]);
   const [fetchCounter, setFetchCounter] = useState(0);
   const [monthRate, setMonthRate] = useState<ExchangeRate | null>(null);
 
