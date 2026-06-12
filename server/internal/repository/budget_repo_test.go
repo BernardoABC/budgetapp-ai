@@ -180,6 +180,45 @@ func TestBudgetRepo_ClearAllAssigned(t *testing.T) {
 	}
 }
 
+func TestBudgetRepo_GetCashFlowByMonth(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	repo := repository.NewBudgetRepo(pool)
+	ctx := context.Background()
+
+	var incomeCat string
+	if err := pool.QueryRow(ctx,
+		`SELECT id::text FROM categories WHERE is_system=true AND name='Income' LIMIT 1`).Scan(&incomeCat); err != nil {
+		t.Skipf("Income system category not seeded: %v", err)
+	}
+
+	accID := testutil.SeedOnBudgetAccount(t, pool)
+	spendCat := testutil.SeedCategory(t, pool)
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM transactions WHERE account_id=$1::uuid`, accID)
+	})
+
+	// Use a far-off month to avoid interference from other tests
+	testutil.SeedTransaction(t, pool, accID, incomeCat, "2031-03-10", 1200000) // income
+	testutil.SeedTransaction(t, pool, accID, spendCat, "2031-03-12", -300000)  // spending
+
+	rows, err := repo.GetCashFlowByMonth(ctx, "2031-03", "2031-03")
+	if err != nil {
+		t.Fatalf("GetCashFlowByMonth: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	if rows[0].Month != "2031-03" {
+		t.Errorf("Month = %q, want 2031-03", rows[0].Month)
+	}
+	if rows[0].Income != 1200000 {
+		t.Errorf("Income = %d, want 1200000", rows[0].Income)
+	}
+	if rows[0].Spending != 300000 {
+		t.Errorf("Spending = %d, want 300000", rows[0].Spending)
+	}
+}
+
 func TestBudgetRepo_ActualIncomeAndSpending(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	repo := repository.NewBudgetRepo(pool)

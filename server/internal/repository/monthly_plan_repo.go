@@ -35,25 +35,6 @@ func (r *MonthlyPlanRepo) Get(ctx context.Context, month string) (MonthlyPlan, e
 	return p, nil
 }
 
-// GetAllUpToMonth returns plans keyed by YYYY-MM-DD for all months <= the given month.
-func (r *MonthlyPlanRepo) GetAllUpToMonth(ctx context.Context, month string) (map[string]MonthlyPlan, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT month::text, expected_income, flex_budget FROM monthly_plans WHERE month <= $1::date`, month)
-	if err != nil {
-		return nil, fmt.Errorf("get all monthly plans up to %s: %w", month, err)
-	}
-	defer rows.Close()
-	out := make(map[string]MonthlyPlan)
-	for rows.Next() {
-		var p MonthlyPlan
-		if err := rows.Scan(&p.Month, &p.ExpectedIncome, &p.FlexBudget); err != nil {
-			return nil, fmt.Errorf("scan monthly plan: %w", err)
-		}
-		out[p.Month] = p
-	}
-	return out, rows.Err()
-}
-
 func (r *MonthlyPlanRepo) SetExpectedIncome(ctx context.Context, month string, amount int64) error {
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO monthly_plans (month, expected_income) VALUES ($1::date, $2)

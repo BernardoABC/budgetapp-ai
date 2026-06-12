@@ -150,7 +150,8 @@ func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.Plan
 }
 
 // computeRolloverBalances sums Planned+Activity over every month up to firstOfMonth
-// for rollover categories. Negative balances carry as-is (no clamp).
+// for rollover categories and non-monthly categories (which accumulate in flex mode
+// regardless of the rollover flag). Negative balances carry as-is (no clamp).
 func (s *BudgetService) computeRolloverBalances(
 	groups []model.CategoryGroup,
 	assigned, activity map[string]map[string]int64,
@@ -162,7 +163,7 @@ func (s *BudgetService) computeRolloverBalances(
 			continue
 		}
 		for _, c := range g.Categories {
-			if c.Rollover {
+			if c.Rollover || c.Flexibility == "non_monthly" {
 				rollover[c.ID] = true
 			}
 		}

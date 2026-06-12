@@ -22,15 +22,15 @@ func NewTransactionRepo(pool *pgxpool.Pool) *TransactionRepo {
 
 // TxnFilter holds the optional filters for listing an account's transactions.
 type TxnFilter struct {
-	Search     string // ILIKE across payee and memo
-	FromDate   string // "YYYY-MM-DD" inclusive
-	ToDate     string // "YYYY-MM-DD" inclusive
-	CategoryID string // UUID, "none" (uncategorized), or "" (all)
-	Cleared    *bool  // nil = all
-	MinAmount  *int64 // centimos, compared against ABS(amount)
-	MaxAmount  *int64 // centimos, compared against ABS(amount)
-	FlowType   string // "inflow" (amount>0), "outflow" (amount<0), or "" (all)
-	Transfers  string // "only" (has peer), "hide" (no peer), or "" (all)
+	Search      string // ILIKE across payee and memo
+	FromDate    string // "YYYY-MM-DD" inclusive
+	ToDate      string // "YYYY-MM-DD" inclusive
+	CategoryID  string // UUID, "none" (uncategorized), or "" (all)
+	Cleared     *bool  // nil = all
+	MinAmount   *int64 // centimos, compared against ABS(amount)
+	MaxAmount   *int64 // centimos, compared against ABS(amount)
+	FlowType    string // "inflow" (amount>0), "outflow" (amount<0), or "" (all)
+	Transfers   string // "only" (has peer), "hide" (no peer), or "" (all)
 	Sort        string // see sortClause; default date_desc
 	Page        int    // 1-based, default 1
 	PerPage     int    // default 50, max 200

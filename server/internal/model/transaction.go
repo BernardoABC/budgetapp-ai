@@ -2,24 +2,24 @@ package model
 
 type SplitRow struct {
 	CategoryID   string `json:"category_id"`
-	CategoryName string `json:"category"`  // populated via JOIN on reads; ignored on writes
-	Amount       int64  `json:"amount"`    // centimos
+	CategoryName string `json:"category"` // populated via JOIN on reads; ignored on writes
+	Amount       int64  `json:"amount"`   // centimos
 }
 
 type Transaction struct {
-	ID             string
-	AccountID      string
-	CategoryID     string   // empty string if NULL
-	CategoryName   string   // populated via JOIN; empty if no category
-	Date           string   // "YYYY-MM-DD"
-	Amount         int64    // centimos; negative=outflow, positive=inflow
-	Currency       string
-	Payee          string
-	Memo           string
-	Cleared        bool
-	Reconciled     bool
-	ExchangeRate   *float64 // nil if not stamped
-	Splits         []SplitRow
+	ID                    string
+	AccountID             string
+	CategoryID            string // empty string if NULL
+	CategoryName          string // populated via JOIN; empty if no category
+	Date                  string // "YYYY-MM-DD"
+	Amount                int64  // centimos; negative=outflow, positive=inflow
+	Currency              string
+	Payee                 string
+	Memo                  string
+	Cleared               bool
+	Reconciled            bool
+	ExchangeRate          *float64 // nil if not stamped
+	Splits                []SplitRow
 	TransferPeerID        string // empty if not a transfer
 	TransferPeerAccountID string // empty if not a transfer
 }

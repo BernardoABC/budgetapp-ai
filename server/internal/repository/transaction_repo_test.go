@@ -95,8 +95,8 @@ func TestTransactionRepo_SortAndSummary(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	acc := testutil.SeedOnBudgetAccount(t, pool)
 	cat := testutil.SeedCategory(t, pool)
-	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "AAA", "", true)  // outflow, cleared
-	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-02", 5000, "BBB", "", false)  // inflow, uncleared
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-01", -1000, "AAA", "", true) // outflow, cleared
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-04-02", 5000, "BBB", "", false) // inflow, uncleared
 
 	repo := repository.NewTransactionRepo(pool)
 	ctx := context.Background()
@@ -429,10 +429,10 @@ func TestTransactionRepo_Reconcile_WithAdjustment(t *testing.T) {
 func TestTransactionRepo_DeleteTransfer_CascadePeer(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	fromAccID := testutil.SeedOnBudgetAccount(t, pool)
-	toAccID   := testutil.SeedOnBudgetAccount(t, pool)
+	toAccID := testutil.SeedOnBudgetAccount(t, pool)
 
 	repo := repository.NewTransactionRepo(pool)
-	ctx  := context.Background()
+	ctx := context.Background()
 
 	from, to, err := repo.CreateTransfer(ctx, model.CreateTransferReq{
 		FromAccountID: fromAccID,
@@ -467,10 +467,10 @@ func TestTransactionRepo_DeleteTransfer_CascadePeer(t *testing.T) {
 func TestTransactionRepo_CreateTransfer(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	fromAccID := testutil.SeedOnBudgetAccount(t, pool)
-	toAccID   := testutil.SeedOnBudgetAccount(t, pool)
+	toAccID := testutil.SeedOnBudgetAccount(t, pool)
 
 	repo := repository.NewTransactionRepo(pool)
-	ctx  := context.Background()
+	ctx := context.Background()
 
 	from, to, err := repo.CreateTransfer(ctx, model.CreateTransferReq{
 		FromAccountID: fromAccID,
@@ -510,10 +510,10 @@ func TestTransactionRepo_CreateTransfer(t *testing.T) {
 func TestTransactionRepo_UpdateTransfer_MirrorsPeer(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	fromAccID := testutil.SeedOnBudgetAccount(t, pool)
-	toAccID   := testutil.SeedOnBudgetAccount(t, pool)
+	toAccID := testutil.SeedOnBudgetAccount(t, pool)
 
 	repo := repository.NewTransactionRepo(pool)
-	ctx  := context.Background()
+	ctx := context.Background()
 
 	from, to, err := repo.CreateTransfer(ctx, model.CreateTransferReq{
 		FromAccountID: fromAccID,
@@ -561,7 +561,7 @@ func TestTransactionRepo_TransferCandidates(t *testing.T) {
 	accB := testutil.SeedOnBudgetAccount(t, pool)
 
 	repo := repository.NewTransactionRepo(pool)
-	ctx  := context.Background()
+	ctx := context.Background()
 
 	// One candidate: opposite amount, no peer.
 	testutil.SeedTransactionFull(t, pool, accB, "", "2026-06-01", 5000, "Salary", "", false)
@@ -593,10 +593,10 @@ func TestTransactionRepo_LinkTransfer(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	accA := testutil.SeedOnBudgetAccount(t, pool)
 	accB := testutil.SeedOnBudgetAccount(t, pool)
-	cat  := testutil.SeedCategory(t, pool)
+	cat := testutil.SeedCategory(t, pool)
 
 	repo := repository.NewTransactionRepo(pool)
-	ctx  := context.Background()
+	ctx := context.Background()
 
 	idA := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-01", -5000, "Transfer", "", false)
 	idB := testutil.SeedTransactionFull(t, pool, accB, cat, "2026-06-01", 5000, "Transfer", "", false)
@@ -620,10 +620,10 @@ func TestTransactionRepo_LinkTransfer_Validations(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	accA := testutil.SeedOnBudgetAccount(t, pool)
 	accB := testutil.SeedOnBudgetAccount(t, pool)
-	cat  := testutil.SeedCategory(t, pool)
+	cat := testutil.SeedCategory(t, pool)
 
 	repo := repository.NewTransactionRepo(pool)
-	ctx  := context.Background()
+	ctx := context.Background()
 
 	t.Run("same account", func(t *testing.T) {
 		idA := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-01", -5000, "T", "", false)
@@ -656,10 +656,10 @@ func TestTransactionRepo_LinkTransferBatch(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	accA := testutil.SeedOnBudgetAccount(t, pool)
 	accB := testutil.SeedOnBudgetAccount(t, pool)
-	cat  := testutil.SeedCategory(t, pool)
+	cat := testutil.SeedCategory(t, pool)
 
 	repo := repository.NewTransactionRepo(pool)
-	ctx  := context.Background()
+	ctx := context.Background()
 
 	idA1 := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-01", -5000, "T", "", false)
 	idB1 := testutil.SeedTransactionFull(t, pool, accB, cat, "2026-06-01", 5000, "T", "", false)
@@ -861,10 +861,10 @@ func TestTransactionRepo_LinkTransferBatch_RollbackOnError(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	accA := testutil.SeedOnBudgetAccount(t, pool)
 	accB := testutil.SeedOnBudgetAccount(t, pool)
-	cat  := testutil.SeedCategory(t, pool)
+	cat := testutil.SeedCategory(t, pool)
 
 	repo := repository.NewTransactionRepo(pool)
-	ctx  := context.Background()
+	ctx := context.Background()
 
 	idA1 := testutil.SeedTransactionFull(t, pool, accA, cat, "2026-06-01", -5000, "T", "", false)
 	idB1 := testutil.SeedTransactionFull(t, pool, accB, cat, "2026-06-01", 5000, "T", "", false)
@@ -888,8 +888,8 @@ func TestTransactionRepo_FilterFlowType(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	acc := testutil.SeedOnBudgetAccount(t, pool)
 	cat := testutil.SeedCategory(t, pool)
-	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-06-01", 5000, "Salary", "", true)   // inflow
-	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-06-02", -2000, "Rent", "", false)   // outflow
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-06-01", 5000, "Salary", "", true)      // inflow
+	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-06-02", -2000, "Rent", "", false)      // outflow
 	testutil.SeedTransactionFull(t, pool, acc, cat, "2026-06-03", -1000, "Groceries", "", false) // outflow
 
 	repo := repository.NewTransactionRepo(pool)

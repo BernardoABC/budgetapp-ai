@@ -5,7 +5,7 @@ type Account struct {
 	Name      string
 	Type      string
 	Currency  string
-	Balance   int64  // centimos in DB
+	Balance   int64 // centimos in DB
 	OnBudget  bool
 	Closed    bool
 	Note      string

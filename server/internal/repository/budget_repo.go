@@ -223,6 +223,45 @@ func (r *BudgetRepo) GetActivityBreakdownForMonth(ctx context.Context, month str
 	return out, rows.Err()
 }
 
+// CashFlowRow is one month of actual income and spending in CRC centimos.
+type CashFlowRow struct {
+	Month    string
+	Income   int64
+	Spending int64
+}
+
+// GetCashFlowByMonth returns per-month actual income (Income system category
+// inflow) and spending (non-system outflow, positive), both in CRC, for the
+// inclusive YYYY-MM range. Mirrors GetActualIncomeForMonth/GetActualSpendingForMonth.
+func (r *BudgetRepo) GetCashFlowByMonth(ctx context.Context, from, to string) ([]CashFlowRow, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT to_char(date_trunc('month', t.date), 'YYYY-MM') AS month,
+		       COALESCE(SUM(`+crcConvExpr+`) FILTER (WHERE cat.is_system = true AND cat.name = 'Income'), 0) AS income,
+		       COALESCE(-SUM(`+crcConvExpr+`) FILTER (WHERE cat.is_system = false AND t.amount < 0), 0) AS spending
+		FROM transactions t
+		JOIN accounts a ON a.id = t.account_id
+		JOIN categories cat ON cat.id = t.category_id
+		WHERE a.on_budget = true
+		  AND t.date >= ($1 || '-01')::date
+		  AND t.date <  (($2 || '-01')::date + INTERVAL '1 month')
+		GROUP BY date_trunc('month', t.date)
+		ORDER BY date_trunc('month', t.date)
+	`, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("cash flow by month: %w", err)
+	}
+	defer rows.Close()
+	var out []CashFlowRow
+	for rows.Next() {
+		var row CashFlowRow
+		if err := rows.Scan(&row.Month, &row.Income, &row.Spending); err != nil {
+			return nil, fmt.Errorf("scan cash flow row: %w", err)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 // ClearAllAssigned deletes all budget rows for a category (used when changing category currency).
 func (r *BudgetRepo) ClearAllAssigned(ctx context.Context, categoryID string) error {
 	_, err := r.pool.Exec(ctx,

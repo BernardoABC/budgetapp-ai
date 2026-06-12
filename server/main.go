@@ -89,7 +89,7 @@ func main() {
 	rates := handler.NewExchangeRateHandler(rateSvc)
 	budgets := handler.NewBudgetHandler(budgetSvc)
 	settings := handler.NewSettingsHandler(settingsRepo)
-	reports := handler.NewReportsHandler(txnRepo)
+	reports := handler.NewReportsHandler(txnRepo, budgetRepo)
 
 	mux := http.NewServeMux()
 

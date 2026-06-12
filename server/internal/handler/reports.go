@@ -7,11 +7,12 @@ import (
 )
 
 type ReportsHandler struct {
-	txnRepo *repository.TransactionRepo
+	txnRepo    *repository.TransactionRepo
+	budgetRepo *repository.BudgetRepo
 }
 
-func NewReportsHandler(txnRepo *repository.TransactionRepo) *ReportsHandler {
-	return &ReportsHandler{txnRepo: txnRepo}
+func NewReportsHandler(txnRepo *repository.TransactionRepo, budgetRepo *repository.BudgetRepo) *ReportsHandler {
+	return &ReportsHandler{txnRepo: txnRepo, budgetRepo: budgetRepo}
 }
 
 type spendingGroup struct {
@@ -95,7 +96,7 @@ func (h *ReportsHandler) SavingsRate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "from and to query params are required (YYYY-MM)")
 		return
 	}
-	rows, err := h.txnRepo.IncomeExpenseByMonth(r.Context(), from, to)
+	rows, err := h.budgetRepo.GetCashFlowByMonth(r.Context(), from, to)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
@@ -105,16 +106,16 @@ func (h *ReportsHandler) SavingsRate(w http.ResponseWriter, r *http.Request) {
 		Income  int64   `json:"income"`
 		Expense int64   `json:"expense"`
 		Savings int64   `json:"savings"`
-		Rate    float64 `json:"rate"` // savings / income, 0 when income == 0
+		Rate    float64 `json:"rate"` // savings / income, 0 when income <= 0
 	}
 	result := make([]row, 0, len(rows))
 	for _, rr := range rows {
-		savings := rr.Income - rr.Expense
+		savings := rr.Income - rr.Spending
 		var rate float64
 		if rr.Income > 0 {
 			rate = float64(savings) / float64(rr.Income)
 		}
-		result = append(result, row{Month: rr.Month, Income: rr.Income, Expense: rr.Expense, Savings: savings, Rate: rate})
+		result = append(result, row{Month: rr.Month, Income: rr.Income, Expense: rr.Spending, Savings: savings, Rate: rate})
 	}
 	writeJSON(w, http.StatusOK, result)
 }
