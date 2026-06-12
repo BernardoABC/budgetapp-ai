@@ -1,180 +1,193 @@
-# PRD 04: Zero-Based Budgeting
+# PRD 04: Spending Plan
 
 ## Overview
-The budgeting system follows YNAB's core philosophy: **give every colon a job**. Each month, the user allocates their available money across categories. Spending is tracked against these allocations in real time.
+
+The spending plan is a monthly **forecast** model inspired by Monarch Money. Unlike zero-based envelope budgeting, the plan is not tied to account balances. The user sets an expected income for the month, assigns planned amounts to categories, and tracks how actual spending compares to those plans. The core question the page answers is: "How much do I plan to spend, and how much is left?"
+
+Negative "left to budget" (over-planning) is valid and displayed in red — it is never blocked.
 
 ## Core Concepts
 
-### Ready to Assign (formerly "To Be Budgeted")
-The total amount of money available to allocate. Calculated as:
+### Expected Income
+A single editable CRC amount stored per month in `monthly_plans.expected_income`. Represents what the user expects to receive that month. Inline-editable in the Spending Plan page header.
 
+### Planned Amounts
+Each category can have a planned (budgeted) amount for a given month, stored in the `budgets` table (`assigned` column, reinterpreted). Amounts are in the category's native currency (CRC or USD). USD amounts are converted to CRC at the current exchange rate for cross-category totals.
+
+### Left to Budget / Planned Savings
 ```
-Ready to Assign = Total on-budget account balances
-                - Total assigned across all categories for current and prior months
-                + Total net category activity that reduced assigned amounts
+Left to budget = Expected income − Σ planned (all categories, CRC-converted)
 ```
+When positive, this is also the **planned savings** for the month. When negative, it means the user has planned to spend more than their expected income ("over-planned"), shown in red. This is informational only — no assignment is blocked.
 
-In simpler terms: it's the money that hasn't been given a job yet.
+### Actuals and Savings Rate
+- **Actual income** — sum of inflow transactions in the "Income" system category for the month.
+- **Actual spending** — sum of outflow activity across all non-system categories.
+- **Actual savings** = actual income − actual spending.
+- **Savings rate** = actual savings / actual income (shown as a percentage).
 
-### Budget Month
-A budget is organized by calendar month. Each month has:
-- **Assigned** — How much money is allocated to each category
-- **Activity** — How much was actually spent (sum of transactions) in each category
-- **Available** — Assigned + Activity (activity is negative for spending)
+## Rollover
 
-### Category Rollover
-Available balances roll forward month to month:
-- If you budget ₡50,000 for Groceries in April and only spend ₡40,000, the remaining ₡10,000 carries into May
-- If you overspend (available goes negative), the negative amount carries forward too
-- The user can choose to cover overspending from Ready to Assign or from other categories
+Controlled by `categories.rollover BOOLEAN NOT NULL DEFAULT false`. Default: each month stands alone.
+
+| Mode | Remaining Calculation |
+|------|-----------------------|
+| Non-rollover (default) | `Remaining = Planned + Activity` for the current month only |
+| Rollover | `Balance = Σ(Planned + Activity)` over all months from earliest data through displayed month |
+
+Rollover balances carry negative values forward as-is — no clamping, no "cover overspending" cascade, no move-money flows. A rollover category with a negative running balance shows that balance as a red pill on the row.
+
+## Flex Budgeting
+
+### Flexibility Classes
+
+Each category has `categories.flexibility VARCHAR(20) NOT NULL DEFAULT 'flexible'` with three values:
+
+| Value | Meaning |
+|-------|---------|
+| `fixed` | Regular, predictable bills (rent, phone). Planned per category. |
+| `flexible` | Day-to-day discretionary spending (groceries, dining, gas). Grouped under a single monthly flex budget number. |
+| `non_monthly` | Irregular expenses planned over time (travel, repairs). Planned per category with accumulated rollover. |
+
+### Mode Toggle
+
+A global `budget_mode` key in `app_settings` stores `category` (default) or `flex`. The user toggles between modes in the Spending Plan page header; the setting persists via `GET/PUT /api/settings/budget-mode`.
+
+### Category Mode
+Classic per-category table grouped by category group. Columns: **Budgeted / Actual / Remaining**. Rollover categories show an accumulated balance pill.
+
+### Flex Mode
+Three sections:
+
+**Fixed** — Per-category planned amounts (each category row is editable). Section header shows the sum of all fixed planned amounts.
+
+**Flexible** — A single monthly number (`monthly_plans.flex_budget`) edited as one bar. Individual flexible categories are listed read-only beneath it (showing actuals only). The bar tracks `flex_budget` against combined spending of all flexible categories.
+
+**Non-monthly** — Per-category planned amounts, treated as accumulating funds (rollover on for display purposes regardless of the per-category rollover flag). Section header sums planned amounts.
+
+Planned amounts entered in category mode are the same data shown in flex mode. The flex budget number (`flex_budget`) exists only in flex mode.
 
 ## Data Model
 
-### budgets table (per-category, per-month)
+### budgets table (per-category, per-month — reinterpreted)
 ```sql
 CREATE TABLE budgets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    category_id UUID NOT NULL REFERENCES categories(id),
-    month DATE NOT NULL,  -- always the 1st of the month
-    assigned BIGINT NOT NULL DEFAULT 0,  -- in CRC centimos
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    category_id UUID        NOT NULL REFERENCES categories(id),
+    month       DATE        NOT NULL,  -- always the 1st of the month
+    assigned    BIGINT      NOT NULL DEFAULT 0,  -- planned amount, native currency centimos
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(category_id, month)
 );
 ```
 
-### Computed Values (not stored)
-These are calculated on the fly or via a materialized view:
+`assigned` is now reinterpreted as the **planned** amount. The column name is unchanged for compatibility; the API and UI call it "planned" or "budgeted."
 
-| Value | Calculation |
-|-------|-------------|
-| **Activity** | `SUM(transactions.amount) WHERE category_id = X AND date WITHIN month` |
-| **Available** | `assigned + activity + available_from_previous_month` |
-| **Ready to Assign** | `SUM(on_budget_account_balances) - SUM(all_assigned_ever)` |
-
-## Budget Calculation Engine
-
-### Monthly Budget Summary
-For a given month (e.g., April 2026), for each category:
-
-```
-previous_available = calculate_available(category, previous_month)
-assigned = budgets.assigned WHERE category_id AND month
-activity = SUM(transactions.amount) WHERE category_id AND date IN month AND account.on_budget = true
-available = previous_available + assigned + activity
-```
-
-### Ready to Assign Calculation
-
+### monthly_plans table (migration 010)
 ```sql
--- Total inflows to on-budget accounts (all time up to and including this month)
-total_inflows = SUM(amount) FROM transactions 
-    WHERE amount > 0 AND account.on_budget = true AND date <= end_of_month
-
--- Total assigned across all categories (all time up to and including this month)
-total_assigned = SUM(assigned) FROM budgets 
-    WHERE month <= this_month
-
--- Total outflows from on-budget accounts to off-budget accounts or external
--- (This is implicitly handled — spending reduces account balances which reduces inflows)
-
-ready_to_assign = total_inflows - total_assigned + total_outflow_adjustments
+CREATE TABLE IF NOT EXISTS monthly_plans (
+  month           DATE PRIMARY KEY,          -- first of month
+  expected_income BIGINT NOT NULL DEFAULT 0, -- CRC centimos
+  flex_budget     BIGINT NOT NULL DEFAULT 0, -- CRC centimos
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 ```
 
-For simplicity in v1, Ready to Assign can be calculated as:
+A missing row for a month means zero expected income and zero flex budget; the API returns zero values rather than 404.
+
+### app_settings table (migration 010)
+```sql
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 ```
-ready_to_assign = SUM(on_budget_account.balance) - SUM(all_categories.available)
+
+Current keys: `budget_mode` → `"category"` or `"flex"`.
+
+### categories table additions (migration 010)
+```sql
+ALTER TABLE categories
+  ADD COLUMN IF NOT EXISTS rollover    BOOLEAN     NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS flexibility VARCHAR(20) NOT NULL DEFAULT 'flexible'
+    CHECK (flexibility IN ('fixed','flexible','non_monthly'));
 ```
 
-## Category Targets
+### category_targets table
+Dropped entirely in migration 010. Targets are replaced by the planned amount itself.
 
-Categories can have a target that drives the underfunded calculation:
-
-| Target type | Behavior |
-|------------|----------|
-| `monthly` | Must assign X each month; underfunded = X − assigned |
-| `refill` | Must keep available at X; underfunded = X − available |
-| `savings` | Save X by a deadline; distributes remaining need across remaining months |
-
-Targets are shown as a chip on the category row (e.g., "₡450,000 / month") and as a funded percentage bar in the Category Inspector.
-
-## Quick Assign Strategies
-
-Three one-click bulk actions operate on the current month:
-
-| Action | Behavior |
-|--------|---------|
-| Auto-assign underfunded | For each category with a target, adds the underfunded amount to assigned |
-| Last month | Copies every category's assigned value from the previous month |
-| Reset | Sets all assigned values to 0 |
-
-## Age of Money
-
-Displayed in the RTA card. Source: `AppData.ageOfMoney` (monthly snapshot). Represents how many days old the money you spend today is — higher is better.
-
-## Budget UI
-
-### Top Bar
-- Month navigator (‹ prev | MONTH YEAR | next ›)
-- **RTA card**: Ready to Assign (green when positive, amber at 0, red when negative) · Underfunded total · Age of Money
-- Action buttons: Auto-assign underfunded, Last month, Reset, Edit (toggle edit mode)
-
-### Category Table (per month)
-Columns: Category · Assigned · Activity · Available
-
-Each category row has two sub-rows:
-1. Main row — name, assigned cell (click to edit), activity, available pill
-2. Progress bar row — thin bar showing `|activity| / assigned` as a percentage
-   - Color: group color when healthy, amber when >85% spent, red when overspent
-
-Available pill colors:
-- Green (neutral) — funds available
-- Amber — nearly depleted (<15% remaining)
-- Red — overspent
-
-Click the Available pill to open **Move Money** modal. Click the category name to open **Category Inspector**.
-
-### Edit Mode
-Toggle with the Edit button. While active:
-- Category names become inline-editable text inputs
-- Reorder arrows appear for categories and groups
-- Hide / Delete buttons per category
-- Add category button per group
-- Add group button in the edit bar
-
-### Move Money Modal
-Transfers assigned amount between two categories. Shows before/after balance for both sides. If the source category is overspent, shows a "Cover {amount}" shortcut.
-
-### Category Inspector (slide-in drawer, right side)
-- Available balance (large, colored by sign)
-- Stats: Assigned · Activity · Underfunded
-- Target editor: set/change target type and amount
-- Funded progress bar + percentage
-- Actions: Move money · Hide · Delete
+### Income system category
+The "Inflow: Ready to Assign" system category is renamed to **"Income"** in migration 010.
 
 ## API Endpoints
 
-### GET /api/budgets/:month
-Get budget data for a month (e.g., `2026-04`).
+### Spending Plan
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/plan/{month} | Get plan for a month (YYYY-MM); returns PlanMonth |
+| PUT | /api/plan/{month}/categories/{categoryId} | Set planned amount; body `{"planned": <bigint>}` |
+| POST | /api/plan/{month}/copy-previous | Copy planned amounts from previous month; also seeds expected income if unset |
+| PUT | /api/plan/{month}/income | Set expected income; body `{"amount": <bigint>}` |
+| PUT | /api/plan/{month}/flex-budget | Set flex budget amount; body `{"amount": <bigint>}` |
+
+### Settings
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/settings/budget-mode | Returns `{"mode": "category"}` or `{"mode": "flex"}` |
+| PUT | /api/settings/budget-mode | Body `{"mode": "category"\|"flex"}` |
+
+### Categories (extended)
+
+`PUT /api/categories/{id}` accepts `rollover` (bool) and `flexibility` (string) fields in addition to existing fields.
+
+### Removed endpoints
+
+The following endpoints from the old zero-based model are removed:
+- `GET /api/budgets/{month}` → replaced by `GET /api/plan/{month}`
+- `PUT /api/budgets/{month}/categories/{id}` → replaced by `PUT /api/plan/{month}/categories/{categoryId}`
+- `POST /api/budgets/{month}/move` — move-money removed entirely
+- `*/api/categories/{id}/target` — targets removed entirely
+
+### GET /api/plan/{month} response shape
 
 ```json
 {
-  "month": "2026-04",
-  "ready_to_assign": 14500000,
+  "month": "2026-06",
+  "mode": "category",
+  "expected_income": 180000000,
+  "flex_budget": 40000000,
+  "planned_total": 155000000,
+  "left_to_budget": 25000000,
+  "actual_income": 175000000,
+  "actual_spending": 142000000,
+  "actual_savings": 33000000,
+  "fixed_planned": 60000000,
+  "fixed_actual": 58000000,
+  "flexible_actual": 45000000,
+  "non_monthly_planned": 20000000,
+  "non_monthly_actual": 8000000,
   "category_groups": [
     {
       "id": "uuid",
-      "name": "Food & Drink",
-      "assigned": 21000000,
-      "activity": -14459700,
-      "available": 6540300,
+      "name": "Housing",
+      "planned": 60000000,
+      "actual": -58000000,
+      "remaining": 2000000,
       "categories": [
         {
           "id": "uuid",
-          "name": "Groceries",
-          "assigned": 12000000,
-          "activity": -7472200,
-          "available": 4527800
+          "name": "Rent",
+          "flexibility": "fixed",
+          "rollover": false,
+          "planned": 60000000,
+          "activity": -58000000,
+          "remaining": 2000000,
+          "rollover_balance": 0
         }
       ]
     }
@@ -182,32 +195,54 @@ Get budget data for a month (e.g., `2026-04`).
 }
 ```
 
-### PUT /api/budgets/:month/categories/:categoryId
-Set the assigned amount for a category in a month.
+All CRC amounts are in centimos (BIGINT). Multi-currency categories return `planned` and `activity` in their native currency; cross-category totals (`planned_total`, `left_to_budget`, flex rollups) are always CRC, with USD converted at the current rate.
 
-```json
-{ "assigned": 12000000 }
-```
+## UI Behavior
 
-### POST /api/budgets/:month/copy-previous
-Copy all assignments from the previous month.
+### Page Header
+- Month navigator (prev / MONTH YEAR / next)
+- **Expected income** — inline-editable CRC amount; calculator support
+- **Planned** — sum of all planned amounts (CRC-converted); read-only
+- **Left to budget** — displayed green when positive ("planned savings"), red when negative ("over-planned")
+- **Mode toggle** — Category / Flex buttons; persisted via settings endpoint
 
-### POST /api/budgets/:month/move
-Move money between categories.
+### Category Mode Table
 
-```json
-{
-  "from_category_id": "uuid",
-  "to_category_id": "uuid",
-  "amount": 1000000
-}
-```
+Columns: **Category · Budgeted · Actual · Remaining**
+
+Each category row:
+- Budgeted cell — click to edit (inline input with calculator support)
+- Progress bar — `|activity| / planned` percentage; group color, amber >85%, red when overspent
+- Rollover categories show an accumulated balance pill instead of month-scoped remaining
+
+Group rows show subtotals for each column. Groups are collapsible.
+
+### Flex Mode Sections
+
+Fixed and Non-monthly sections show per-category rows with editable planned amounts. The Flexible section shows a single editable bar (flex budget number) with read-only category rows beneath it showing actuals.
+
+### Bulk Actions
+
+| Action | Behavior |
+|--------|---------|
+| Copy last month | Copies every category's planned amount from the previous month; seeds expected income if the current month has none |
+| Reset all | Sets all planned amounts to 0 for the current month |
+
+Targets ("auto-assign underfunded") and move-money are removed.
+
+### Undo Stack
+
+Inline budget edits feed an undo stack (same mechanism as before). Ctrl+Z reverts the last cell edit optimistically before the API call completes.
+
+### Category Inspector (BudgetSummaryPane)
+
+Slide-in drawer showing: Budgeted · Actual · Remaining (or Rollover balance for rollover categories). Flexibility and rollover toggles accessible here. Target editor removed.
 
 ## Edge Cases
 
-1. **First month ever** — No rollover, no previous data. Ready to Assign equals total on-budget account balances.
-2. **No budget set for a category** — Assigned = 0 for that month. Activity still tracked. Available = rollover + 0 + activity.
-3. **Overspent category** — Available goes negative (red). The negative rolls into next month unless the user covers it.
-4. **Income categorization** — Inflows (positive transactions) that aren't transfers increase Ready to Assign. They don't get categorized to budget categories (they go to "Inflow: Ready to Assign" special category).
-5. **Off-budget accounts** — Transactions in off-budget accounts (tracking accounts) don't appear in budget calculations.
-6. **Mid-month account addition** — When adding a new on-budget account, its balance immediately flows into Ready to Assign.
+1. **Missing monthly_plans row** — API returns zero for expected income and flex budget; no 404.
+2. **Negative left to budget** — Valid state; shown in red, never blocked.
+3. **Rollover category with negative balance** — Balance carries forward; no clamping.
+4. **First month ever** — No previous data; copy-previous is a no-op; all planned amounts start at 0.
+5. **USD category** — Planned and activity stored in USD centimos; converted to CRC only for totals using current exchange rate.
+6. **Category currency change** — `PUT /api/categories/{id}/currency` still clears that category's planned rows (same behavior as before).

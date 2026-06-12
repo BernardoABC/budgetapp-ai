@@ -1,13 +1,14 @@
 A self-hosted personal finance tracker built for Costa Rica. Import QIF exports from your bank, auto-categorize transactions based on past behavior, and view your finances in CRC or USD with historically accurate exchange rates.
 
-Inspired by YNAB's zero-based budgeting philosophy.
+Monarch-style spending plan and cash flow tracking.
 
 ## Features
 
 - **QIF Import** — Import transaction exports from Costa Rican banks (BAC, BCR, BN). Handles DD/MM/YYYY dates and CRC number formatting.
 - **Auto-Categorization** — The app learns which payees map to which categories. After the first import, recurring merchants like Walmart, Farmacia La Bomba, and Global Vía are categorized automatically.
 - **Dual Currency (CRC / USD)** — Toggle between colones and dollars at any time. Each transaction stores the exchange rate from its date, so conversions are historically accurate.
-- **Zero-Based Budgeting** — Give every colon a job. Assign money to categories each month and track spending against your budget in real time.
+- **Spending Plan** — Set expected income, plan spending by category, and see left-to-budget and planned savings at a glance. Opt-in rollover per category; fixed / flexible / non-monthly flexibility classes.
+- **Cash Flow** — Income vs. spending chart with savings rate trends and breakdown by flexibility bucket.
 - **Self-Hosted** — Runs entirely on your machine via Podman. Your financial data never leaves your computer.
 
 ## Tech Stack
@@ -63,12 +64,13 @@ podman compose down -v     # Stop containers and DELETE all data
 
 The app learns from every categorization decision. Future imports from the same merchants will be categorized automatically.
 
-### Set Up a Budget
+### Set Up a Spending Plan
 
 1. Navigate to **Budget**
 2. Select the current month
-3. Click on any category's **Assigned** cell and enter an amount
-4. Distribute your **Ready to Assign** balance until it reaches zero
+3. Enter your **Expected income** in the page header
+4. Click any category's **Budgeted** cell and enter a planned amount
+5. Watch **Left to budget** update as you plan; negative means over-planned
 
 ### Currency Toggle
 
@@ -135,7 +137,7 @@ Detailed product requirements and design decisions are in `docs/prd/`:
 | `01-data-model.md` | Database schema, all tables and columns |
 | `02-qif-import-and-auto-categorization.md` | QIF parsing, payee matching, import workflow |
 | `03-multi-currency.md` | CRC/USD conversion, exchange rate strategy |
-| `04-budgeting.md` | Zero-based budgeting logic and UI |
+| `04-budgeting.md` | Spending plan logic and UI |
 | `05-transaction-management.md` | Transaction CRUD, filtering, search |
 | `06-accounts-and-dashboard.md` | Account types, dashboard widgets |
 | `07-reports-and-analytics.md` | Spending reports and charts |

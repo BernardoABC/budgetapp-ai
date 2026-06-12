@@ -2,7 +2,7 @@
 
 ## Overview
 
-Reports are a fully interactive page (no backend required in v1 — computed from `AppData` in the frontend). Five report types are selectable via card tabs. All charts are hand-rolled SVG with hover effects.
+Reports are a fully interactive page. All charts are hand-rolled SVG with hover effects. The app has two report surfaces: the **Reports page** (spending analysis) and the **Cash Flow page** (income, savings, and flexibility-bucket breakdown).
 
 ## Report Types
 
@@ -35,12 +35,7 @@ Area-line chart of `assets − debt` over time.
 - **Gradient fill**: 25% → 0% opacity area under the line
 - **Hover**: Enlarges data point, shows formatted value tooltip
 
-### 5. Age of Money
-Area-line chart of days (integer) over time.
-
-- **Color**: `#3ddc97` (mint)
-- **Y-axis labels**: suffix "d" (days)
-- **Hover**: Shows `{N}d` tooltip
+Age of Money is removed; see Cash Flow page below for savings-related analytics.
 
 ## UI Layout
 
@@ -49,7 +44,7 @@ Area-line chart of days (integer) over time.
 │  Reports                           [From ▼] → [To ▼]   │
 │                                                          │
 │  [Spending Over Time] [Breakdown] [Income/Exp]          │
-│  [Net Worth]          [Age of Money]                    │
+│  [Net Worth]                                            │
 │                                                          │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │  Chart (SVG, full width)                         │   │
@@ -73,60 +68,45 @@ Shown below the chart for Spending Over Time and Spending Breakdown reports.
 - Hover row highlights with subtle background
 - Zero values shown as `—`
 
-## Data Sources (Frontend)
+## Cash Flow Page
 
-All report data lives in `src/data.ts`:
+A dedicated top-level page (`CashFlow.tsx`) separate from the Reports page.
 
-| Field | Used by |
-|-------|---------|
-| `monthlySpending` | Spending Over Time, Breakdown, Monthly Summary |
-| `incomeExpense` | Income vs Expense |
-| `netWorthHistory` | Net Worth |
-| `ageOfMoney` | Age of Money |
+### Charts and Panels
+- **Income vs. spending bars** — grouped bars per month (income green, spending red)
+- **Savings line / rate** — overlaid on the bar chart; hover shows savings rate percentage
+- **Current-month summary** — income, spending, savings, savings rate for the selected month
+- **Flexibility-bucket breakdown** — per-month bars showing fixed / flexible / non-monthly spending
+- **Top spending categories** — for the selected month
 
-## API Endpoints (Backend — Phase 4)
+### API Endpoint
 
-When the backend is implemented, these endpoints will replace static data:
+`GET /api/reports/savings?from=YYYY-MM&to=YYYY-MM`
 
-### GET /api/reports/spending-trend
-**Params:** `from_date`, `to_date`
+Returns a monthly savings-rate series (income, spending, savings per month, all CRC).
+
 ```json
 {
   "months": [
-    { "month": "2026-04", "housing": 513300, "food": 201500, "transport": 106000, ... }
+    {
+      "month": "2026-06",
+      "income": 175000000,
+      "spending": 142000000,
+      "savings": 33000000,
+      "savings_rate": 0.189
+    }
   ]
 }
 ```
 
-### GET /api/reports/income-vs-expense
-**Params:** `from_date`, `to_date`
-```json
-{
-  "months": [
-    { "month": "2026-04", "income": 1200000, "expense": 1037300 }
-  ]
-}
-```
+## Reports API Endpoints
 
-### GET /api/reports/net-worth
-**Params:** `months` (default: 12)
-```json
-{
-  "months": [
-    { "month": "Apr 26", "assets": 5100300, "debt": 184500 }
-  ]
-}
-```
-
-### GET /api/reports/age-of-money
-**Params:** `months` (default: 12)
-```json
-{
-  "months": [
-    { "month": "Apr 26", "days": 38 }
-  ]
-}
-```
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/reports/spending | Spending breakdown by category group |
+| GET | /api/reports/income-expense | Income vs expense per month |
+| GET | /api/reports/savings | Savings rate series (see Cash Flow page above) |
+| GET | /api/reports/net-worth | Net worth over time |
 
 ## Implementation Notes
 

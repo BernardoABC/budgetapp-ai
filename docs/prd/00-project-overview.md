@@ -1,7 +1,7 @@
 # PRD 00: Project Overview & Vision
 
 ## Project Name
-**budgetapp** — A YNAB-inspired personal finance tracker built for Costa Rica
+**budgetapp** — A Monarch-style personal finance tracker built for Costa Rica
 
 ## Problem Statement
 Existing budgeting tools (YNAB, Mint, etc.) have poor support for:
@@ -18,8 +18,9 @@ Users who bank in Costa Rica need a tool that understands their transaction expo
 ## Core Value Propositions
 1. **CSV Import with Smart Categorization** — Import bank exports and have transactions auto-categorized based on previously categorized payees
 2. **Dual-Currency View** — Toggle between CRC and USD views; each transaction stores the exchange rate at time of import
-3. **Zero-Based Budgeting** — YNAB-style "give every colon a job" budgeting
-4. **Local-First** — Self-hosted, no cloud dependency, full data ownership
+3. **Spending Plan** — Monarch-style monthly forecast: set expected income, plan by category, track left-to-budget and savings rate
+4. **Cash Flow** — Income vs. spending chart with savings rate and flexibility-bucket breakdown
+5. **Local-First** — Self-hosted, no cloud dependency, full data ownership
 
 ## Tech Stack
 | Layer | Technology |
@@ -50,7 +51,8 @@ Users who bank in Costa Rica need a tool that understands their transaction expo
 ┌──────────────────▼──────────────────────────────┐
 │             PostgreSQL 18.3                      │
 │  accounts, transactions, categories,             │
-│  budgets, payee_rules, exchange_rates            │
+│  budgets, monthly_plans, app_settings,           │
+│  payee_rules, exchange_rates                     │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -70,11 +72,11 @@ Users who bank in Costa Rica need a tool that understands their transaction expo
 - Exchange rate fetching and storage
 - Dual-currency toggle (CRC/USD view)
 
-### Phase 3: Budgeting
-- Zero-based budget creation per month
-- Budget vs. actual tracking
-- Category group management
-- Budget dashboard
+### Phase 3: Spending Plan
+- Monthly spending plan (expected income, planned amounts per category)
+- Left-to-budget / planned savings calculation
+- Rollover and flex budgeting (fixed / flexible / non-monthly categories)
+- Cash Flow page (income vs. spending chart, savings rate)
 
 ### Phase 4: Polish
 - Reports & analytics (spending by category, trends over time)

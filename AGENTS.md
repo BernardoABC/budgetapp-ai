@@ -6,7 +6,7 @@ This file is the authoritative guide for any AI agent (Claude Code or otherwise)
 
 ## Project Context
 
-A self-hosted personal finance tracker (YNAB clone) for a single user in Costa Rica. Key differentiators: CSV import from CR banks, automatic payee-based categorization, dual CRC/USD view with historically accurate exchange rates, zero-based budgeting.
+A self-hosted personal finance tracker for a single user in Costa Rica. Key differentiators: CSV import from CR banks, automatic payee-based categorization, dual CRC/USD view with historically accurate exchange rates, Monarch-style spending plan (expected income, planned amounts per category, left-to-budget, opt-in rollover, flex budgeting), and a Cash Flow page.
 
 **Tech stack:** React + TypeScript (Vite), Go (net/http + Chi), PostgreSQL 16, Podman Compose.
 

@@ -59,9 +59,9 @@ Note: Responses include the resource's `currency` field so the client can format
 |--------|------|-------------|
 | GET | /api/category-groups | List category groups (each with nested categories) |
 | POST | /api/categories | Create a category |
-| PUT | /api/categories/:id | Update a category |
+| PUT | /api/categories/:id | Update a category (accepts `rollover`, `flexibility`) |
+| PUT | /api/categories/:id/currency | Change category currency (clears planned rows) |
 | DELETE | /api/categories/:id | Delete (only if no transactions reference it) |
-| GET | /api/category-groups | List category groups |
 | POST | /api/category-groups | Create category group |
 | PUT | /api/category-groups/:id | Update category group |
 | DELETE | /api/category-groups/:id | Delete group (only if empty) |
@@ -73,13 +73,20 @@ Note: Responses include the resource's `currency` field so the client can format
 | PUT | /api/payee-rules/:id | Update a rule's category |
 | DELETE | /api/payee-rules/:id | Delete a rule |
 
-### Budgets
+### Spending Plan
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | /api/budgets/:month | Get budget for a month (YYYY-MM) |
-| PUT | /api/budgets/:month/categories/:id | Set assigned amount |
-| POST | /api/budgets/:month/copy-previous | Copy from previous month |
-| POST | /api/budgets/:month/move | Move money between categories |
+| GET | /api/plan/:month | Get spending plan for a month (YYYY-MM) |
+| PUT | /api/plan/:month/categories/:categoryId | Set planned amount; body `{"planned": <bigint>}` |
+| POST | /api/plan/:month/copy-previous | Copy planned amounts from previous month |
+| PUT | /api/plan/:month/income | Set expected income; body `{"amount": <bigint>}` |
+| PUT | /api/plan/:month/flex-budget | Set flex budget; body `{"amount": <bigint>}` |
+
+### Settings
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/settings/budget-mode | Get current mode (`category` or `flex`) |
+| PUT | /api/settings/budget-mode | Set mode; body `{"mode": "category"\|"flex"}` |
 
 ### Import
 | Method | Path | Description |
@@ -105,17 +112,16 @@ Note: Responses include the resource's `currency` field so the client can format
 ### Reports
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | /api/reports/spending-by-category | Spending breakdown |
-| GET | /api/reports/spending-trend | Monthly spending trend |
-| GET | /api/reports/income-vs-expense | Income vs expense |
-| GET | /api/reports/payee-spending | Spending by payee |
+| GET | /api/reports/spending | Spending breakdown by category group |
+| GET | /api/reports/income-expense | Income vs expense per month |
+| GET | /api/reports/savings | Savings rate series; params `from`, `to` (YYYY-MM) |
 | GET | /api/reports/net-worth | Net worth over time |
 
 ## Go Project Structure
 
 ```
 server/
-├── main.go                    # Entry point, server setup
+├── main.go                    # Entry point, route registration
 ├── go.mod
 ├── go.sum
 ├── internal/
@@ -126,22 +132,23 @@ server/
 │   │   └── migrations/
 │   │       ├── runner.go      # Migration runner
 │   │       ├── 001_initial_schema.sql
-│   │       └── 002_seed_categories.sql
+│   │       ├── ...
+│   │       └── 010_spending_plan.sql
 │   ├── handler/
 │   │   ├── accounts.go
 │   │   ├── transactions.go
 │   │   ├── categories.go
-│   │   ├── budgets.go
+│   │   ├── budgets.go         # Plan + category-currency handlers
+│   │   ├── settings.go        # Budget-mode setting handler
 │   │   ├── imports.go
 │   │   ├── exchange_rates.go
-│   │   ├── dashboard.go
 │   │   ├── reports.go
 │   │   └── payee_rules.go
 │   ├── model/
 │   │   ├── account.go
 │   │   ├── transaction.go
 │   │   ├── category.go
-│   │   ├── budget.go
+│   │   ├── plan.go            # PlanMonth, PlanCategory, PlanGroup
 │   │   ├── import.go
 │   │   ├── exchange_rate.go
 │   │   └── payee_rule.go
@@ -150,11 +157,13 @@ server/
 │   │   ├── transaction_repo.go
 │   │   ├── category_repo.go
 │   │   ├── budget_repo.go
+│   │   ├── monthly_plan_repo.go
+│   │   ├── settings_repo.go
 │   │   ├── import_repo.go
 │   │   ├── exchange_rate_repo.go
 │   │   └── payee_rule_repo.go
 │   ├── service/
-│   │   ├── budget_service.go  # Budget calculation logic
+│   │   ├── budget_service.go  # Spending plan calculation logic
 │   │   ├── import_service.go  # CSV parsing + categorization
 │   │   ├── exchange_service.go # Rate fetching
 │   │   └── categorizer.go    # Payee matching engine

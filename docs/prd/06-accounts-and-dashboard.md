@@ -118,9 +118,9 @@ The dashboard is the landing page. It shows a high-level financial summary.
 
 | Card | Content |
 |------|---------|
-| Net Worth | Total value (on-budget + tracking), sparkline, month-over-month delta |
-| Spent · April | Total outflows for current month, sparkline, date range label |
-| Ready to Assign | Unallocated amount, subtitle |
+| Net Worth | Total value (on-budget + tracking); accent-gradient background |
+| Spent · {month} | Total actual outflows for the current month |
+| Savings rate | Actual savings / actual income as a percentage; subtitle shows "Left to budget {amount}" (negative shown in red) |
 
 Net Worth card has an accent-gradient background and glowing value color.
 
@@ -129,11 +129,11 @@ Net Worth card has an accent-gradient background and glowing value color.
 - Bar color = group color, turns amber >88% spent, red when overspent
 - "spent / assigned" amounts on the right, spent amount turns red when overspent
 
-### Budget Alerts Panel (right)
-- Badge with overspent count
-- List of overspent categories with "!" icon and overspent amount
-- "Everything on track" empty state with checkmark when none
-- "Review budget →" CTA at the bottom
+### This Month Panel (right)
+- Expected income for the current month
+- Left to budget (negative shown in red)
+- Savings rate
+- "Review plan →" CTA navigates to the Spending Plan page
 
 ### Recent Transactions Table
 Last 7 transactions. Columns: Date · Payee · Category · Amount. "View all →" link navigates to that account.
@@ -158,32 +158,4 @@ Last 7 transactions. Columns: Date · Payee · Category · Amount. "View all →
 |--------|------|-------------|
 | GET | /api/dashboard | Get dashboard summary data |
 
-**GET /api/dashboard response:**
-```json
-{
-  "net_worth": {
-    "current": 112500000,
-    "previous_month": 110000000,
-    "change_pct": 2.27
-  },
-  "monthly_spending": {
-    "month": "2026-04",
-    "total_outflow": -48500000,
-    "total_inflow": 96800000
-  },
-  "ready_to_assign": 14500000,
-  "spending_by_category": [
-    { "category": "Clothing", "amount": -21512600, "pct": 44.3 },
-    { "category": "Food & Drink", "amount": -8735200, "pct": 18.0 }
-  ],
-  "recent_transactions": [],
-  "budget_alerts": [
-    {
-      "category": "Clothing",
-      "assigned": 10000000,
-      "available": -11512600,
-      "severity": "overspent"
-    }
-  ]
-}
-```
+The dashboard fetches data from `GET /api/plan/{month}` (for expected income, left to budget, savings rate) and account balances (for net worth). There is no single `/api/dashboard` aggregate endpoint; the frontend composes dashboard state from the plan and accounts responses.
