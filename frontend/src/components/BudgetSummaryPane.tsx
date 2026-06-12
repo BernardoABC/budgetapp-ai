@@ -1,10 +1,10 @@
 import { T } from '../theme';
 
 export interface SummaryStats {
-  carryIn: number;
-  assigned: number;
-  activity: number;
-  available: number;
+  planned: number;
+  actual: number;      // positive spending
+  remaining: number;
+  rolloverBalance: number | null; // null when selection has no rollover category
 }
 
 interface Props {
@@ -18,19 +18,17 @@ interface Props {
 export function BudgetSummaryPane({ stats, selectionLabel, hasSelection, onClear, fmt }: Props) {
   return (
     <div style={sp.pane}>
-      <div style={sp.labelRow}>
-        <span style={sp.label}>SUMMARY</span>
-      </div>
+      <div style={sp.labelRow}><span style={sp.label}>SUMMARY</span></div>
       <div style={sp.selLine}>{selectionLabel}</div>
 
-      <StatCard label="Left over from last month" value={fmt(stats.carryIn)} color={stats.carryIn < 0 ? T.neg : stats.carryIn === 0 ? T.textMid : T.pos} />
-      <StatCard label="Assigned this month"       value={fmt(stats.assigned)} color={T.text} />
-      <StatCard label="Activity this month"       value={fmt(stats.activity)} color={stats.activity < 0 ? T.neg : stats.activity === 0 ? T.textMid : T.pos} />
-      <StatCard label="Available"                 value={fmt(stats.available)} color={stats.available < 0 ? T.neg : stats.available === 0 ? T.textMid : T.pos} />
-
-      {hasSelection && (
-        <button onClick={onClear} style={sp.clearBtn}>✕ Clear selection</button>
+      <StatCard label="Budgeted" value={fmt(stats.planned)} color={T.text} />
+      <StatCard label="Actual" value={fmt(stats.actual)} color={stats.actual > 0 ? T.neg : T.textMid} />
+      <StatCard label="Remaining" value={fmt(stats.remaining)} color={stats.remaining < 0 ? T.neg : stats.remaining === 0 ? T.textMid : T.pos} />
+      {stats.rolloverBalance !== null && (
+        <StatCard label="Rollover balance" value={fmt(stats.rolloverBalance)} color={stats.rolloverBalance < 0 ? T.neg : T.pos} />
       )}
+
+      {hasSelection && <button onClick={onClear} style={sp.clearBtn}>✕ Clear selection</button>}
     </div>
   );
 }
