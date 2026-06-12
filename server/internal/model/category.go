@@ -1,13 +1,15 @@
 package model
 
 type Category struct {
-	ID        string `json:"id"`
-	GroupID   string `json:"group_id"`
-	Name      string `json:"name"`
-	Currency  string `json:"currency"`
-	Hidden    bool   `json:"hidden"`
-	SortOrder int    `json:"sort_order"`
-	IsSystem  bool   `json:"is_system"`
+	ID          string `json:"id"`
+	GroupID     string `json:"group_id"`
+	Name        string `json:"name"`
+	Currency    string `json:"currency"`
+	Hidden      bool   `json:"hidden"`
+	SortOrder   int    `json:"sort_order"`
+	IsSystem    bool   `json:"is_system"`
+	Rollover    bool   `json:"rollover"`
+	Flexibility string `json:"flexibility"`
 }
 
 type CategoryGroup struct {
@@ -20,17 +22,21 @@ type CategoryGroup struct {
 }
 
 type CreateCategoryReq struct {
-	GroupID   string `json:"group_id"`
-	Name      string `json:"name"`
-	Currency  string `json:"currency"`
-	SortOrder int    `json:"sort_order"`
+	GroupID     string `json:"group_id"`
+	Name        string `json:"name"`
+	Currency    string `json:"currency"`
+	SortOrder   int    `json:"sort_order"`
+	Rollover    bool   `json:"rollover"`
+	Flexibility string `json:"flexibility"`
 }
 
 type UpdateCategoryReq struct {
-	Name      string `json:"name"`
-	Currency  string `json:"currency"`
-	Hidden    bool   `json:"hidden"`
-	SortOrder int    `json:"sort_order"`
+	Name        string `json:"name"`
+	Currency    string `json:"currency"`
+	Hidden      bool   `json:"hidden"`
+	SortOrder   int    `json:"sort_order"`
+	Rollover    bool   `json:"rollover"`
+	Flexibility string `json:"flexibility"`
 }
 
 type CreateGroupReq struct {
