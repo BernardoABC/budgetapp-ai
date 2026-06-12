@@ -99,7 +99,12 @@ This document breaks the project into concrete implementation steps, ordered by 
 
 ---
 
-## Phase 3: Budgeting ✅
+## Phase 3: Budgeting ✅ (superseded by Phase 6)
+
+> ⚠ This phase built the original YNAB-style zero-based model (Ready to Assign,
+> move-money, targets). It was **replaced wholesale by the spending-plan
+> transformation in Phase 6** — the endpoints and UI below no longer exist.
+> Kept for historical record only.
 
 ### Step 3.1: Budget Engine
 - [x] Go: Budget service with monthly calculation logic
@@ -184,6 +189,31 @@ This document breaks the project into concrete implementation steps, ordered by 
 - [x] Repo: Update amount on one leg → sign-flipped amount mirrored to peer
 - [x] React: "Transfer to another account" toggle in add-transaction form
 - [x] React: ⇄ Transfer badge on linked transaction rows
+
+---
+
+## Phase 6: Spending Plan Transformation ✅ (2026-06-12)
+
+Full pivot from zero-based envelope budgeting to a Monarch-style spending plan.
+Spec: `docs/superpowers/specs/2026-06-11-spending-plan-design.md` ·
+Plan: `docs/superpowers/plans/2026-06-11-spending-plan.md`
+
+### Step 6.1: Schema & Backend
+- [x] DB: `010_spending_plan.sql` — `monthly_plans`, `app_settings`, `categories.rollover`/`flexibility`; wipes `budgets`, drops `category_targets`, renames system category to "Income"
+- [x] Go: `monthly_plans` + `app_settings` repositories
+- [x] Go: Plan service — left to budget, opt-in rollover with negative carry, flex rollups, actual income/spending in CRC
+- [x] API: `/api/plan/*`, `/api/settings/budget-mode`, `/api/reports/savings`; old `/api/budgets/*`, targets, and move-money removed
+
+### Step 6.2: Frontend
+- [x] React: Budget page redesigned as Spending Plan (header stats, Category/Flex mode toggle, Budgeted/Actual/Remaining, rollover pills)
+- [x] React: `engine.ts` rewritten for plan math; undo stack retained
+- [x] React: Cash Flow page (income vs spending, savings rate, flexibility buckets) + nav
+- [x] React: Dashboard cards (savings rate, left to budget); Age of Money retired
+
+### Step 6.3: Docs
+- [x] PRDs 00/01/04/06/07/08/10/11, README, AGENTS.md updated for the spending-plan model
+
+**Milestone: Monarch-style spending plan with cash flow tracking.** ✅
 
 ---
 

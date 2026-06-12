@@ -6,7 +6,7 @@
 ## Concept
 
 The Reports page already computes everything: spending by group/month, income vs
-expense, net worth, age of money. This idea adds a short, plain-language
+expense, net worth, savings rate. This idea adds a short, plain-language
 **narrative** on top — a few sentences that tell you what actually happened:
 
 > "May spending was ₡1.18M, about 9% above your 3-month average. The jump came

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The frontend is a React SPA built with Vite and TypeScript. The design is a refined dark application with a layered navy-charcoal theme, YNAB-style budget workflows, and five fully interactive pages.
+The frontend is a React SPA built with Vite and TypeScript. The design is a refined dark application with a layered navy-charcoal theme, Monarch-style spending-plan workflows, and six fully interactive pages.
 
 ## Design Philosophy
 
@@ -81,7 +81,8 @@ Each category group has a fixed color used in charts and progress bars:
 │            │                                             │
 │  Dashboard │                                             │
 │  Budget    │           MAIN CONTENT                      │
-│  Reports   │         (page-anim fadeUp)                  │
+│  Cash Flow │         (page-anim fadeUp)                  │
+│  Reports   │                                             │
 │  ─────────│                                             │
 │  BUDGET    │                                             │
 │  BAC Check │                                             │
@@ -105,34 +106,36 @@ Navigation is state-based (no React Router). Current page stored in `localStorag
 
 | Page key | Component | Description |
 |----------|-----------|-------------|
-| `dashboard` | `Dashboard` | Stat cards, spending bars, alerts, recent transactions |
-| `budget` | `Budget` | Monthly budget table with inline editing and rollover engine |
+| `dashboard` | `Dashboard` | Stat cards, budgeted-vs-actual bars, this-month panel, recent transactions |
+| `budget` | `Budget` | Monthly spending plan with inline editing and Category/Flex modes |
+| `cashflow` | `CashFlow` | Income vs spending, savings rate, flexibility buckets |
 | `accounts` | `Accounts` | Per-account transaction register with inline editing |
 | `import` | `ImportWizard` | 3-step CSV import with auto-categorization |
-| `reports` | `Reports` | 5 interactive report types |
+| `reports` | `Reports` | 4 interactive report types |
 
 ## Pages: Detailed Specs
 
 ### Dashboard
-- **3 stat cards**: Net Worth (with sparkline), Spent This Month, Ready to Assign
-- **Spending by Category**: Color-coded progress bars per group; glow fill turns amber >88%, red when overspent
-- **Budget Alerts**: Overspent categories with badge count; "Everything on track" empty state
+- **3 stat cards**: Net Worth (with sparkline), Spent This Month, Savings Rate (with left-to-budget sub-label, red when over-planned)
+- **Budgeted vs Actual by Category**: Color-coded progress bars per group; glow fill turns amber >88%, red when over budget
+- **This Month panel**: Expected income, Left to budget (red when negative), Savings rate; "Review plan →" CTA
 - **Recent Transactions**: Last 7 transactions with date, payee, category color tag, amount
 
-### Budget
+### Budget (Spending Plan)
 - **Month navigator**: ‹ / › arrows cycle through available months
-- **RTA card**: Ready to Assign (green/amber/red), total Underfunded, Age of Money
-- **Quick-assign buttons**: Auto-assign underfunded, Copy from last month, Reset to zero
+- **Plan header**: Expected income (inline-editable with calculator), Planned total, Left to budget (red when over-planned), Planned savings
+- **Mode toggle**: Category / Flex, persisted via `PUT /api/settings/budget-mode`
+- **Toolbar**: Copy from last month, Reset to zero
 - **Edit mode**: Rename/reorder/hide/delete categories and groups inline
-- **Category rows**:
-  - Assigned: click-to-edit with pencil icon on hover
-  - Activity: auto-computed from transactions
-  - Available: pill button (green/amber/red) — opens Move Money modal
-  - **Progress bar**: thin bar showing spend% under category name; amber >85%, red when overspent
-  - Target chip (monthly / refill to / savings by date)
-  - Underfunded badge in amber
-- **Move Money modal**: Bi-directional transfer with before/after balance preview
-- **Category Inspector** (slide-in drawer): Available balance, stats, target editor, hide/delete actions
+- **Category mode rows**:
+  - Budgeted: click-to-edit with pencil icon on hover (calculator expressions supported)
+  - Actual: auto-computed from transactions (red when spending)
+  - Remaining: Budgeted + Activity for the month (red when negative)
+  - **Progress bar**: thin bar showing spend% under category name; amber >85%, red when over
+  - Rollover pill (↻ accumulated balance) on rollover-enabled categories
+- **Flex mode sections**: Fixed (per-category editable, summed header) · Flexible (single flex budget number vs combined flexible spending; categories listed read-only) · Non-monthly (per-category editable with accumulating ↻ balance)
+- **Category Inspector** (slide-in drawer): Budgeted/Actual/Remaining stats, Rollover toggle, Flexibility selector (fixed / flexible / non-monthly), hide/delete actions
+- **Undo**: Ctrl-Z reverts plan edits (budgeted amounts, expected income, flex budget, category ops)
 
 ### Accounts
 - **Account header**: Name, type badge (Budget Account / Tracking Account), working balance
@@ -154,7 +157,12 @@ Navigation is state-based (no React Router). Current page stored in `localStorag
 2. **Review**: Parsed transactions; "auto" badge on auto-categorized rows; dropdowns for uncategorized
 3. **Confirm**: Summary stats (count, outflows, inflows, net); date range; uncategorized warning
 
-### Reports (5 views, tab-style card selector)
+### Cash Flow
+- **4 stat cards**: Income, Spending, Savings, Savings rate — current month
+- **Income vs Spending**: 12-month SVG line chart (income, spending, dashed savings line)
+- **By flexibility**: Fixed / Flexible / Non-monthly progress bars (actual vs planned, red when over)
+
+### Reports (4 views, tab-style card selector)
 
 | Report | Chart type |
 |--------|-----------|
@@ -162,7 +170,6 @@ Navigation is state-based (no React Router). Current page stored in `localStorag
 | Spending Breakdown | Interactive donut chart (hover isolates slices) |
 | Income vs Expense | Grouped bar chart; net tooltip on hover |
 | Net Worth | Area-line chart (assets − debt) |
-| Age of Money | Area-line chart (days) |
 
 All charts are hand-rolled SVG with hover highlights and data-point tooltips. A Monthly Summary table appears below Spending reports.
 
@@ -186,28 +193,30 @@ A single `fmt(amount)` function is created in `App.tsx` and passed as a prop to 
 fmt = (amount) => fmt(amount, currency, exchangeRate)
 ```
 
-## Budget Engine (`src/engine.ts`)
+## Plan Engine (`src/engine.ts`)
 
-Pure TypeScript — no backend call required for UI interactions:
+Pure TypeScript — recomputes the displayed month optimistically while edits are in flight:
 
-- **`compute(data, localBudget, month, groups)`** — Rollover-aware month state. Iterates all months up to the target, carrying `available` forward. Returns `{ cats, rta, totalUnderfunded }`.
-- **`quickAssign(strategy, data, state, prevState)`** — Bulk-assign helper: `'underfunded'`, `'reset'`, `'lastMonth'`.
-- **`categorize(payee, rules)`** — Matches payee against payee rules for import auto-categorization.
-- **`targetLabel(target, fmt)`** — Generates human-readable label for category targets.
+- **`computePlan({groups, expectedIncome, rate, localPlanned, nameById})`** — Month-scoped plan state. Applies local planned overrides on top of the server snapshot, converts USD categories at the current rate, and returns `{ cats, plannedTotalCRC, expectedIncome, leftToBudget }`. Rollover balances (rollover categories and all non-monthly categories) shift by the delta of local edits.
+- **`resetAllPlanned(state)`** — Returns a planned-override map zeroing every category.
 
 ## Source File Map
 
 ```
 src/
 ├── theme.ts              # T tokens, GROUP_COLORS, ACCENTS, applyAccent()
-├── data.ts               # AppData (accounts, budget, transactions, targets, …)
-├── engine.ts             # Budget computation engine
+├── api.ts                # Typed API client (plan, settings, reports, accounts, …)
+├── engine.ts             # Spending-plan computation engine
 ├── App.tsx               # Root: nav state, fmt(), TweaksPanel, Layout
+├── hooks/
+│   └── useUndoStack.ts   # Ctrl-Z undo stack for plan edits
 └── components/
     ├── Layout.tsx         # Sidebar + Header
     ├── Dashboard.tsx
-    ├── Budget.tsx
-    ├── BudgetModals.tsx   # MoveMoneyModal + CategoryInspector
+    ├── Budget.tsx         # Spending Plan page (Category + Flex modes)
+    ├── BudgetModals.tsx   # CategoryInspector (rollover/flexibility editor)
+    ├── BudgetSummaryPane.tsx
+    ├── CashFlow.tsx
     ├── Accounts.tsx
     ├── AccountsModals.tsx # ReconcileModal + RulesManager + SplitModal
     ├── Import.tsx

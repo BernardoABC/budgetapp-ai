@@ -40,7 +40,7 @@ writes data and never does money math itself:
 |------|-----------|---------|
 | `search_transactions(filter)` | idea 03's validated DSL + repo | rows + sum |
 | `category_activity(month, group?)` | reports/budget services | computed totals |
-| `budget_status(month)` | `budget_service` | assigned/activity/available |
+| `plan_status(month)` | plan service | planned/actual/remaining, left to budget |
 | `recurring_commitments()` | idea 06 | series list + monthly total |
 | `net_worth(range)` | reports service | computed series |
 
@@ -63,7 +63,7 @@ answer citing the returned numbers.
 ## Validation & safety
 
 - **Read-only tools only.** No tool can mutate; the assistant cannot move money,
-  assign budget, or delete anything (those stay manual actions).
+  edit the plan, or delete anything (those stay manual actions).
 - **Every number must come from a tool result.** Post-validate that figures in the
   answer appear in tool outputs; otherwise append a "based on a rough estimate"
   hedge or refuse.

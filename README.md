@@ -114,7 +114,7 @@ podman compose logs -f server
 podman compose logs -f frontend
 
 # Access the database
-podman compose exec postgres psql -U ynab -d ynab
+podman compose exec postgres psql -U budgetapp -d budgetapp
 
 # Rebuild after code changes (hot-reload handles most cases)
 podman compose build server

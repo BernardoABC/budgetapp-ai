@@ -222,6 +222,6 @@ The bank CSV parser lives in `server/internal/csvparser/parser.go` and is a pure
 
 ## Phase Awareness
 
-Check `docs/prd/11-implementation-roadmap.md` for the current phase. Don't implement Phase 3 features during Phase 1 work. When starting a task, state which Phase/Step it belongs to.
+Check `docs/prd/11-implementation-roadmap.md` for project history and the current phase. Note that Phase 3 (zero-based budgeting) was superseded by Phase 6 (spending plan) — never reintroduce Ready to Assign, targets, or move-money.
 
-Current phase: **Phase 1 — Foundation**
+Current phase: **Phases 1–6 complete — maintenance & incremental features on the spending-plan model**

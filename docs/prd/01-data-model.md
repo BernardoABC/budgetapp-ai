@@ -1,7 +1,7 @@
 # PRD 01: Data Model & Database Design
 
 ## Overview
-The database schema is the foundation of the entire application. It must support multi-currency transactions, zero-based budgeting, and payee-based auto-categorization — all while remaining simple enough for a single-user personal finance app.
+The database schema is the foundation of the entire application. It must support multi-currency transactions, the monthly spending plan (see PRD 04), and payee-based auto-categorization — all while remaining simple enough for a single-user personal finance app.
 
 ## Entity Relationship Diagram
 
@@ -12,21 +12,22 @@ The database schema is the foundation of the entire application. It must support
 │ id (PK)      │──1:N──│ id (PK)              │──N:1──│ id (PK)      │
 │ name         │       │ account_id (FK)      │       │ name         │
 │ currency     │       │ category_id (FK)     │       │ group_id(FK) │
-│ balance      │       │ date                 │       │ hidden       │
-│ type         │       │ amount               │       └──────┬───────┘
-│ closed       │       │ currency             │              │ N:1
-│ on_budget    │       │ payee                │       ┌──────▼───────┐
-│ note         │       │ memo                 │       │cat_groups    │
-│ sort_order   │       │ check_number         │       ├──────────────┤
-│ created_at   │       │ exchange_rate        │       │ id (PK)      │
-│ updated_at   │       │ cleared              │       │ name         │
-└──────────────┘       │ reconciled           │       │ sort_order   │
-                       │ transfer_peer_id(FK) │──┐    │ hidden       │
-                       │ import_id (FK)       │  │    └──────────────┘
-                       │ created_at           │  │self
-                       │ updated_at           │◄─┘
-                       └──────────────────────┘
-                                │ 1:N
+│ balance      │       │ date                 │       │ currency     │
+│ type         │       │ amount               │       │ hidden       │
+│ closed       │       │ currency             │       │ is_system    │
+│ on_budget    │       │ payee                │       │ rollover     │
+│ note         │       │ memo                 │       │ flexibility  │
+│ sort_order   │       │ check_number         │       └──────┬───────┘
+│ created_at   │       │ exchange_rate        │              │ N:1
+│ updated_at   │       │ cleared              │       ┌──────▼───────┐
+└──────────────┘       │ reconciled           │       │cat_groups    │
+                       │ transfer_peer_id(FK) │──┐    ├──────────────┤
+                       │ import_id (FK)       │  │    │ id (PK)      │
+                       │ created_at           │  │self│ name         │
+                       │ updated_at           │◄─┘    │ sort_order   │
+                       └──────────────────────┘       │ hidden       │
+                                │ 1:N                 │ is_system    │
+                                │                     └──────────────┘
                        ┌────────▼─────────────┐
                        │  transaction_splits  │
                        ├──────────────────────┤
@@ -50,15 +51,21 @@ The database schema is the foundation of the entire application. It must support
 └──────────────────┘
 
 ┌──────────────────┐       ┌──────────────────┐       ┌──────────────────┐
-│  budgets         │       │  imports         │       │ category_targets │
+│  budgets         │       │  imports         │       │  monthly_plans   │
 ├──────────────────┤       ├──────────────────┤       ├──────────────────┤
-│ id (PK)          │       │ id (PK)          │       │ category_id (PK) │
-│ category_id (FK) │       │ account_id (FK)  │       │ type             │
-│ month (YYYY-MM)  │       │ filename         │       │ amount           │
-│ assigned         │       │ imported_at      │       │ deadline         │
-│ created_at       │       │ transaction_count│       │ created_at       │
-│ updated_at       │       │ status           │       │ updated_at       │
-└──────────────────┘       └──────────────────┘       └──────────────────┘
+│ id (PK)          │       │ id (PK)          │       │ month (PK)       │
+│ category_id (FK) │       │ account_id (FK)  │       │ expected_income  │
+│ month (YYYY-MM)  │       │ filename         │       │ flex_budget      │
+│ assigned         │       │ imported_at      │       │ created_at       │
+│ created_at       │       │ transaction_count│       │ updated_at       │
+│ updated_at       │       │ status           │       └──────────────────┘
+└──────────────────┘       └──────────────────┘       ┌──────────────────┐
+                                                      │  app_settings    │
+                                                      ├──────────────────┤
+                                                      │ key (PK)         │
+                                                      │ value            │
+                                                      │ updated_at       │
+                                                      └──────────────────┘
 ```
 
 ## Detailed Table Definitions
@@ -114,19 +121,25 @@ The core table. Every financial event is a row here.
 - `idx_transactions_transfer_peer` on (transfer_peer_id) WHERE transfer_peer_id IS NOT NULL
 
 ### categories
-Individual budget categories (e.g., "Groceries", "Restaurants", "Transportation").
+Individual spending categories (e.g., "Groceries", "Restaurants", "Transportation").
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | id | UUID | PK | |
 | group_id | UUID | FK → category_groups, NOT NULL | Parent group |
 | name | VARCHAR(255) | NOT NULL | Category name |
+| currency | VARCHAR(3) | NOT NULL, DEFAULT 'CRC' | Native currency for planned amounts and activity (`CRC` or `USD`) |
 | hidden | BOOLEAN | NOT NULL, DEFAULT false | Hidden from active views |
+| is_system | BOOLEAN | NOT NULL, DEFAULT false | System categories (e.g., "Income") are excluded from the plan table |
+| rollover | BOOLEAN | NOT NULL, DEFAULT false | Opt-in: unspent/overspent balance accumulates across months (negative carry allowed) |
+| flexibility | VARCHAR(20) | NOT NULL, DEFAULT 'flexible', CHECK | `fixed`, `flexible`, or `non_monthly` — drives the flex-budgeting view |
 | sort_order | INTEGER | NOT NULL, DEFAULT 0 | Ordering within group |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
 | updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
 
 **Unique constraint:** (group_id, name)
+
+**Note:** non-monthly categories accumulate a balance in the flex view regardless of the `rollover` flag; the flag governs accumulation in category mode.
 
 ### category_groups
 Logical groupings of categories (e.g., "Food & Drink", "Bills", "Fun Money").
@@ -167,22 +180,24 @@ Daily exchange rate snapshots for CRC↔USD conversion.
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
 
 ### budgets
-Monthly budget allocations per category. One row per category per month.
+Monthly **planned amounts** per category (the spending plan). One row per category per month. The column is named `assigned` for historical reasons; the API and UI call it *planned/budgeted*.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | id | UUID | PK | |
 | category_id | UUID | FK → categories, NOT NULL | |
 | month | DATE | NOT NULL | First day of the month (e.g., 2026-04-01) |
-| assigned | BIGINT | NOT NULL, DEFAULT 0 | Amount assigned to this category for this month (minor units, in CRC) |
+| assigned | BIGINT | NOT NULL, DEFAULT 0 | Planned amount for this category this month (minor units, in the **category's native currency**) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
 | updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
 
 **Unique constraint:** (category_id, month)
 
-**Budget calculations** (computed, not stored):
-- **Activity** = SUM of transaction amounts for this category in this month
-- **Available** = assigned + activity + rollover from previous month (if implementing rollover)
+**Plan calculations** (computed, not stored — see PRD 04):
+- **Activity** = SUM of transaction amounts for this category in this month (converted to the category's native currency)
+- **Remaining** = planned + activity, month-scoped
+- **Rollover balance** = Σ(planned + activity) across all months, for rollover and non-monthly categories; negative balances carry as-is
+- **Left to budget** = `monthly_plans.expected_income` − Σ planned (USD categories converted to CRC at the current rate)
 
 ### transaction_splits
 Breaks a single transaction into multiple category buckets. When splits are present, the parent transaction's `category_id` is ignored for budgeting purposes; the splits are used instead. All split amounts must sum to the parent transaction's amount.
@@ -197,17 +212,27 @@ Breaks a single transaction into multiple category buckets. When splits are pres
 
 **Index:** `idx_splits_transaction` on (transaction_id)
 
-### category_targets
-Optional savings/spending targets per category. Drives the "underfunded" indicator on the budget page.
+### monthly_plans
+One row per month: the expected income and the flex-mode budget number. Missing row = zero values (not an error).
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| category_id | UUID | PK, FK → categories ON DELETE CASCADE | One row per category |
-| type | VARCHAR(20) | NOT NULL, CHECK | `monthly` (spend this much/month), `refill` (refill to amount), `savings` (save by deadline) |
-| amount | BIGINT | NOT NULL, CHECK >= 0 | Target amount in minor units |
-| deadline | DATE | NULLABLE | For `savings` targets: goal date |
+| month | DATE | PK | First day of the month |
+| expected_income | BIGINT | NOT NULL, DEFAULT 0 | Expected income for the month, CRC centimos |
+| flex_budget | BIGINT | NOT NULL, DEFAULT 0 | Flex-mode budget for all flexible categories combined, CRC centimos |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
 | updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
+
+### app_settings
+Small key-value store for global app settings.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| key | TEXT | PK | e.g., `budget_mode` |
+| value | TEXT | NOT NULL | e.g., `category` or `flex` |
+| updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
+
+> The former `category_targets` table (YNAB-style targets) was dropped in migration 010 — the planned amount per category *is* the plan.
 
 ### imports
 Tracks CSV file import history for auditing and duplicate detection.
@@ -248,9 +273,14 @@ read-time computation — never written back to storage.
 |------|----------|
 | `001_initial_schema.sql` | All core tables (accounts, transactions, categories, payee_rules, exchange_rates, budgets, imports) |
 | `002_seed_categories.sql` | Default category groups and categories for Costa Rica |
-| `003_category_targets.sql` | `category_targets` table |
+| `003_category_targets.sql` | `category_targets` table (dropped again in 010) |
 | `004_splits_reconcile.sql` | `transaction_splits` table; `reconciled` column on transactions |
 | `005_transfers.sql` | `transfer_peer_id` self-referential FK on transactions |
+| `006_reseed_categories.sql` | Category reseed |
+| `007_rename_yelp_to_alquiler.sql` | Category rename |
+| `008_inflow_category.sql` | `is_system` flags; system Inflows group + inflow category |
+| `009_category_currency.sql` | `categories.currency` column |
+| `010_spending_plan.sql` | `categories.rollover`/`flexibility`; `monthly_plans` + `app_settings` tables; wipes `budgets`, drops `category_targets`, renames system category to "Income" |
 
 ## Seed Data
 The initial migration should seed default category groups and categories relevant to Costa Rica:

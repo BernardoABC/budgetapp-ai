@@ -26,15 +26,15 @@ services:
   postgres:
     image: postgres:18.3-alpine
     environment:
-      POSTGRES_DB: ynab
-      POSTGRES_USER: ynab
-      POSTGRES_PASSWORD: ynab_dev
+      POSTGRES_DB: budgetapp
+      POSTGRES_USER: budgetapp
+      POSTGRES_PASSWORD: budgetapp
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ynab"]
+      test: ["CMD-SHELL", "pg_isready -U budgetapp"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -46,7 +46,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: postgres://ynab:ynab_dev@postgres:5432/ynab?sslmode=disable
+      DATABASE_URL: postgres://budgetapp:budgetapp@postgres:5432/budgetapp?sslmode=disable
       PORT: 8080
       EXCHANGE_RATE_API_URL: https://api.exchangerate.host
     depends_on:
@@ -128,7 +128,7 @@ podman compose down         # Stop all services
 
 ### Database access
 ```bash
-podman compose exec postgres psql -U ynab -d ynab
+podman compose exec postgres psql -U budgetapp -d budgetapp
 ```
 
 ### Reset database
