@@ -41,8 +41,10 @@ export function computePlan(input: ComputeInput): PlanState {
       const name = nameById[c.id] ?? c.name;
       const planned = localPlanned?.[name] ?? c.planned;
       const remaining = planned + c.activity;
-      // rollover balance shifts by the delta of any local planned edit
-      const rolloverBalance = c.rollover
+      // rollover balance shifts by the delta of any local planned edit;
+      // non-monthly categories accumulate regardless of the rollover flag
+      const accumulates = c.rollover || c.flexibility === 'non_monthly';
+      const rolloverBalance = accumulates
         ? c.rollover_balance + (planned - c.planned)
         : 0;
       cats[name] = {

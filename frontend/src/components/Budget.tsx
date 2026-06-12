@@ -896,7 +896,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
 
         <div style={st.summaryHeader}>
           <HeaderStat label="Expected income">
-            <BudgetCell value={expectedIncome} onSave={handleSaveIncome} fmt={fmt} />
+            <BudgetCell value={expectedIncome} onSave={handleSaveIncome} fmt={fmt} toDisplay={toDisplayFn} toRaw={toRawFn} />
           </HeaderStat>
           <HeaderStat label="Planned"><span>{fmt(state.plannedTotalCRC)}</span></HeaderStat>
           <HeaderStat label="Left to budget">
@@ -940,7 +940,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
               <span style={st.flexSectionTitle}>Flexible</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 12, fontFamily: T.mono, color: flexOver ? T.neg : T.textMid }}>{fmt(server?.flexible_actual ?? 0)} <span style={{ color: T.textFaint }}>spent</span></span>
-                <BudgetCell value={flexBudget} onSave={handleSaveFlexBudget} fmt={fmt} />
+                <BudgetCell value={flexBudget} onSave={handleSaveFlexBudget} fmt={fmt} toDisplay={toDisplayFn} toRaw={toRawFn} />
               </div>
             </div>
             <div style={{ padding: '4px 0 12px' }}>
