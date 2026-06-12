@@ -7,45 +7,44 @@ type ActivityEntry struct {
 	ConvertedAmount int64  `json:"converted_amount"`
 }
 
-type Target struct {
-	Type     string  // "monthly" | "refill" | "savings"
-	Amount   int64   // minor units in category's native currency
-	Deadline *string // YYYY-MM-DD; nil unless type == "savings"
-}
-
-type CategoryBudget struct {
+type PlanCategory struct {
 	ID                string
 	Name              string
 	Currency          string
-	Assigned          int64
-	Activity          int64
-	CarryIn           int64
-	Available         int64 // CarryIn + Assigned + Activity
-	Target            *Target
-	Underfunded       int64
+	Flexibility       string // fixed | flexible | non_monthly
+	Rollover          bool
+	Planned           int64 // native currency
+	Activity          int64 // native currency (negative = spending)
+	Remaining         int64 // month-scoped: Planned + Activity
+	RolloverBalance   int64 // accumulated Planned+Activity across months (rollover cats)
 	ActivityBreakdown []ActivityEntry
 }
 
-type RTABreakdown struct {
-	CRCAccounts    int64 `json:"crc_accounts"`
-	USDAccountsCRC int64 `json:"usd_accounts_in_crc"`
-	USDNative      int64 `json:"usd_accounts_native"`
-}
-
-type CategoryGroupBudget struct {
+type PlanGroup struct {
 	ID         string
 	Name       string
-	Assigned   int64
-	Activity   int64
-	Available  int64
-	Categories []CategoryBudget
+	Planned    int64 // CRC
+	Activity   int64 // CRC
+	Remaining  int64 // CRC
+	Categories []PlanCategory
 }
 
-type BudgetMonth struct {
-	Month            string
-	ReadyToAssign    int64
-	RTABreakdown     RTABreakdown
-	AgeOfMoney       *int // days; nil if no outflow data
-	TotalUnderfunded int64
-	CategoryGroups   []CategoryGroupBudget
+type PlanMonth struct {
+	Month          string
+	Mode           string // category | flex
+	ExpectedIncome int64  // CRC
+	FlexBudget     int64  // CRC
+	PlannedTotal   int64  // CRC (converted)
+	LeftToBudget   int64  // ExpectedIncome - PlannedTotal
+	ActualIncome   int64  // CRC
+	ActualSpending int64  // CRC (positive)
+	ActualSavings  int64  // ActualIncome - ActualSpending
+
+	FixedPlanned      int64 // CRC
+	FixedActual       int64 // CRC (positive)
+	FlexibleActual    int64 // CRC (positive), vs FlexBudget
+	NonMonthlyPlanned int64 // CRC
+	NonMonthlyActual  int64 // CRC (positive)
+
+	CategoryGroups []PlanGroup
 }
