@@ -18,183 +18,105 @@ func NewBudgetHandler(svc *service.BudgetService) *BudgetHandler {
 	return &BudgetHandler{svc: svc}
 }
 
-// GetMonth handles GET /api/budgets/{month}
 func (h *BudgetHandler) GetMonth(w http.ResponseWriter, r *http.Request) {
 	month := r.PathValue("month")
-	if month == "" || !monthRe.MatchString(month) {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month path param required (format: YYYY-MM)")
+	if !monthRe.MatchString(month) {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month must be YYYY-MM")
 		return
 	}
-
-	bm, err := h.svc.GetMonth(r.Context(), month)
+	pm, err := h.svc.GetMonth(r.Context(), month)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
-
-	writeJSON(w, http.StatusOK, budgetMonthToJSON(bm))
+	writeJSON(w, http.StatusOK, planMonthToJSON(pm))
 }
 
-// SetAssigned handles PUT /api/budgets/{month}/categories/{categoryId}
-func (h *BudgetHandler) SetAssigned(w http.ResponseWriter, r *http.Request) {
+func (h *BudgetHandler) SetPlanned(w http.ResponseWriter, r *http.Request) {
 	month := r.PathValue("month")
-	if month == "" || !monthRe.MatchString(month) {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month path param required (format: YYYY-MM)")
+	if !monthRe.MatchString(month) {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month must be YYYY-MM")
 		return
 	}
-
 	catID := r.PathValue("categoryId")
 	if catID == "" {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "categoryId path param required")
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "categoryId required")
 		return
 	}
-
 	var body struct {
-		Assigned int64 `json:"assigned"`
+		Planned int64 `json:"planned"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
-
-	if err := h.svc.SetAssigned(r.Context(), catID, month, body.Assigned); err != nil {
+	if err := h.svc.SetPlanned(r.Context(), catID, month, body.Planned); err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"assigned": body.Assigned,
-	})
+	writeJSON(w, http.StatusOK, map[string]any{"planned": body.Planned})
 }
 
-// CopyPrevious handles POST /api/budgets/{month}/copy-previous
-func (h *BudgetHandler) CopyPrevious(w http.ResponseWriter, r *http.Request) {
+func (h *BudgetHandler) SetIncome(w http.ResponseWriter, r *http.Request) {
 	month := r.PathValue("month")
-	if month == "" || !monthRe.MatchString(month) {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month path param required (format: YYYY-MM)")
+	if !monthRe.MatchString(month) {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month must be YYYY-MM")
 		return
 	}
+	var body struct {
+		Amount int64 `json:"amount"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	if err := h.svc.SetExpectedIncome(r.Context(), month, body.Amount); err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"amount": body.Amount})
+}
 
+func (h *BudgetHandler) SetFlexBudget(w http.ResponseWriter, r *http.Request) {
+	month := r.PathValue("month")
+	if !monthRe.MatchString(month) {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month must be YYYY-MM")
+		return
+	}
+	var body struct {
+		Amount int64 `json:"amount"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	if err := h.svc.SetFlexBudget(r.Context(), month, body.Amount); err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"amount": body.Amount})
+}
+
+func (h *BudgetHandler) CopyPrevious(w http.ResponseWriter, r *http.Request) {
+	month := r.PathValue("month")
+	if !monthRe.MatchString(month) {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month must be YYYY-MM")
+		return
+	}
 	if err := h.svc.CopyPrevious(r.Context(), month); err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
-
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Move handles POST /api/budgets/{month}/move
-func (h *BudgetHandler) Move(w http.ResponseWriter, r *http.Request) {
-	month := r.PathValue("month")
-	if month == "" || !monthRe.MatchString(month) {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month path param required (format: YYYY-MM)")
-		return
-	}
-
-	var body struct {
-		FromCategoryID string `json:"from_category_id"`
-		ToCategoryID   string `json:"to_category_id"`
-		Amount         int64  `json:"amount"`
-	}
-	if err := readJSON(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
-		return
-	}
-
-	if body.FromCategoryID == "" {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "from_category_id is required")
-		return
-	}
-	if body.ToCategoryID == "" {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "to_category_id is required")
-		return
-	}
-	if body.Amount <= 0 {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "amount must be positive")
-		return
-	}
-
-	if err := h.svc.Move(r.Context(), month, body.FromCategoryID, body.ToCategoryID, body.Amount); err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// UpsertTarget handles PUT /api/categories/{id}/target
-func (h *BudgetHandler) UpsertTarget(w http.ResponseWriter, r *http.Request) {
-	catID := r.PathValue("id")
-	if catID == "" {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "id path param required")
-		return
-	}
-
-	var body struct {
-		Type     string  `json:"type"`
-		Amount   int64   `json:"amount"`
-		Deadline *string `json:"deadline"`
-	}
-	if err := readJSON(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
-		return
-	}
-
-	if body.Type != "monthly" && body.Type != "refill" && body.Type != "savings" {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "type must be one of: monthly, refill, savings")
-		return
-	}
-	if body.Amount < 0 {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "amount must be non-negative")
-		return
-	}
-	if body.Type == "savings" && body.Deadline == nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "savings target requires deadline")
-		return
-	}
-
-	target := model.Target{
-		Type:     body.Type,
-		Amount:   body.Amount,
-		Deadline: body.Deadline,
-	}
-	if err := h.svc.UpsertTarget(r.Context(), catID, target); err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"type":     body.Type,
-		"amount":   body.Amount,
-		"deadline": body.Deadline,
-	})
-}
-
-// DeleteTarget handles DELETE /api/categories/{id}/target
-func (h *BudgetHandler) DeleteTarget(w http.ResponseWriter, r *http.Request) {
-	catID := r.PathValue("id")
-	if catID == "" {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "id path param required")
-		return
-	}
-
-	if err := h.svc.DeleteTarget(r.Context(), catID); err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// ChangeCategoryCurrency handles PUT /api/categories/{id}/currency
-// Resets all assigned budget rows when the currency changes.
+// ChangeCategoryCurrency handles PUT /api/categories/{id}/currency.
 func (h *BudgetHandler) ChangeCategoryCurrency(w http.ResponseWriter, r *http.Request) {
 	catID := r.PathValue("id")
 	if catID == "" {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "id path param required")
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "id required")
 		return
 	}
-
 	var body struct {
 		Currency string `json:"currency"`
 	}
@@ -206,69 +128,43 @@ func (h *BudgetHandler) ChangeCategoryCurrency(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "currency must be CRC or USD")
 		return
 	}
-
 	if err := h.svc.ChangeCategoryBudgetCurrency(r.Context(), catID, body.Currency); err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
-
 	writeJSON(w, http.StatusOK, map[string]any{"currency": body.Currency})
 }
 
-// budgetMonthToJSON converts a BudgetMonth model to JSON-serializable form
-func budgetMonthToJSON(bm *model.BudgetMonth) map[string]any {
-	groups := make([]map[string]any, len(bm.CategoryGroups))
-	for i, g := range bm.CategoryGroups {
-		cats := make([]map[string]any, len(g.Categories))
-		for j, c := range g.Categories {
-			var tJSON any
-			if c.Target != nil {
-				tJSON = map[string]any{
-					"type":     c.Target.Type,
-					"amount":   c.Target.Amount,
-					"deadline": c.Target.Deadline,
-				}
+func planMonthToJSON(pm *model.PlanMonth) map[string]any {
+	groups := make([]map[string]any, 0, len(pm.CategoryGroups))
+	for _, g := range pm.CategoryGroups {
+		cats := make([]map[string]any, 0, len(g.Categories))
+		for _, c := range g.Categories {
+			bd := make([]map[string]any, 0, len(c.ActivityBreakdown))
+			for _, e := range c.ActivityBreakdown {
+				bd = append(bd, map[string]any{"currency": e.Currency, "amount": e.Amount, "converted_amount": e.ConvertedAmount})
 			}
-			breakdownJSON := make([]map[string]any, 0)
-			for _, entry := range c.ActivityBreakdown {
-				breakdownJSON = append(breakdownJSON, map[string]any{
-					"currency":         entry.Currency,
-					"amount":           entry.Amount,
-					"converted_amount": entry.ConvertedAmount,
-				})
-			}
-			cats[j] = map[string]any{
-				"id":                 c.ID,
-				"name":               c.Name,
-				"currency":           c.Currency,
-				"assigned":           c.Assigned,
-				"activity":           c.Activity,
-				"carry_in":           c.CarryIn,
-				"available":          c.Available,
-				"underfunded":        c.Underfunded,
-				"target":             tJSON,
-				"activity_breakdown": breakdownJSON,
-			}
+			cats = append(cats, map[string]any{
+				"id": c.ID, "name": c.Name, "currency": c.Currency,
+				"flexibility": c.Flexibility, "rollover": c.Rollover,
+				"planned": c.Planned, "activity": c.Activity, "remaining": c.Remaining,
+				"rollover_balance": c.RolloverBalance, "activity_breakdown": bd,
+			})
 		}
-		groups[i] = map[string]any{
-			"id":         g.ID,
-			"name":       g.Name,
-			"assigned":   g.Assigned,
-			"activity":   g.Activity,
-			"available":  g.Available,
+		groups = append(groups, map[string]any{
+			"id": g.ID, "name": g.Name,
+			"planned": g.Planned, "activity": g.Activity, "remaining": g.Remaining,
 			"categories": cats,
-		}
+		})
 	}
 	return map[string]any{
-		"month":           bm.Month,
-		"ready_to_assign": bm.ReadyToAssign,
-		"rta_breakdown": map[string]any{
-			"crc_accounts":        bm.RTABreakdown.CRCAccounts,
-			"usd_accounts_in_crc": bm.RTABreakdown.USDAccountsCRC,
-			"usd_accounts_native": bm.RTABreakdown.USDNative,
-		},
-		"age_of_money":      bm.AgeOfMoney,
-		"total_underfunded": bm.TotalUnderfunded,
-		"category_groups":   groups,
+		"month": pm.Month, "mode": pm.Mode,
+		"expected_income": pm.ExpectedIncome, "flex_budget": pm.FlexBudget,
+		"planned_total": pm.PlannedTotal, "left_to_budget": pm.LeftToBudget,
+		"actual_income": pm.ActualIncome, "actual_spending": pm.ActualSpending, "actual_savings": pm.ActualSavings,
+		"fixed_planned": pm.FixedPlanned, "fixed_actual": pm.FixedActual,
+		"flexible_actual":     pm.FlexibleActual,
+		"non_monthly_planned": pm.NonMonthlyPlanned, "non_monthly_actual": pm.NonMonthlyActual,
+		"category_groups": groups,
 	}
 }
