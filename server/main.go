@@ -165,6 +165,7 @@ func main() {
 	// Reports
 	mux.HandleFunc("GET /api/reports/spending", reports.SpendingByGroup)
 	mux.HandleFunc("GET /api/reports/income-expense", reports.IncomeExpense)
+	mux.HandleFunc("GET /api/reports/savings", reports.SavingsRate)
 	mux.HandleFunc("GET /api/reports/net-worth", reports.NetWorth)
 
 	corsMiddleware := handler.CORS(cfg.CORSOrigin)
