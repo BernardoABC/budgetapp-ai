@@ -138,7 +138,7 @@ server/
 │   │   ├── accounts.go
 │   │   ├── transactions.go
 │   │   ├── categories.go
-│   │   ├── budgets.go         # Plan + category-currency handlers
+│   │   ├── budget.go          # Plan + category-currency handlers
 │   │   ├── settings.go        # Budget-mode setting handler
 │   │   ├── imports.go
 │   │   ├── exchange_rates.go
@@ -148,7 +148,7 @@ server/
 │   │   ├── account.go
 │   │   ├── transaction.go
 │   │   ├── category.go
-│   │   ├── plan.go            # PlanMonth, PlanCategory, PlanGroup
+│   │   ├── budget.go          # PlanMonth, PlanCategory, PlanGroup
 │   │   ├── import.go
 │   │   ├── exchange_rate.go
 │   │   └── payee_rule.go
