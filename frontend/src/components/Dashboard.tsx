@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { T, GROUP_COLORS } from '../theme';
 import type { Transaction, CategoryGroup } from '../api';
-import { fetchRecentTransactions, fetchAccounts, fetchBudget } from '../api';
+import { fetchRecentTransactions, fetchAccounts, fetchPlan } from '../api';
 
 interface Props {
   categoryGroups: CategoryGroup[];
@@ -76,9 +76,10 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
 
   const [netWorth, setNetWorth] = useState(0);
   const [thisMonthSpending, setThisMonthSpending] = useState(0);
-  const [readyToAssign, setReadyToAssign] = useState(0);
+  const [expectedIncomeView, setExpectedIncomeView] = useState(0);
+  const [leftToBudget, setLeftToBudget] = useState(0);
+  const [savingsRate, setSavingsRate] = useState(0);
   const [groupSpend, setGroupSpend] = useState<Array<{ name: string; spent: number; assigned: number; color?: string }>>([]);
-  const [overspent, setOverspent] = useState<Array<{ cat: string; available: number }>>([]);
 
   const currentYM = new Date().toISOString().slice(0, 7);
   const currentMonthLabel = new Date().toLocaleString('default', { month: 'long' });
@@ -89,9 +90,9 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
     Promise.all([
       fetchRecentTransactions(20),
       fetchAccounts().catch(err => { console.warn('fetchAccounts failed', err); return null; }),
-      fetchBudget(currentYM).catch(err => { console.warn('fetchBudget failed', err); return null; }),
+      fetchPlan(currentYM).catch(err => { console.warn('fetchPlan failed', err); return null; }),
     ])
-      .then(([txns, accts, budget]) => {
+      .then(([txns, accts, plan]) => {
         setTransactions(txns);
         setLoadingTxns(false);
 
@@ -100,24 +101,18 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
           setNetWorth(nw);
         }
 
-        if (budget) {
-          const spent = budget.category_groups.reduce((s, g) => s + (-g.activity), 0);
-          setThisMonthSpending(spent < 0 ? 0 : spent);
-          setReadyToAssign(budget.ready_to_assign);
-          const bars = budget.category_groups.map(g => ({
+        if (plan) {
+          setThisMonthSpending(plan.actual_spending);
+          setExpectedIncomeView(plan.expected_income);
+          setLeftToBudget(plan.left_to_budget);
+          setSavingsRate(plan.actual_income > 0 ? plan.actual_savings / plan.actual_income : 0);
+          const bars = plan.category_groups.map(g => ({
             name: g.name,
-            spent: -g.activity < 0 ? 0 : -g.activity,
-            assigned: g.assigned,
+            spent: g.activity < 0 ? -g.activity : 0,
+            assigned: g.planned,
             color: GROUP_COLORS[g.name],
           }));
           setGroupSpend(bars);
-          const alerts: Array<{ cat: string; available: number }> = [];
-          for (const g of budget.category_groups) {
-            for (const c of g.categories) {
-              if (c.available < 0) alerts.push({ cat: c.name, available: c.available });
-            }
-          }
-          setOverspent(alerts);
         }
       })
       .catch(err => {
@@ -135,7 +130,7 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
       <div style={st.cardRow}>
         <StatCard label="Net Worth" value={fmt(netWorth)} accent />
         <StatCard label={`Spent · ${currentMonthLabel}`} value={fmt(thisMonthSpending)} />
-        <StatCard label="Ready to Assign" value={fmt(readyToAssign)} sub="Unallocated funds" subColor={T.textDim} />
+        <StatCard label="Savings rate" value={`${Math.round(savingsRate * 100)}%`} sub={`Left to budget ${fmt(leftToBudget)}`} subColor={leftToBudget < 0 ? T.neg : T.textDim} />
       </div>
 
       <div style={st.twoCol}>
@@ -151,24 +146,23 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
 
         <div style={st.panel}>
           <div style={st.panelHeader}>
-            <span>Budget Alerts</span>
-            {overspent.length > 0 && <span style={st.alertBadge}>{overspent.length}</span>}
+            <span>This Month</span>
           </div>
-          <div style={{ padding: overspent.length ? '6px 0' : 0 }}>
-            {overspent.length === 0 ? (
-              <div style={st.noAlerts}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>✓</div>
-                Everything on track
-              </div>
-            ) : overspent.map(({ cat, available }) => (
-              <div key={cat} style={st.alertRow}>
-                <span style={st.alertIcon}>!</span>
-                <span style={st.alertCat}>{cat}</span>
-                <span style={st.alertAmt}>{fmt(available)}</span>
-              </div>
-            ))}
+          <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={st.monthRow}>
+              <span style={st.monthLabel}>Expected income</span>
+              <span style={st.monthVal}>{fmt(expectedIncomeView)}</span>
+            </div>
+            <div style={st.monthRow}>
+              <span style={st.monthLabel}>Left to budget</span>
+              <span style={{ ...st.monthVal, color: leftToBudget < 0 ? T.neg : undefined }}>{fmt(leftToBudget)}</span>
+            </div>
+            <div style={st.monthRow}>
+              <span style={st.monthLabel}>Savings rate</span>
+              <span style={st.monthVal}>{Math.round(savingsRate * 100)}%</span>
+            </div>
           </div>
-          <button onClick={() => onNavigate('budget')} style={st.panelCta}>Review budget →</button>
+          <button onClick={() => onNavigate('budget')} style={st.panelCta}>Review plan →</button>
         </div>
       </div>
 
@@ -242,12 +236,9 @@ const st = {
   barTrack:    { height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' },
   barFill:     { height: '100%', borderRadius: 4, transition: 'width 0.5s cubic-bezier(0.22,1,0.36,1)' },
   barAmt:      { fontSize: 12, fontFamily: T.mono, fontWeight: 500 },
-  alertBadge:  { background: T.negDim, color: T.neg, fontSize: 11, fontWeight: 700, borderRadius: 20, padding: '1px 8px', fontFamily: T.mono },
-  noAlerts:    { padding: '36px 18px', textAlign: 'center' as const, color: T.textDim, fontSize: 13, fontWeight: 500 },
-  alertRow:    { display: 'flex', alignItems: 'center', gap: 11, padding: '9px 18px' },
-  alertIcon:   { width: 20, height: 20, borderRadius: '50%', background: T.negDim, color: T.neg, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  alertCat:    { flex: 1, fontSize: 13, color: T.text, fontWeight: 600 },
-  alertAmt:    { fontSize: 12.5, fontFamily: T.mono, color: T.neg, fontWeight: 600 },
+  monthRow:    { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  monthLabel:  { fontSize: 13, color: T.textMid, fontWeight: 500 },
+  monthVal:    { fontSize: 13, fontFamily: T.mono, fontWeight: 600, color: T.text },
   table:       { width: '100%', borderCollapse: 'collapse' as const },
   th:          { padding: '9px 18px', fontSize: 10.5, fontWeight: 700, color: T.textDim, textAlign: 'left' as const, letterSpacing: '0.08em', textTransform: 'uppercase' as const, borderBottom: `1px solid ${T.border}` },
   tr:          { transition: 'background 0.1s' },
