@@ -598,16 +598,56 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   };
 
   const doQuickAssign = (strategy: 'underfunded' | 'reset' | 'lastMonth') => {
+    const capturedMonth = currentDisplayMonth;
+    const capturedYM = currentYM;
+    const capturedSnapshot = { ...(localBudget[capturedMonth] ?? {}) };
+
     if (strategy === 'lastMonth') {
-      copyPreviousBudget(currentYM)
+      const capturedCategoryIdByName = { ...categoryIdByName };
+      undoPush({
+        label: 'Copy last month',
+        undo: () => {
+          setLocalBudget(b => ({ ...b, [capturedMonth]: capturedSnapshot }));
+          Object.entries(capturedSnapshot).forEach(([cat, entry]) => {
+            const catId = capturedCategoryIdByName[cat];
+            if (catId) apiSetAssigned(capturedYM, catId, entry.assigned ?? 0).catch(err => toast.error(err.message));
+          });
+        },
+      });
+      copyPreviousBudget(capturedYM)
         .then(() => setFetchCounter(c => c + 1))
         .catch(err => toast.error(err.message));
       return;
     }
+
+    undoPush({
+      label: strategy === 'underfunded' ? 'Auto-assign underfunded' : 'Reset all',
+      undo: () => {
+        setLocalBudget(b => ({ ...b, [capturedMonth]: capturedSnapshot }));
+      },
+    });
     mergeAssigned(engineQuickAssign(strategy, dataT, state, null));
   };
 
   const handleMove = useCallback((fromCat: string, toCat: string, amount: number) => {
+    const capturedMonth = currentDisplayMonth;
+    const capturedYM = currentYM;
+    const capturedFromId = categoryIdByName[fromCat];
+    const capturedToId = categoryIdByName[toCat];
+    undoPush({
+      label: `Move money: ${fromCat} → ${toCat}`,
+      undo: () => {
+        setLocalBudget(b => {
+          const m = { ...(b[capturedMonth] ?? {}) };
+          m[fromCat] = { ...(m[fromCat] ?? {}), assigned: ((m[fromCat] ?? {}).assigned ?? 0) + amount };
+          m[toCat]   = { ...(m[toCat]   ?? {}), assigned: ((m[toCat]   ?? {}).assigned ?? 0) - amount };
+          return { ...b, [capturedMonth]: m };
+        });
+        if (capturedFromId && capturedToId) {
+          moveBudgetMoney(capturedYM, capturedToId, capturedFromId, amount).catch(err => toast.error(err.message));
+        }
+      },
+    });
     setLocalBudget(prev => {
       const m = { ...(prev[currentDisplayMonth] ?? {}) };
       m[fromCat] = { ...(m[fromCat] ?? {}), assigned: ((m[fromCat] ?? {}).assigned ?? 0) - amount };
@@ -627,11 +667,27 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         });
       });
     }
-  }, [currentDisplayMonth, currentYM, categoryIdByName]);
+  }, [currentDisplayMonth, currentYM, categoryIdByName, undoPush]);
 
   const toggleGroup = (gid: string) => setCollapsed(c => ({ ...c, [gid]: !c[gid] }));
 
   const renameCat = (gid: string, oldName: string, newName: string) => {
+    const catId = categoryIdByName[oldName];
+    const grp = groups.find(g => g.id === gid);
+    const sortOrder = grp ? grp.categories.indexOf(oldName) : 0;
+    undoPush({
+      label: `Rename '${oldName}'`,
+      undo: () => {
+        setGroups(gs => gs.map(g =>
+          g.id === gid ? { ...g, categories: g.categories.map(c => c === newName ? oldName : c) } : g
+        ));
+        if (catId) {
+          updateCategory(catId, { name: oldName, hidden: false, sort_order: sortOrder })
+            .then(() => onCategoriesChanged())
+            .catch(err => toast.error(err.message));
+        }
+      },
+    });
     setGroups(gs => gs.map(g =>
       g.id === gid
         ? { ...g, categories: g.categories.map(c => c === oldName ? newName : c) }
@@ -641,25 +697,55 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       if (!prev.has(oldName)) return prev;
       const next = new Set(prev); next.delete(oldName); next.add(newName); return next;
     });
-    setInspectorCat(newName);   // keep inspector open for the renamed category
-    const catId = categoryIdByName[oldName];
+    setInspectorCat(newName);
     if (catId) {
-      const grp = groups.find(g => g.id === gid);
-      const sortOrder = grp ? grp.categories.indexOf(oldName) : 0;
       updateCategory(catId, { name: newName, hidden: false, sort_order: sortOrder })
         .then(() => onCategoriesChanged())
         .catch(err => toast.error(err.message));
     }
   };
-  const reorderCat = (gid: string, idx: number, dir: number) => setGroups(gs => gs.map(g => {
-    if (g.id !== gid) return g;
-    const arr = [...g.categories]; const j = idx + dir;
-    if (j < 0 || j >= arr.length) return g;
-    [arr[idx], arr[j]] = [arr[j], arr[idx]];
-    return { ...g, categories: arr };
-  }));
+  const reorderCat = (gid: string, idx: number, dir: number) => {
+    undoPush({
+      label: 'Reorder category',
+      undo: () => {
+        setGroups(gs => gs.map(g => {
+          if (g.id !== gid) return g;
+          const arr = [...g.categories];
+          const j = idx + dir;
+          if (j < 0 || j >= arr.length) return g;
+          [arr[idx], arr[j]] = [arr[j], arr[idx]];
+          return { ...g, categories: arr };
+        }));
+      },
+    });
+    setGroups(gs => gs.map(g => {
+      if (g.id !== gid) return g;
+      const arr = [...g.categories];
+      const j = idx + dir;
+      if (j < 0 || j >= arr.length) return g;
+      [arr[idx], arr[j]] = [arr[j], arr[idx]];
+      return { ...g, categories: arr };
+    }));
+  };
 
   const handleReorderCat = useCallback((gid: string, fromIdx: number, toIdx: number) => {
+    const capturedCategoryIdByName = { ...categoryIdByName };
+    undoPush({
+      label: 'Reorder category',
+      undo: () => {
+        setGroups(gs => gs.map(g => {
+          if (g.id !== gid) return g;
+          const arr = [...g.categories];
+          const [moved] = arr.splice(toIdx, 1);
+          arr.splice(fromIdx, 0, moved);
+          arr.forEach((catName, idx) => {
+            const catId = capturedCategoryIdByName[catName];
+            if (catId) updateCategory(catId, { name: catName, hidden: false, sort_order: idx }).catch(err => toast.error(err.message));
+          });
+          return { ...g, categories: arr };
+        }));
+      },
+    });
     setGroups(gs => gs.map(g => {
       if (g.id !== gid) return g;
       const arr = [...g.categories];
@@ -671,8 +757,14 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       });
       return { ...g, categories: arr };
     }));
-  }, [categoryIdByName]);
-  const hideCat = (name: string) => setHidden(h => { const n = new Set(h); n.has(name) ? n.delete(name) : n.add(name); return n; });
+  }, [categoryIdByName, undoPush]);
+  const hideCat = (name: string) => {
+    undoPush({
+      label: hidden.has(name) ? `Unhide '${name}'` : `Hide '${name}'`,
+      undo: () => setHidden(h => { const n = new Set(h); n.has(name) ? n.delete(name) : n.add(name); return n; }),
+    });
+    setHidden(h => { const n = new Set(h); n.has(name) ? n.delete(name) : n.add(name); return n; });
+  };
   const deleteCat = (gid: string, name: string) => {
     const catId = categoryIdByName[name];
     setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
@@ -695,8 +787,33 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
       });
   };
-  const renameGroup = (gid: string, name: string) => setGroups(gs => gs.map(g => g.id === gid ? { ...g, name } : g));
-  const moveGroup = (idx: number, dir: number) => setGroups(gs => { const arr = [...gs]; const j = idx + dir; if (j < 0 || j >= arr.length) return gs; [arr[idx], arr[j]] = [arr[j], arr[idx]]; return arr; });
+  const renameGroup = (gid: string, name: string) => {
+    const prev = groups.find(g => g.id === gid)?.name ?? '';
+    undoPush({
+      label: `Rename group '${prev}'`,
+      undo: () => setGroups(gs => gs.map(g => g.id === gid ? { ...g, name: prev } : g)),
+    });
+    setGroups(gs => gs.map(g => g.id === gid ? { ...g, name } : g));
+  };
+  const moveGroup = (idx: number, dir: number) => {
+    undoPush({
+      label: 'Reorder group',
+      undo: () => setGroups(gs => {
+        const arr = [...gs];
+        const j = idx + dir;
+        if (j < 0 || j >= arr.length) return gs;
+        [arr[idx], arr[j]] = [arr[j], arr[idx]];
+        return arr;
+      }),
+    });
+    setGroups(gs => {
+      const arr = [...gs];
+      const j = idx + dir;
+      if (j < 0 || j >= arr.length) return gs;
+      [arr[idx], arr[j]] = [arr[j], arr[idx]];
+      return arr;
+    });
+  };
   const deleteGroup = (gid: string) => {
     setGroups(gs => gs.filter(g => g.id !== gid));
     deleteCategoryGroup(gid)
