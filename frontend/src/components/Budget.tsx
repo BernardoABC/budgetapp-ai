@@ -844,17 +844,53 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     });
   };
   const deleteGroup = (gid: string) => {
+    const grp = groups.find(g => g.id === gid);
+    if (!grp) return;
+    const capturedGroupName = grp.name;
+    const capturedGroupSortOrder = groups.findIndex(g => g.id === gid);
+    const capturedYM = currentYM;
+    const capturedMonth = currentDisplayMonth;
+    const capturedCats = grp.categories.map((name, i) => ({
+      name,
+      currency: (catCurrencies[name] ?? 'CRC') as 'CRC' | 'USD',
+      assigned: localBudget[capturedMonth]?.[name]?.assigned ?? 0,
+      sortOrder: i,
+    }));
+    undoPush({
+      label: `Delete group '${capturedGroupName}'`,
+      undo: async () => {
+        try {
+          const newGroup = await createCategoryGroup({ name: capturedGroupName, sort_order: capturedGroupSortOrder });
+          for (const cat of capturedCats) {
+            const newCat = await createCategory({ group_id: newGroup.id, name: cat.name, sort_order: cat.sortOrder, currency: cat.currency });
+            if (cat.assigned !== 0) {
+              await apiSetAssigned(capturedYM, newCat.id, cat.assigned);
+            }
+          }
+          onCategoriesChanged();
+        } catch (err: unknown) {
+          toast.error((err as Error).message);
+          onCategoriesChanged();
+        }
+      },
+    });
     setGroups(gs => gs.filter(g => g.id !== gid));
     deleteCategoryGroup(gid)
       .then(() => onCategoriesChanged())
-      .catch(err => {
-        toast.error(err.message);
-        onCategoriesChanged();
-      });
+      .catch(err => { toast.error(err.message); onCategoriesChanged(); });
   };
   const addGroup = () => {
     createCategoryGroup({ name: 'New Group', sort_order: groups.length })
       .then(g => {
+        undoPush({
+          label: `Add group 'New Group'`,
+          undo: () => {
+            setGroups(gs => gs.filter(grp => grp.id !== g.id));
+            deleteCategoryGroup(g.id)
+              .then(() => onCategoriesChanged())
+              .catch(err => { toast.error(err.message); onCategoriesChanged(); });
+          },
+        });
         setGroups(gs => [...gs, { id: g.id, name: g.name, categories: [] }]);
         onCategoriesChanged();
       })
