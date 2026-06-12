@@ -79,7 +79,7 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
   const [expectedIncomeView, setExpectedIncomeView] = useState(0);
   const [leftToBudget, setLeftToBudget] = useState(0);
   const [savingsRate, setSavingsRate] = useState(0);
-  const [groupSpend, setGroupSpend] = useState<Array<{ name: string; spent: number; assigned: number; color?: string }>>([]);
+  const [groupSpend, setGroupSpend] = useState<Array<{ name: string; spent: number; planned: number; color?: string }>>([]);
 
   const currentYM = new Date().toISOString().slice(0, 7);
   const currentMonthLabel = new Date().toLocaleString('default', { month: 'long' });
@@ -109,7 +109,7 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
           const bars = plan.category_groups.map(g => ({
             name: g.name,
             spent: g.activity < 0 ? -g.activity : 0,
-            assigned: g.planned,
+            planned: g.planned,
             color: GROUP_COLORS[g.name],
           }));
           setGroupSpend(bars);
@@ -140,7 +140,7 @@ export function Dashboard({ categoryGroups, fmt, onNavigate }: Props) {
             <span style={st.panelMeta}>{currentMonthLabel} {new Date().getFullYear()}</span>
           </div>
           <div style={{ padding: '14px 18px 6px' }}>
-            {groupSpend.map(g => <SpendingBar key={g.name} label={g.name} color={g.color ?? T.textMid} spent={g.spent} budget={g.assigned} fmt={fmt} />)}
+            {groupSpend.map(g => <SpendingBar key={g.name} label={g.name} color={g.color ?? T.textMid} spent={g.spent} budget={g.planned} fmt={fmt} />)}
           </div>
         </div>
 

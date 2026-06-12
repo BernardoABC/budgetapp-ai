@@ -12,7 +12,7 @@ Negative "left to budget" (over-planning) is valid and displayed in red — it i
 A single editable CRC amount stored per month in `monthly_plans.expected_income`. Represents what the user expects to receive that month. Inline-editable in the Spending Plan page header.
 
 ### Planned Amounts
-Each category can have a planned (budgeted) amount for a given month, stored in the `budgets` table (`assigned` column, reinterpreted). Amounts are in the category's native currency (CRC or USD). USD amounts are converted to CRC at the current exchange rate for cross-category totals.
+Each category can have a planned (budgeted) amount for a given month, stored in the `budgets` table (`planned` column). Amounts are in the category's native currency (CRC or USD). USD amounts are converted to CRC at the current exchange rate for cross-category totals.
 
 ### Left to Budget / Planned Savings
 ```
@@ -75,14 +75,14 @@ CREATE TABLE budgets (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     category_id UUID        NOT NULL REFERENCES categories(id),
     month       DATE        NOT NULL,  -- always the 1st of the month
-    assigned    BIGINT      NOT NULL DEFAULT 0,  -- planned amount, native currency centimos
+    planned     BIGINT      NOT NULL DEFAULT 0,  -- planned amount, native currency centimos
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(category_id, month)
 );
 ```
 
-`assigned` is now reinterpreted as the **planned** amount. The column name is unchanged for compatibility; the API and UI call it "planned" or "budgeted."
+The column was renamed `assigned` → `planned` in migration 011 to match the API and UI naming.
 
 ### monthly_plans table (migration 010)
 ```sql

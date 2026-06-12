@@ -36,9 +36,9 @@ func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.Plan
 	if err != nil {
 		return nil, fmt.Errorf("list groups: %w", err)
 	}
-	assigned, err := s.budgetRepo.GetAllAssignedUpToMonth(ctx, firstOfMonth)
+	plannedByCat, err := s.budgetRepo.GetAllPlannedUpToMonth(ctx, firstOfMonth)
 	if err != nil {
-		return nil, fmt.Errorf("get assigned: %w", err)
+		return nil, fmt.Errorf("get planned: %w", err)
 	}
 	activity, err := s.budgetRepo.GetAllActivityUpToMonth(ctx, lastOfMonth)
 	if err != nil {
@@ -74,7 +74,7 @@ func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.Plan
 		return amount
 	}
 
-	rollBalance := s.computeRolloverBalances(groups, assigned, activity, firstOfMonth)
+	rollBalance := s.computeRolloverBalances(groups, plannedByCat, activity, firstOfMonth)
 
 	pm := &model.PlanMonth{
 		Month:          month,
@@ -89,7 +89,7 @@ func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.Plan
 		}
 		pg := model.PlanGroup{ID: g.ID, Name: g.Name}
 		for _, c := range g.Categories {
-			planned := assigned[c.ID][firstOfMonth]
+			planned := plannedByCat[c.ID][firstOfMonth]
 			act := activity[c.ID][firstOfMonth]
 			remaining := planned + act
 
@@ -154,7 +154,7 @@ func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.Plan
 // regardless of the rollover flag). Negative balances carry as-is (no clamp).
 func (s *BudgetService) computeRolloverBalances(
 	groups []model.CategoryGroup,
-	assigned, activity map[string]map[string]int64,
+	plannedByCat, activity map[string]map[string]int64,
 	firstOfMonth string,
 ) map[string]int64 {
 	rollover := map[string]bool{}
@@ -170,7 +170,7 @@ func (s *BudgetService) computeRolloverBalances(
 	}
 
 	earliest := firstOfMonth
-	for _, mm := range assigned {
+	for _, mm := range plannedByCat {
 		for m := range mm {
 			if m < earliest {
 				earliest = m
@@ -190,7 +190,7 @@ func (s *BudgetService) computeRolloverBalances(
 	for catID := range rollover {
 		var acc int64
 		for _, m := range months {
-			acc += assigned[catID][m] + activity[catID][m]
+			acc += plannedByCat[catID][m] + activity[catID][m]
 		}
 		bal[catID] = acc
 	}
@@ -198,7 +198,7 @@ func (s *BudgetService) computeRolloverBalances(
 }
 
 func (s *BudgetService) SetPlanned(ctx context.Context, catID, month string, planned int64) error {
-	return s.budgetRepo.UpsertAssigned(ctx, catID, month+"-01", planned)
+	return s.budgetRepo.UpsertPlanned(ctx, catID, month+"-01", planned)
 }
 
 func (s *BudgetService) SetExpectedIncome(ctx context.Context, month string, amount int64) error {
@@ -214,18 +214,18 @@ func (s *BudgetService) SetFlexBudget(ctx context.Context, month string, amount 
 // from the previous month when the current month has none.
 func (s *BudgetService) CopyPrevious(ctx context.Context, month string) error {
 	prev := prevMonthStr(month)
-	prevAssigned, err := s.budgetRepo.GetAllAssignedUpToMonth(ctx, prev+"-01")
+	prevPlanned, err := s.budgetRepo.GetAllPlannedUpToMonth(ctx, prev+"-01")
 	if err != nil {
-		return fmt.Errorf("get prev assigned: %w", err)
+		return fmt.Errorf("get prev planned: %w", err)
 	}
 	prevKey := prev + "-01"
-	var entries []repository.BudgetAssignedEntry
-	for catID, mm := range prevAssigned {
+	var entries []repository.PlannedEntry
+	for catID, mm := range prevPlanned {
 		if v, ok := mm[prevKey]; ok && v > 0 {
-			entries = append(entries, repository.BudgetAssignedEntry{CategoryID: catID, Month: month + "-01", Assigned: v})
+			entries = append(entries, repository.PlannedEntry{CategoryID: catID, Month: month + "-01", Planned: v})
 		}
 	}
-	if err := s.budgetRepo.BulkInsertAssignedIfAbsent(ctx, entries); err != nil {
+	if err := s.budgetRepo.BulkInsertPlannedIfAbsent(ctx, entries); err != nil {
 		return err
 	}
 
@@ -254,7 +254,7 @@ func (s *BudgetService) ChangeCategoryBudgetCurrency(ctx context.Context, catID,
 	if err := s.catRepo.UpdateCategoryCurrency(ctx, catID, newCurrency); err != nil {
 		return fmt.Errorf("update category currency: %w", err)
 	}
-	return s.budgetRepo.ClearAllAssigned(ctx, catID)
+	return s.budgetRepo.ClearAllPlanned(ctx, catID)
 }
 
 func lastDay(ym string) string {

@@ -9,17 +9,17 @@ import (
 	"budgetapp/internal/testutil"
 )
 
-func TestBudgetRepo_UpsertAndGetAssigned(t *testing.T) {
+func TestBudgetRepo_UpsertAndGetPlanned(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	catID := testutil.SeedCategory(t, pool)
 	repo := repository.NewBudgetRepo(pool)
 	ctx := context.Background()
 
-	if err := repo.UpsertAssigned(ctx, catID, "2026-04-01", 120000); err != nil {
+	if err := repo.UpsertPlanned(ctx, catID, "2026-04-01", 120000); err != nil {
 		t.Fatal(err)
 	}
 
-	all, err := repo.GetAllAssignedUpToMonth(ctx, "2026-04-01")
+	all, err := repo.GetAllPlannedUpToMonth(ctx, "2026-04-01")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,22 +51,22 @@ func TestBudgetRepo_GetAllActivityUpToMonth(t *testing.T) {
 	}
 }
 
-func TestBudgetRepo_BulkInsertAssignedIfAbsent(t *testing.T) {
+func TestBudgetRepo_BulkInsertPlannedIfAbsent(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	catID1 := testutil.SeedCategory(t, pool)
 	catID2 := testutil.SeedCategory(t, pool)
 	repo := repository.NewBudgetRepo(pool)
 	ctx := context.Background()
 
-	entries := []repository.BudgetAssignedEntry{
-		{CategoryID: catID1, Month: "2026-04-01", Assigned: 50000},
-		{CategoryID: catID2, Month: "2026-04-01", Assigned: 80000},
+	entries := []repository.PlannedEntry{
+		{CategoryID: catID1, Month: "2026-04-01", Planned: 50000},
+		{CategoryID: catID2, Month: "2026-04-01", Planned: 80000},
 	}
-	if err := repo.BulkInsertAssignedIfAbsent(ctx, entries); err != nil {
+	if err := repo.BulkInsertPlannedIfAbsent(ctx, entries); err != nil {
 		t.Fatal(err)
 	}
 
-	all, err := repo.GetAllAssignedUpToMonth(ctx, "2026-04-01")
+	all, err := repo.GetAllPlannedUpToMonth(ctx, "2026-04-01")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,29 +154,29 @@ func TestBudgetRepo_GetActivityBreakdownForMonth(t *testing.T) {
 	}
 }
 
-func TestBudgetRepo_ClearAllAssigned(t *testing.T) {
+func TestBudgetRepo_ClearAllPlanned(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	repo := repository.NewBudgetRepo(pool)
 	ctx := context.Background()
 
 	catID := testutil.SeedCategory(t, pool)
-	if err := repo.UpsertAssigned(ctx, catID, "2026-07-01", 10000); err != nil {
-		t.Fatalf("UpsertAssigned: %v", err)
+	if err := repo.UpsertPlanned(ctx, catID, "2026-07-01", 10000); err != nil {
+		t.Fatalf("UpsertPlanned: %v", err)
 	}
-	if err := repo.UpsertAssigned(ctx, catID, "2026-08-01", 20000); err != nil {
-		t.Fatalf("UpsertAssigned: %v", err)
-	}
-
-	if err := repo.ClearAllAssigned(ctx, catID); err != nil {
-		t.Fatalf("ClearAllAssigned: %v", err)
+	if err := repo.UpsertPlanned(ctx, catID, "2026-08-01", 20000); err != nil {
+		t.Fatalf("UpsertPlanned: %v", err)
 	}
 
-	all, err := repo.GetAllAssignedUpToMonth(ctx, "2026-12-01")
+	if err := repo.ClearAllPlanned(ctx, catID); err != nil {
+		t.Fatalf("ClearAllPlanned: %v", err)
+	}
+
+	all, err := repo.GetAllPlannedUpToMonth(ctx, "2026-12-01")
 	if err != nil {
-		t.Fatalf("GetAllAssignedUpToMonth: %v", err)
+		t.Fatalf("GetAllPlannedUpToMonth: %v", err)
 	}
 	if len(all[catID]) != 0 {
-		t.Errorf("expected no assigned rows after clear, got %v", all[catID])
+		t.Errorf("expected no planned rows after clear, got %v", all[catID])
 	}
 }
 

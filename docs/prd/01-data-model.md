@@ -56,7 +56,7 @@ The database schema is the foundation of the entire application. It must support
 │ id (PK)          │       │ id (PK)          │       │ month (PK)       │
 │ category_id (FK) │       │ account_id (FK)  │       │ expected_income  │
 │ month (YYYY-MM)  │       │ filename         │       │ flex_budget      │
-│ assigned         │       │ imported_at      │       │ created_at       │
+│ planned          │       │ imported_at      │       │ created_at       │
 │ created_at       │       │ transaction_count│       │ updated_at       │
 │ updated_at       │       │ status           │       └──────────────────┘
 └──────────────────┘       └──────────────────┘       ┌──────────────────┐
@@ -180,14 +180,14 @@ Daily exchange rate snapshots for CRC↔USD conversion.
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
 
 ### budgets
-Monthly **planned amounts** per category (the spending plan). One row per category per month. The column is named `assigned` for historical reasons; the API and UI call it *planned/budgeted*.
+Monthly **planned amounts** per category (the spending plan). One row per category per month.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | id | UUID | PK | |
 | category_id | UUID | FK → categories, NOT NULL | |
 | month | DATE | NOT NULL | First day of the month (e.g., 2026-04-01) |
-| assigned | BIGINT | NOT NULL, DEFAULT 0 | Planned amount for this category this month (minor units, in the **category's native currency**) |
+| planned | BIGINT | NOT NULL, DEFAULT 0 | Planned amount for this category this month (minor units, in the **category's native currency**) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
 | updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
 

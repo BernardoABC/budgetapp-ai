@@ -34,64 +34,64 @@ type BudgetRepo struct{ pool *pgxpool.Pool }
 
 func NewBudgetRepo(pool *pgxpool.Pool) *BudgetRepo { return &BudgetRepo{pool: pool} }
 
-type BudgetAssignedEntry struct {
+type PlannedEntry struct {
 	CategoryID string
 	Month      string // YYYY-MM-DD (first of month)
-	Assigned   int64
+	Planned    int64
 }
 
-// GetAllAssignedUpToMonth returns all budget rows up to and including the given month.
-// Result: map[categoryID][YYYY-MM-01] = assigned.
-func (r *BudgetRepo) GetAllAssignedUpToMonth(ctx context.Context, month string) (map[string]map[string]int64, error) {
+// GetAllPlannedUpToMonth returns all budget rows up to and including the given month.
+// Result: map[categoryID][YYYY-MM-01] = planned.
+func (r *BudgetRepo) GetAllPlannedUpToMonth(ctx context.Context, month string) (map[string]map[string]int64, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT category_id::text, month::text, assigned
+		SELECT category_id::text, month::text, planned
 		FROM budgets
 		WHERE month <= $1::date
 	`, month)
 	if err != nil {
-		return nil, fmt.Errorf("get assigned up to %s: %w", month, err)
+		return nil, fmt.Errorf("get planned up to %s: %w", month, err)
 	}
 	defer rows.Close()
 	out := make(map[string]map[string]int64)
 	for rows.Next() {
 		var catID, m string
-		var assigned int64
-		if err := rows.Scan(&catID, &m, &assigned); err != nil {
-			return nil, fmt.Errorf("scan assigned: %w", err)
+		var planned int64
+		if err := rows.Scan(&catID, &m, &planned); err != nil {
+			return nil, fmt.Errorf("scan planned: %w", err)
 		}
 		if out[catID] == nil {
 			out[catID] = make(map[string]int64)
 		}
-		out[catID][m] = assigned
+		out[catID][m] = planned
 	}
 	return out, rows.Err()
 }
 
-// UpsertAssigned creates or updates the assigned amount for a category in a month.
-func (r *BudgetRepo) UpsertAssigned(ctx context.Context, categoryID, month string, assigned int64) error {
+// UpsertPlanned creates or updates the planned amount for a category in a month.
+func (r *BudgetRepo) UpsertPlanned(ctx context.Context, categoryID, month string, planned int64) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO budgets (category_id, month, assigned)
+		INSERT INTO budgets (category_id, month, planned)
 		VALUES ($1::uuid, $2::date, $3)
 		ON CONFLICT (category_id, month) DO UPDATE
-		SET assigned   = EXCLUDED.assigned,
+		SET planned    = EXCLUDED.planned,
 		    updated_at = NOW()
-	`, categoryID, month, assigned)
+	`, categoryID, month, planned)
 	if err != nil {
-		return fmt.Errorf("upsert assigned %s/%s: %w", categoryID, month, err)
+		return fmt.Errorf("upsert planned %s/%s: %w", categoryID, month, err)
 	}
 	return nil
 }
 
-// BulkInsertAssignedIfAbsent inserts budget rows only for categories that have no row yet.
-// Existing rows (including those with assigned = 0) are left untouched.
-// Use UpsertAssigned when you need to overwrite an existing value.
-func (r *BudgetRepo) BulkInsertAssignedIfAbsent(ctx context.Context, entries []BudgetAssignedEntry) error {
+// BulkInsertPlannedIfAbsent inserts budget rows only for categories that have no row yet.
+// Existing rows (including those with planned = 0) are left untouched.
+// Use UpsertPlanned when you need to overwrite an existing value.
+func (r *BudgetRepo) BulkInsertPlannedIfAbsent(ctx context.Context, entries []PlannedEntry) error {
 	for _, e := range entries {
 		_, err := r.pool.Exec(ctx, `
-			INSERT INTO budgets (category_id, month, assigned)
+			INSERT INTO budgets (category_id, month, planned)
 			VALUES ($1::uuid, $2::date, $3)
 			ON CONFLICT (category_id, month) DO NOTHING
-		`, e.CategoryID, e.Month, e.Assigned)
+		`, e.CategoryID, e.Month, e.Planned)
 		if err != nil {
 			return fmt.Errorf("bulk upsert %s/%s: %w", e.CategoryID, e.Month, err)
 		}
@@ -262,13 +262,13 @@ func (r *BudgetRepo) GetCashFlowByMonth(ctx context.Context, from, to string) ([
 	return out, rows.Err()
 }
 
-// ClearAllAssigned deletes all budget rows for a category (used when changing category currency).
-func (r *BudgetRepo) ClearAllAssigned(ctx context.Context, categoryID string) error {
+// ClearAllPlanned deletes all budget rows for a category (used when changing category currency).
+func (r *BudgetRepo) ClearAllPlanned(ctx context.Context, categoryID string) error {
 	_, err := r.pool.Exec(ctx,
 		`DELETE FROM budgets WHERE category_id = $1::uuid`, categoryID,
 	)
 	if err != nil {
-		return fmt.Errorf("clear assigned for %s: %w", categoryID, err)
+		return fmt.Errorf("clear planned for %s: %w", categoryID, err)
 	}
 	return nil
 }
