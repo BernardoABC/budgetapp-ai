@@ -15,7 +15,7 @@ func TestBudgetRepo_UpsertAndGetPlanned(t *testing.T) {
 	repo := repository.NewBudgetRepo(pool)
 	ctx := context.Background()
 
-	if err := repo.UpsertPlanned(ctx, catID, "2026-04-01", 120000); err != nil {
+	if err := repo.UpsertPlanned(ctx, catID, "2026-04-01", 120000, "CRC"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -23,8 +23,8 @@ func TestBudgetRepo_UpsertAndGetPlanned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if all[catID]["2026-04-01"] != 120000 {
-		t.Errorf("want 120000 got %d", all[catID]["2026-04-01"])
+	if all[catID]["2026-04-01"].Amount != 120000 {
+		t.Errorf("want 120000 got %d", all[catID]["2026-04-01"].Amount)
 	}
 }
 
@@ -59,8 +59,8 @@ func TestBudgetRepo_BulkInsertPlannedIfAbsent(t *testing.T) {
 	ctx := context.Background()
 
 	entries := []repository.PlannedEntry{
-		{CategoryID: catID1, Month: "2026-04-01", Planned: 50000},
-		{CategoryID: catID2, Month: "2026-04-01", Planned: 80000},
+		{CategoryID: catID1, Month: "2026-04-01", Planned: 50000, Currency: "CRC"},
+		{CategoryID: catID2, Month: "2026-04-01", Planned: 80000, Currency: "USD"},
 	}
 	if err := repo.BulkInsertPlannedIfAbsent(ctx, entries); err != nil {
 		t.Fatal(err)
@@ -70,8 +70,11 @@ func TestBudgetRepo_BulkInsertPlannedIfAbsent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if all[catID1]["2026-04-01"] != 50000 || all[catID2]["2026-04-01"] != 80000 {
+	if all[catID1]["2026-04-01"].Amount != 50000 || all[catID2]["2026-04-01"].Amount != 80000 {
 		t.Errorf("bulk upsert failed: got %v", all)
+	}
+	if all[catID1]["2026-04-01"].Currency != "CRC" || all[catID2]["2026-04-01"].Currency != "USD" {
+		t.Errorf("currency mismatch: %v", all)
 	}
 }
 
@@ -160,10 +163,10 @@ func TestBudgetRepo_ClearAllPlanned(t *testing.T) {
 	ctx := context.Background()
 
 	catID := testutil.SeedCategory(t, pool)
-	if err := repo.UpsertPlanned(ctx, catID, "2026-07-01", 10000); err != nil {
+	if err := repo.UpsertPlanned(ctx, catID, "2026-07-01", 10000, "CRC"); err != nil {
 		t.Fatalf("UpsertPlanned: %v", err)
 	}
-	if err := repo.UpsertPlanned(ctx, catID, "2026-08-01", 20000); err != nil {
+	if err := repo.UpsertPlanned(ctx, catID, "2026-08-01", 20000, "CRC"); err != nil {
 		t.Fatalf("UpsertPlanned: %v", err)
 	}
 
@@ -177,6 +180,28 @@ func TestBudgetRepo_ClearAllPlanned(t *testing.T) {
 	}
 	if len(all[catID]) != 0 {
 		t.Errorf("expected no planned rows after clear, got %v", all[catID])
+	}
+}
+
+func TestBudgetRepo_UpsertPlanned_PreservesCurrency(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	catID := testutil.SeedCategory(t, pool)
+	repo := repository.NewBudgetRepo(pool)
+	ctx := context.Background()
+
+	if err := repo.UpsertPlanned(ctx, catID, "2026-04-01", 8500, "USD"); err != nil {
+		t.Fatal(err)
+	}
+	all, err := repo.GetAllPlannedUpToMonth(ctx, "2026-04-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := all[catID]["2026-04-01"]
+	if row.Amount != 8500 {
+		t.Errorf("Amount: want 8500 got %d", row.Amount)
+	}
+	if row.Currency != "USD" {
+		t.Errorf("Currency: want USD got %q", row.Currency)
 	}
 }
 

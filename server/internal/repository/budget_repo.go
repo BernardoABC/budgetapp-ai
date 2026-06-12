@@ -34,17 +34,24 @@ type BudgetRepo struct{ pool *pgxpool.Pool }
 
 func NewBudgetRepo(pool *pgxpool.Pool) *BudgetRepo { return &BudgetRepo{pool: pool} }
 
+// PlannedRow is one row from the budgets table: amount + the currency it was entered in.
+type PlannedRow struct {
+	Amount   int64
+	Currency string
+}
+
 type PlannedEntry struct {
 	CategoryID string
 	Month      string // YYYY-MM-DD (first of month)
 	Planned    int64
+	Currency   string
 }
 
 // GetAllPlannedUpToMonth returns all budget rows up to and including the given month.
-// Result: map[categoryID][YYYY-MM-01] = planned.
-func (r *BudgetRepo) GetAllPlannedUpToMonth(ctx context.Context, month string) (map[string]map[string]int64, error) {
+// Result: map[categoryID][YYYY-MM-01] = PlannedRow{Amount, Currency}.
+func (r *BudgetRepo) GetAllPlannedUpToMonth(ctx context.Context, month string) (map[string]map[string]PlannedRow, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT category_id::text, month::text, planned
+		SELECT category_id::text, month::text, planned, currency
 		FROM budgets
 		WHERE month <= $1::date
 	`, month)
@@ -52,30 +59,31 @@ func (r *BudgetRepo) GetAllPlannedUpToMonth(ctx context.Context, month string) (
 		return nil, fmt.Errorf("get planned up to %s: %w", month, err)
 	}
 	defer rows.Close()
-	out := make(map[string]map[string]int64)
+	out := make(map[string]map[string]PlannedRow)
 	for rows.Next() {
-		var catID, m string
+		var catID, m, currency string
 		var planned int64
-		if err := rows.Scan(&catID, &m, &planned); err != nil {
+		if err := rows.Scan(&catID, &m, &planned, &currency); err != nil {
 			return nil, fmt.Errorf("scan planned: %w", err)
 		}
 		if out[catID] == nil {
-			out[catID] = make(map[string]int64)
+			out[catID] = make(map[string]PlannedRow)
 		}
-		out[catID][m] = planned
+		out[catID][m] = PlannedRow{Amount: planned, Currency: currency}
 	}
 	return out, rows.Err()
 }
 
-// UpsertPlanned creates or updates the planned amount for a category in a month.
-func (r *BudgetRepo) UpsertPlanned(ctx context.Context, categoryID, month string, planned int64) error {
+// UpsertPlanned creates or updates the planned amount and currency for a category in a month.
+func (r *BudgetRepo) UpsertPlanned(ctx context.Context, categoryID, month string, planned int64, currency string) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO budgets (category_id, month, planned)
-		VALUES ($1::uuid, $2::date, $3)
+		INSERT INTO budgets (category_id, month, planned, currency)
+		VALUES ($1::uuid, $2::date, $3, $4)
 		ON CONFLICT (category_id, month) DO UPDATE
 		SET planned    = EXCLUDED.planned,
+		    currency   = EXCLUDED.currency,
 		    updated_at = NOW()
-	`, categoryID, month, planned)
+	`, categoryID, month, planned, currency)
 	if err != nil {
 		return fmt.Errorf("upsert planned %s/%s: %w", categoryID, month, err)
 	}
@@ -87,11 +95,15 @@ func (r *BudgetRepo) UpsertPlanned(ctx context.Context, categoryID, month string
 // Use UpsertPlanned when you need to overwrite an existing value.
 func (r *BudgetRepo) BulkInsertPlannedIfAbsent(ctx context.Context, entries []PlannedEntry) error {
 	for _, e := range entries {
+		cur := e.Currency
+		if cur == "" {
+			cur = "CRC"
+		}
 		_, err := r.pool.Exec(ctx, `
-			INSERT INTO budgets (category_id, month, planned)
-			VALUES ($1::uuid, $2::date, $3)
+			INSERT INTO budgets (category_id, month, planned, currency)
+			VALUES ($1::uuid, $2::date, $3, $4)
 			ON CONFLICT (category_id, month) DO NOTHING
-		`, e.CategoryID, e.Month, e.Planned)
+		`, e.CategoryID, e.Month, e.Planned, cur)
 		if err != nil {
 			return fmt.Errorf("bulk upsert %s/%s: %w", e.CategoryID, e.Month, err)
 		}
