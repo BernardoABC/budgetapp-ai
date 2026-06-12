@@ -12,22 +12,23 @@ import (
 
 type BudgetService struct {
 	budgetRepo *repository.BudgetRepo
-	targetRepo *repository.TargetRepo
+	planRepo   *repository.MonthlyPlanRepo
 	catRepo    *repository.CategoryRepo
 	rateRepo   *repository.ExchangeRateRepo
+	settings   *repository.SettingsRepo
 }
 
 func NewBudgetService(
 	budgetRepo *repository.BudgetRepo,
-	targetRepo *repository.TargetRepo,
-	catRepo    *repository.CategoryRepo,
-	rateRepo   *repository.ExchangeRateRepo,
+	planRepo *repository.MonthlyPlanRepo,
+	catRepo *repository.CategoryRepo,
+	rateRepo *repository.ExchangeRateRepo,
+	settings *repository.SettingsRepo,
 ) *BudgetService {
-	return &BudgetService{budgetRepo: budgetRepo, targetRepo: targetRepo, catRepo: catRepo, rateRepo: rateRepo}
+	return &BudgetService{budgetRepo: budgetRepo, planRepo: planRepo, catRepo: catRepo, rateRepo: rateRepo, settings: settings}
 }
 
-// GetMonth returns a fully-computed BudgetMonth for the given "YYYY-MM" month string.
-func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.BudgetMonth, error) {
+func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.PlanMonth, error) {
 	firstOfMonth := month + "-01"
 	lastOfMonth := lastDay(month)
 
@@ -35,22 +36,14 @@ func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.Budg
 	if err != nil {
 		return nil, fmt.Errorf("list groups: %w", err)
 	}
-
-	targets, err := s.targetRepo.GetAll(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get targets: %w", err)
-	}
-
 	assigned, err := s.budgetRepo.GetAllAssignedUpToMonth(ctx, firstOfMonth)
 	if err != nil {
 		return nil, fmt.Errorf("get assigned: %w", err)
 	}
-
 	activity, err := s.budgetRepo.GetAllActivityUpToMonth(ctx, lastOfMonth)
 	if err != nil {
 		return nil, fmt.Errorf("get activity: %w", err)
 	}
-
 	breakdown, err := s.budgetRepo.GetActivityBreakdownForMonth(ctx, month)
 	if err != nil {
 		return nil, fmt.Errorf("get activity breakdown: %w", err)
@@ -60,246 +53,199 @@ func (s *BudgetService) GetMonth(ctx context.Context, month string) (*model.Budg
 		breakdownByCat[row.CategoryID] = append(breakdownByCat[row.CategoryID], row)
 	}
 
-	// Get today's exchange rate for RTA conversion; fall back to 500 if unavailable.
-	today := time.Now().Format("2006-01-02")
-	var currentRate float64 = 500
-	if rate, err := s.rateRepo.GetNearest(ctx, today); err == nil {
-		currentRate = rate.USDToCRC
+	plan, err := s.planRepo.Get(ctx, firstOfMonth)
+	if err != nil {
+		return nil, fmt.Errorf("get plan: %w", err)
+	}
+	mode, err := s.settings.GetWithDefault(ctx, "budget_mode", "category")
+	if err != nil {
+		return nil, fmt.Errorf("get budget mode: %w", err)
 	}
 
-	// Collect all non-system category IDs.
-	var allCatIDs []string
+	today := time.Now().Format("2006-01-02")
+	var rate float64 = 500
+	if r, err := s.rateRepo.GetNearest(ctx, today); err == nil {
+		rate = r.USDToCRC
+	}
+	toCRC := func(amount int64, currency string) int64 {
+		if currency == "USD" {
+			return int64(math.Round(float64(amount) * rate))
+		}
+		return amount
+	}
+
+	rollBalance := s.computeRolloverBalances(groups, assigned, activity, firstOfMonth)
+
+	pm := &model.PlanMonth{
+		Month:          month,
+		Mode:           mode,
+		ExpectedIncome: plan.ExpectedIncome,
+		FlexBudget:     plan.FlexBudget,
+	}
+
+	for _, g := range groups {
+		if g.IsSystem {
+			continue
+		}
+		pg := model.PlanGroup{ID: g.ID, Name: g.Name}
+		for _, c := range g.Categories {
+			planned := assigned[c.ID][firstOfMonth]
+			act := activity[c.ID][firstOfMonth]
+			remaining := planned + act
+
+			var bd []model.ActivityEntry
+			for _, row := range breakdownByCat[c.ID] {
+				bd = append(bd, model.ActivityEntry{Currency: row.TxnCurrency, Amount: row.Amount, ConvertedAmount: row.ConvertedAmount})
+			}
+
+			pc := model.PlanCategory{
+				ID: c.ID, Name: c.Name, Currency: c.Currency,
+				Flexibility: c.Flexibility, Rollover: c.Rollover,
+				Planned: planned, Activity: act, Remaining: remaining,
+				RolloverBalance: rollBalance[c.ID], ActivityBreakdown: bd,
+			}
+
+			plannedCRC := toCRC(planned, c.Currency)
+			actCRC := toCRC(act, c.Currency)
+			pm.PlannedTotal += plannedCRC
+			pg.Planned += plannedCRC
+			pg.Activity += actCRC
+			pg.Remaining += toCRC(remaining, c.Currency)
+
+			spendingCRC := int64(0)
+			if actCRC < 0 {
+				spendingCRC = -actCRC
+			}
+			switch c.Flexibility {
+			case "fixed":
+				pm.FixedPlanned += plannedCRC
+				pm.FixedActual += spendingCRC
+			case "non_monthly":
+				pm.NonMonthlyPlanned += plannedCRC
+				pm.NonMonthlyActual += spendingCRC
+			default: // flexible
+				pm.FlexibleActual += spendingCRC
+			}
+
+			pg.Categories = append(pg.Categories, pc)
+		}
+		pm.CategoryGroups = append(pm.CategoryGroups, pg)
+	}
+
+	pm.LeftToBudget = pm.ExpectedIncome - pm.PlannedTotal
+
+	income, err := s.budgetRepo.GetActualIncomeForMonth(ctx, month)
+	if err != nil {
+		return nil, fmt.Errorf("actual income: %w", err)
+	}
+	spending, err := s.budgetRepo.GetActualSpendingForMonth(ctx, month)
+	if err != nil {
+		return nil, fmt.Errorf("actual spending: %w", err)
+	}
+	pm.ActualIncome = income
+	pm.ActualSpending = spending
+	pm.ActualSavings = income - spending
+
+	return pm, nil
+}
+
+// computeRolloverBalances sums Planned+Activity over every month up to firstOfMonth
+// for rollover categories. Negative balances carry as-is (no clamp).
+func (s *BudgetService) computeRolloverBalances(
+	groups []model.CategoryGroup,
+	assigned, activity map[string]map[string]int64,
+	firstOfMonth string,
+) map[string]int64 {
+	rollover := map[string]bool{}
 	for _, g := range groups {
 		if g.IsSystem {
 			continue
 		}
 		for _, c := range g.Categories {
-			allCatIDs = append(allCatIDs, c.ID)
+			if c.Rollover {
+				rollover[c.ID] = true
+			}
 		}
 	}
 
-	// Determine earliest month across all data.
 	earliest := firstOfMonth
-	for _, monthMap := range assigned {
-		for m := range monthMap {
+	for _, mm := range assigned {
+		for m := range mm {
 			if m < earliest {
 				earliest = m
 			}
 		}
 	}
-	for _, monthMap := range activity {
-		for m := range monthMap {
+	for _, mm := range activity {
+		for m := range mm {
 			if m < earliest {
 				earliest = m
 			}
 		}
 	}
-
 	months := monthRange(earliest, firstOfMonth)
 
-	// Rollover loop — carry is in each category's native currency.
-	carry := make(map[string]int64)
-	carryInForTarget := make(map[string]int64)
-
-	for _, m := range months {
-		nextCarry := make(map[string]int64)
-		for _, catID := range allCatIDs {
-			a := int64(0)
-			if assignedByMonth, ok := assigned[catID]; ok {
-				a = assignedByMonth[m]
-			}
-			act := int64(0)
-			if actByMonth, ok := activity[catID]; ok {
-				act = actByMonth[m]
-			}
-			ci := carry[catID]
-			avail := ci + a + act
-
-			if m == firstOfMonth {
-				carryInForTarget[catID] = ci
-			}
-
-			if avail > 0 {
-				nextCarry[catID] = avail
-			} else {
-				nextCarry[catID] = 0
-			}
+	bal := map[string]int64{}
+	for catID := range rollover {
+		var acc int64
+		for _, m := range months {
+			acc += assigned[catID][m] + activity[catID][m]
 		}
-		carry = nextCarry
+		bal[catID] = acc
 	}
-
-	// Get balance split by currency for RTA.
-	balances, err := s.budgetRepo.GetOnBudgetBalanceByCurrency(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get on-budget balance: %w", err)
-	}
-
-	outflow30d, err := s.budgetRepo.GetOutflow30Days(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get outflow 30 days: %w", err)
-	}
-
-	// Convert USD account balance to CRC for unified RTA.
-	usdInCRC := int64(math.Round(float64(balances.USD) * currentRate))
-	totalBalanceCRC := balances.CRC + usdInCRC
-
-	// Build response and compute totalAvailableCRC (all categories converted to CRC).
-	var totalUnderfunded int64
-	var totalAvailableCRC int64
-	var groupBudgets []model.CategoryGroupBudget
-
-	for _, g := range groups {
-		if g.IsSystem {
-			continue
-		}
-		gb := model.CategoryGroupBudget{
-			ID:   g.ID,
-			Name: g.Name,
-		}
-		for _, c := range g.Categories {
-			ci := carryInForTarget[c.ID]
-			a := int64(0)
-			if assignedByMonth, ok := assigned[c.ID]; ok {
-				a = assignedByMonth[firstOfMonth]
-			}
-			act := int64(0)
-			if actByMonth, ok := activity[c.ID]; ok {
-				act = actByMonth[firstOfMonth]
-			}
-			avail := ci + a + act
-
-			// Convert this category's available to CRC for totalAvailableCRC.
-			if c.Currency == "USD" {
-				totalAvailableCRC += int64(math.Round(float64(avail) * currentRate))
-			} else {
-				totalAvailableCRC += avail
-			}
-
-			target := targets[c.ID]
-			underfunded := computeUnderfunded(target, a, avail, month)
-
-			// Build activity breakdown entries.
-			var actBreakdown []model.ActivityEntry
-			for _, row := range breakdownByCat[c.ID] {
-				actBreakdown = append(actBreakdown, model.ActivityEntry{
-					Currency:        row.TxnCurrency,
-					Amount:          row.Amount,
-					ConvertedAmount: row.ConvertedAmount,
-				})
-			}
-
-			cb := model.CategoryBudget{
-				ID:                c.ID,
-				Name:              c.Name,
-				Currency:          c.Currency,
-				Assigned:          a,
-				Activity:          act,
-				CarryIn:           ci,
-				Available:         avail,
-				Target:            target,
-				Underfunded:       underfunded,
-				ActivityBreakdown: actBreakdown,
-			}
-
-			// Group subtotals in CRC.
-			if c.Currency == "USD" {
-				gb.Assigned += int64(math.Round(float64(a) * currentRate))
-				gb.Activity += int64(math.Round(float64(act) * currentRate))
-				gb.Available += int64(math.Round(float64(avail) * currentRate))
-			} else {
-				gb.Assigned += a
-				gb.Activity += act
-				gb.Available += avail
-			}
-
-			gb.Categories = append(gb.Categories, cb)
-			totalUnderfunded += underfunded
-		}
-		groupBudgets = append(groupBudgets, gb)
-	}
-
-	rta := totalBalanceCRC - totalAvailableCRC
-
-	var aom *int
-	if outflow30d > 0 {
-		days := int(totalBalanceCRC * 30 / outflow30d)
-		if days < 0 {
-			days = 0
-		}
-		aom = &days
-	}
-
-	return &model.BudgetMonth{
-		Month:         month,
-		ReadyToAssign: rta,
-		RTABreakdown: model.RTABreakdown{
-			CRCAccounts:    balances.CRC,
-			USDAccountsCRC: usdInCRC,
-			USDNative:      balances.USD,
-		},
-		AgeOfMoney:       aom,
-		TotalUnderfunded: totalUnderfunded,
-		CategoryGroups:   groupBudgets,
-	}, nil
+	return bal
 }
 
-// SetAssigned creates or updates the assigned amount for a category in a month.
-func (s *BudgetService) SetAssigned(ctx context.Context, catID, month string, assigned int64) error {
-	return s.budgetRepo.UpsertAssigned(ctx, catID, month+"-01", assigned)
+func (s *BudgetService) SetPlanned(ctx context.Context, catID, month string, planned int64) error {
+	return s.budgetRepo.UpsertAssigned(ctx, catID, month+"-01", planned)
 }
 
-// CopyPrevious copies assigned values from the previous month to the current month,
-// only for categories that had a positive assignment and have no current-month row yet.
+func (s *BudgetService) SetExpectedIncome(ctx context.Context, month string, amount int64) error {
+	return s.planRepo.SetExpectedIncome(ctx, month+"-01", amount)
+}
+
+func (s *BudgetService) SetFlexBudget(ctx context.Context, month string, amount int64) error {
+	return s.planRepo.SetFlexBudget(ctx, month+"-01", amount)
+}
+
+// CopyPrevious copies planned amounts from the previous month (only for categories
+// with a positive planned value and no current-month row) and seeds expected income
+// from the previous month when the current month has none.
 func (s *BudgetService) CopyPrevious(ctx context.Context, month string) error {
-	prevMonth := prevMonthStr(month)
-	prevAssigned, err := s.budgetRepo.GetAllAssignedUpToMonth(ctx, prevMonth+"-01")
+	prev := prevMonthStr(month)
+	prevAssigned, err := s.budgetRepo.GetAllAssignedUpToMonth(ctx, prev+"-01")
 	if err != nil {
 		return fmt.Errorf("get prev assigned: %w", err)
 	}
-
+	prevKey := prev + "-01"
 	var entries []repository.BudgetAssignedEntry
-	prevKey := prevMonth + "-01"
-	for catID, monthMap := range prevAssigned {
-		if v, ok := monthMap[prevKey]; ok && v > 0 {
-			entries = append(entries, repository.BudgetAssignedEntry{
-				CategoryID: catID,
-				Month:      month + "-01",
-				Assigned:   v,
-			})
+	for catID, mm := range prevAssigned {
+		if v, ok := mm[prevKey]; ok && v > 0 {
+			entries = append(entries, repository.BudgetAssignedEntry{CategoryID: catID, Month: month + "-01", Assigned: v})
 		}
 	}
-
-	return s.budgetRepo.BulkInsertAssignedIfAbsent(ctx, entries)
-}
-
-// Move atomically transfers funds between two categories in the same month.
-// Returns an error if the categories have different currencies.
-func (s *BudgetService) Move(ctx context.Context, month, fromCatID, toCatID string, amount int64) error {
-	if amount <= 0 {
-		return fmt.Errorf("amount must be positive, got %d", amount)
+	if err := s.budgetRepo.BulkInsertAssignedIfAbsent(ctx, entries); err != nil {
+		return err
 	}
-	currencies, err := s.catRepo.GetCurrencies(ctx, []string{fromCatID, toCatID})
+
+	cur, err := s.planRepo.Get(ctx, month+"-01")
 	if err != nil {
-		return fmt.Errorf("get category currencies: %w", err)
+		return err
 	}
-	if currencies[fromCatID] != currencies[toCatID] {
-		return fmt.Errorf("cannot move money between categories with different currencies (%s vs %s)",
-			currencies[fromCatID], currencies[toCatID])
+	if cur.ExpectedIncome == 0 {
+		prevPlan, err := s.planRepo.Get(ctx, prevKey)
+		if err != nil {
+			return err
+		}
+		if prevPlan.ExpectedIncome > 0 {
+			if err := s.planRepo.SetExpectedIncome(ctx, month+"-01", prevPlan.ExpectedIncome); err != nil {
+				return err
+			}
+		}
 	}
-	return s.budgetRepo.AtomicMove(ctx, fromCatID, toCatID, month+"-01", amount)
+	return nil
 }
 
-// UpsertTarget creates or replaces a target for a category.
-func (s *BudgetService) UpsertTarget(ctx context.Context, catID string, t model.Target) error {
-	return s.targetRepo.Upsert(ctx, catID, t)
-}
-
-// DeleteTarget removes a target for a category.
-func (s *BudgetService) DeleteTarget(ctx context.Context, catID string) error {
-	return s.targetRepo.Delete(ctx, catID)
-}
-
-// ChangeCategoryBudgetCurrency updates a category's currency and clears all its assigned budget rows.
 func (s *BudgetService) ChangeCategoryBudgetCurrency(ctx context.Context, catID, newCurrency string) error {
 	if newCurrency != "CRC" && newCurrency != "USD" {
 		return fmt.Errorf("currency must be CRC or USD")
@@ -308,33 +254,6 @@ func (s *BudgetService) ChangeCategoryBudgetCurrency(ctx context.Context, catID,
 		return fmt.Errorf("update category currency: %w", err)
 	}
 	return s.budgetRepo.ClearAllAssigned(ctx, catID)
-}
-
-// computeUnderfunded calculates how much more needs to be assigned to meet the target this month.
-func computeUnderfunded(t *model.Target, assigned, available int64, currentMonth string) int64 {
-	if t == nil {
-		return 0
-	}
-	switch t.Type {
-	case "monthly":
-		return max(0, t.Amount-assigned)
-	case "refill":
-		return max(0, t.Amount-available)
-	case "savings":
-		if t.Deadline == nil {
-			return 0
-		}
-		if available >= t.Amount {
-			return 0
-		}
-		mr := monthsUntil(currentMonth+"-01", *t.Deadline)
-		if mr <= 0 {
-			mr = 1
-		}
-		need := (t.Amount - available + int64(mr) - 1) / int64(mr)
-		return max(0, need-assigned)
-	}
-	return 0
 }
 
 func lastDay(ym string) string {
@@ -362,12 +281,4 @@ func monthRange(start, end string) []string {
 		cur = t.Format("2006-01-02")
 	}
 	return months
-}
-
-func monthsUntil(from, to string) int {
-	var fy, fm, fd int
-	var ty, tm, td int
-	fmt.Sscanf(from, "%d-%d-%d", &fy, &fm, &fd)
-	fmt.Sscanf(to, "%d-%d-%d", &ty, &tm, &td)
-	return (ty-fy)*12 + (tm - fm)
 }
