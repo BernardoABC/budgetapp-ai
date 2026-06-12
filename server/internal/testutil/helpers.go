@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -256,7 +257,10 @@ func SeedTransactionWithCurrency(t *testing.T, pool *pgxpool.Pool, accountID, ca
 	return id
 }
 
-var idCounter int64
+// idCounter starts at wall-clock nanoseconds so concurrently running test
+// binaries (go test ./... runs packages in parallel against the shared test DB)
+// don't generate colliding TestGroup-N names.
+var idCounter = time.Now().UnixNano()
 
 func randomID() int64 {
 	idCounter++
