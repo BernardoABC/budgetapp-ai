@@ -511,6 +511,20 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   }, [state.cats]);
 
   const handleSaveAssigned = useCallback((cat: string, value: number) => {
+    const prevAssigned = localBudget[currentDisplayMonth]?.[cat]?.assigned ?? 0;
+    const capturedMonth = currentDisplayMonth;
+    const capturedYM = currentYM;
+    const capturedCatId = categoryIdByName[cat];
+    undoPush({
+      label: `Assign ${cat}`,
+      undo: () => {
+        setLocalBudget(b => ({
+          ...b,
+          [capturedMonth]: { ...b[capturedMonth], [cat]: { ...(b[capturedMonth]?.[cat] ?? {}), assigned: prevAssigned } },
+        }));
+        if (capturedCatId) apiSetAssigned(capturedYM, capturedCatId, prevAssigned).catch(err => toast.error(err.message));
+      },
+    });
     setLocalBudget(prev => ({
       ...prev,
       [currentDisplayMonth]: {
@@ -522,7 +536,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     if (catId) {
       apiSetAssigned(currentYM, catId, value).catch(err => toast.error(err.message));
     }
-  }, [currentDisplayMonth, currentYM, categoryIdByName]);
+  }, [currentDisplayMonth, currentYM, categoryIdByName, localBudget, undoPush]);
 
   const toggleCatSelection = useCallback((name: string) => {
     setSelectedCats(prev => {
