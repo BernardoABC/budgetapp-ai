@@ -183,7 +183,7 @@ function GroupBlock(props: GroupBlockProps) {
           <span style={{ width: 8, height: 8, borderRadius: 2.5, background: color, marginRight: 2 }} />
           {editMode ? (
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
-              <InlineRename value={group.name} onCommit={v => onRenameGroup(group.id, v)} style={{ fontWeight: 700, fontSize: 13 }} />
+              <InlineRename value={group.name} onCommit={v => onRenameGroup(group.id, v)} style={{ fontWeight: 700, fontSize: 12 }} />
               <span style={st.reorder}>
                 <button onClick={() => onMoveGroup(gidx, -1)} style={st.iconBtn}>▲</button>
                 <button onClick={() => onMoveGroup(gidx, 1)} style={st.iconBtn}>▼</button>
@@ -359,7 +359,7 @@ function FlexEditRow({ c, fmt, onSavePlanned, toDisplay, toRaw, showRollover }:
       <span style={st.flexRowName}>{c.cat}</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         {showRollover && <span style={st.flexAccrued} title="Accumulated funds">↻ {fmt(c.rolloverBalance)}</span>}
-        <span style={{ fontSize: 12.5, fontFamily: T.mono, color: spent > 0 ? T.neg : T.textDim, minWidth: 70, textAlign: 'right' as const }}>{fmt(spent)}</span>
+        <span style={{ fontSize: 15, fontFamily: T.mono, color: spent > 0 ? T.neg : T.textDim, minWidth: 70, textAlign: 'right' as const }}>{fmt(spent)}</span>
         <div style={{ minWidth: 110, display: 'flex', justifyContent: 'flex-end' }}>
           <BudgetCell value={c.planned} onSave={v => onSavePlanned(c.cat, v)} fmt={fmt} toDisplay={toDisplay} toRaw={toRaw} />
         </div>
@@ -939,7 +939,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
             <div style={st.flexSectionHead}>
               <span style={st.flexSectionTitle}>Flexible</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 12, fontFamily: T.mono, color: flexOver ? T.neg : T.textMid }}>{fmt(server?.flexible_actual ?? 0)} <span style={{ color: T.textFaint }}>spent</span></span>
+                <span style={{ fontSize: 14, fontFamily: T.mono, color: flexOver ? T.neg : T.textMid }}>{fmt(server?.flexible_actual ?? 0)} <span style={{ color: T.textFaint }}>spent</span></span>
                 <BudgetCell value={flexBudget} onSave={handleSaveFlexBudget} fmt={fmt} toDisplay={toDisplayFn} toRaw={toRawFn} />
               </div>
             </div>
@@ -950,7 +950,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
               flexibleCats.map(c => (
                 <div key={c.cat} style={st.flexRow}>
                   <span style={st.flexRowName}>{c.cat}</span>
-                  <span style={{ fontSize: 12.5, fontFamily: T.mono, color: c.activity < 0 ? T.neg : T.textDim }}>{fmtMonth(-c.activity)}</span>
+                  <span style={{ fontSize: 15, fontFamily: T.mono, color: c.activity < 0 ? T.neg : T.textDim }}>{fmtMonth(-c.activity)}</span>
                 </div>
               ))}
           </div>
@@ -1035,8 +1035,8 @@ const st = {
   curMonth:    { fontSize: 16, fontWeight: 700, color: T.text, letterSpacing: '-0.02em' },
   summaryHeader:{ flex: 1, display: 'flex', alignItems: 'stretch', gap: 14, background: `linear-gradient(135deg, ${T.accentDim}, transparent)`, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: '9px 22px', minWidth: 360, flexWrap: 'wrap' as const },
   headerStat:  { display: 'flex', flexDirection: 'column' as const, justifyContent: 'center', gap: 3, minWidth: 96 },
-  headerStatLabel: { fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: '0.08em', textTransform: 'uppercase' as const },
-  headerStatValue: { fontSize: 16, fontWeight: 700, fontFamily: T.mono, letterSpacing: '-0.02em', lineHeight: 1.1, color: T.text },
+  headerStatLabel: { fontSize: 9, fontWeight: 700, color: T.textDim, letterSpacing: '0.08em', textTransform: 'uppercase' as const },
+  headerStatValue: { fontSize: 21, fontWeight: 700, fontFamily: T.mono, letterSpacing: '-0.02em', lineHeight: 1.1, color: T.text },
   modeToggle:  { display: 'flex', gap: 3, alignItems: 'center', marginLeft: 'auto', background: T.surface, border: `1px solid ${T.border}`, borderRadius: 9, padding: 3, alignSelf: 'center' },
   modePill:    { padding: '6px 13px', fontSize: 12, fontWeight: 600, background: 'none', border: 'none', borderRadius: 6, cursor: 'pointer', color: T.textDim, transition: 'all 0.12s' },
   modePillOn:  { background: T.accentDim, color: 'var(--accent)' },
@@ -1046,24 +1046,24 @@ const st = {
   checkLabel:  { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textMid, fontWeight: 600, cursor: 'pointer' },
   tableWrap:   { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, overflow: 'hidden', boxShadow: T.shadow },
   table:       { width: '100%', borderCollapse: 'collapse' as const },
-  th:          { padding: '12px 16px', fontSize: 10.5, fontWeight: 700, color: T.textDim, letterSpacing: '0.09em', textTransform: 'uppercase' as const, borderBottom: `1px solid ${T.border}`, background: 'rgba(255,255,255,0.015)' },
+  th:          { padding: '12px 16px', fontSize: 9, fontWeight: 700, color: T.textDim, letterSpacing: '0.09em', textTransform: 'uppercase' as const, borderBottom: `1px solid ${T.border}`, background: 'rgba(255,255,255,0.015)' },
   groupRow:    { background: 'rgba(255,255,255,0.025)', userSelect: 'none' as const },
-  groupCell:   { padding: '11px 16px', fontSize: 13, fontWeight: 700, color: T.text, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' },
-  groupNum:    { padding: '11px 16px', fontSize: 12.5, fontWeight: 600, textAlign: 'right' as const, fontFamily: T.mono, color: T.text, borderBottom: `1px solid ${T.border}` },
+  groupCell:   { padding: '11px 16px', fontSize: 12, fontWeight: 700, color: T.text, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' },
+  groupNum:    { padding: '11px 16px', fontSize: 16, fontWeight: 700, textAlign: 'right' as const, fontFamily: T.mono, color: T.text, borderBottom: `1px solid ${T.border}` },
   chevron:     { display: 'flex', color: T.textDim, transition: 'transform 0.15s' },
   catRow:      { transition: 'background 0.1s' },
-  catCell:     { fontSize: 13, fontWeight: 500, borderBottom: `1px solid ${T.borderSoft}`, verticalAlign: 'middle' as const },
-  catName:     { background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: T.sans, textAlign: 'left' as const },
-  rolloverChip:{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent)', fontFamily: T.mono, background: T.accentDim, padding: '1px 7px', borderRadius: 5 },
+  catCell:     { fontSize: 12, fontWeight: 500, borderBottom: `1px solid ${T.borderSoft}`, verticalAlign: 'middle' as const },
+  catName:     { background: 'none', border: 'none', padding: 0, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: T.sans, textAlign: 'left' as const },
+  rolloverChip:{ fontSize: 10, fontWeight: 600, color: 'var(--accent)', fontFamily: T.mono, background: T.accentDim, padding: '1px 7px', borderRadius: 5 },
   barRowWrap:  { display: 'flex', alignItems: 'center', gap: 10 },
   barTrack:    { flex: 1, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' },
   barFill:     { height: '100%', borderRadius: 3, transition: 'width 0.5s cubic-bezier(0.22,1,0.36,1)' },
-  barPct:      { fontSize: 11, fontFamily: T.mono, color: T.textDim, fontWeight: 500, flexShrink: 0, width: 36, textAlign: 'right' as const },
-  numCell:     { fontSize: 12.5, textAlign: 'right' as const, fontFamily: T.mono, borderBottom: `1px solid ${T.borderSoft}`, color: T.textMid },
+  barPct:      { fontSize: 10, fontFamily: T.mono, color: T.textDim, fontWeight: 500, flexShrink: 0, width: 36, textAlign: 'right' as const },
+  numCell:     { fontSize: 15, textAlign: 'right' as const, fontFamily: T.mono, borderBottom: `1px solid ${T.borderSoft}`, color: T.textMid },
   cellClickable:{ display: 'inline-flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, cursor: 'text', padding: '4px 8px', borderRadius: 6, transition: 'background 0.1s', minWidth: 90, marginLeft: 'auto', color: T.text },
   cellHovered: { background: T.accentDim, boxShadow: `inset 0 0 0 1px ${T.borderHi}` },
   pencil:      { color: 'var(--accent)', display: 'flex', transition: 'opacity 0.1s' },
-  cellInput:   { width: 96, textAlign: 'right' as const, border: `1px solid var(--accent)`, borderRadius: 6, padding: '4px 8px', fontSize: 12.5, fontFamily: T.mono, background: T.surface2, color: T.text, boxShadow: '0 0 0 3px var(--accent-dim)' },
+  cellInput:   { width: 96, textAlign: 'right' as const, border: `1px solid var(--accent)`, borderRadius: 6, padding: '4px 8px', fontSize: 14, fontFamily: T.mono, background: T.surface2, color: T.text, boxShadow: '0 0 0 3px var(--accent-dim)' },
   renameInput: { padding: '4px 8px', fontSize: 13, border: `1px solid var(--accent)`, borderRadius: 6, background: T.surface2, color: T.text, fontFamily: T.sans, width: 150 },
   reorder:     { display: 'inline-flex', flexDirection: 'column' as const, gap: 1 },
   iconBtn:     { background: T.surface, border: `1px solid ${T.border}`, borderRadius: 4, color: T.textDim, cursor: 'pointer', fontSize: 8, lineHeight: 1, padding: '2px 4px' },
@@ -1075,11 +1075,11 @@ const st = {
   check:       { accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer', display: 'block' as const },
   flexSection: { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, boxShadow: T.shadow, padding: '16px 20px', marginBottom: 16 },
   flexSectionHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingBottom: 10, borderBottom: `1px solid ${T.border}` },
-  flexSectionTitle:{ fontSize: 13, fontWeight: 800, color: T.text, letterSpacing: '-0.01em' },
-  flexSectionSums: { fontSize: 12.5, fontFamily: T.mono, color: T.textMid },
+  flexSectionTitle:{ fontSize: 12, fontWeight: 800, color: T.text, letterSpacing: '-0.01em' },
+  flexSectionSums: { fontSize: 14, fontFamily: T.mono, color: T.textMid },
   flexHeaderRow:{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10, fontWeight: 700, color: T.textDim, letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '0 0 6px' },
   flexRow:     { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${T.borderSoft}` },
-  flexRowName: { fontSize: 13, fontWeight: 500, color: T.textMid },
-  flexAccrued: { fontSize: 11, fontWeight: 600, color: 'var(--accent)', fontFamily: T.mono, minWidth: 70, textAlign: 'right' as const },
+  flexRowName: { fontSize: 12, fontWeight: 500, color: T.textMid },
+  flexAccrued: { fontSize: 13, fontWeight: 600, color: 'var(--accent)', fontFamily: T.mono, minWidth: 70, textAlign: 'right' as const },
   flexEmpty:   { fontSize: 12.5, color: T.textDim, padding: '10px 0', fontStyle: 'italic' as const },
 };
