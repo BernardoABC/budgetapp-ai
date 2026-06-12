@@ -608,6 +608,10 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         ? { ...g, categories: g.categories.map(c => c === oldName ? newName : c) }
         : g
     ));
+    setSelectedCats(prev => {
+      if (!prev.has(oldName)) return prev;
+      const next = new Set(prev); next.delete(oldName); next.add(newName); return next;
+    });
     setInspectorCat(newName);   // keep inspector open for the renamed category
     const catId = categoryIdByName[oldName];
     if (catId) {
@@ -643,6 +647,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   const deleteCat = (gid: string, name: string) => {
     const catId = categoryIdByName[name];
     setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
+    setSelectedCats(prev => { if (!prev.has(name)) return prev; const next = new Set(prev); next.delete(name); return next; });
     if (catId) {
       deleteCategory(catId)
         .then(() => onCategoriesChanged())
@@ -779,7 +784,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
             </div>
           )}
           <div style={{ ...st.tableWrap, display: 'flex', alignItems: 'stretch', overflow: 'visible' }}>
-            <div style={{ flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', borderRadius: `${T.radius} 0 0 ${T.radius}` }}>
+            <div style={{ flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', borderRadius: `${T.radius} 0 0 ${T.radius}`, borderRight: `1px solid ${T.border}` }}>
               <table style={st.table}>
                 <thead>
                   <tr>

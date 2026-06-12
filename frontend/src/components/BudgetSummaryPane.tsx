@@ -45,7 +45,7 @@ function StatCard({ label, value, color }: { label: string; value: string; color
 }
 
 const sp = {
-  pane:      { width: 220, flexShrink: 0, padding: '16px 14px', display: 'flex', flexDirection: 'column' as const, gap: 10, borderLeft: `1px solid ${T.border}`, borderRadius: `0 ${T.radius} ${T.radius} 0` },
+  pane:      { width: 220, flexShrink: 0, padding: '16px 14px', display: 'flex', flexDirection: 'column' as const, gap: 10, borderRadius: `0 ${T.radius} ${T.radius} 0` },
   labelRow:  { marginBottom: 2 },
   label:     { fontSize: 9, fontWeight: 700, color: T.textDim, letterSpacing: '.08em', textTransform: 'uppercase' as const },
   selLine:   { fontSize: 11, color: T.textMid, fontWeight: 600, lineHeight: 1.4, marginBottom: 4 },
