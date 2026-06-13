@@ -167,9 +167,12 @@ function GroupBlock(props: GroupBlockProps) {
 
   const commitAdd = () => { if (newCat.trim()) { onAddCat(group.id, newCat.trim(), newCatCurrency); setNewCat(''); setNewCatCurrency('CRC'); setAdding(false); } };
 
+  const isIncome = !!group.is_income;
+  const incomeAccentStyle: React.CSSProperties = isIncome ? { borderLeft: '3px solid #22c55e' } : {};
+
   return (
     <>
-      <tr style={st.groupRow}>
+      <tr style={{ ...st.groupRow, ...incomeAccentStyle }}>
         <td style={st.checkCell}>
           <input
             ref={groupCheckRef}
@@ -208,7 +211,6 @@ function GroupBlock(props: GroupBlockProps) {
 
       {!collapsed && visibleCats.map(cat => {
         const c: PlanCatState = catState[cat] ?? { cat, id: '', currency: 'CRC', plannedCurrency: 'CRC', flexibility: 'flexible', rollover: false, planned: 0, activity: 0, remaining: 0, rolloverBalance: 0 };
-        const isIncome = !!group.is_income;
         // For income rows: "over" means income not yet received (remaining > 0); bar shows receipt progress
         const over = isIncome ? false : c.remaining < 0;
         const spent = isIncome ? Math.max(c.activity, 0) : Math.abs(Math.min(c.activity, 0));
@@ -244,7 +246,7 @@ function GroupBlock(props: GroupBlockProps) {
 
         return (
           <React.Fragment key={cat}>
-            <tr style={{ ...st.catRow, background: rowBg, opacity: isHidden ? 0.45 : 1, cursor: editMode ? 'default' : 'text', ...dragRowStyle }}
+            <tr style={{ ...st.catRow, background: rowBg, opacity: isHidden ? 0.45 : 1, cursor: editMode ? 'default' : 'text', ...dragRowStyle, ...incomeAccentStyle }}
               onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}
               onClick={editMode ? undefined : () => { if (dragHappened.current) { dragHappened.current = false; return; } cellRefs.current[cat]?.startEdit(); }}
               {...dragHandlers}>
@@ -329,7 +331,7 @@ function GroupBlock(props: GroupBlockProps) {
                 ? <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.remaining > 0 ? T.warn : c.remaining < 0 ? T.pos : T.textDim }}>{fmt(c.remaining)}</td>
                 : <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.remaining < 0 ? T.neg : T.text }}>{fmt(c.remaining)}</td>}
             </tr>
-            <tr style={{ background: rowBg, cursor: editMode ? 'default' : 'text' }} onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}
+            <tr style={{ background: rowBg, cursor: editMode ? 'default' : 'text', ...incomeAccentStyle }} onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}
               onClick={editMode ? undefined : () => { if (dragHappened.current) { dragHappened.current = false; return; } cellRefs.current[cat]?.startEdit(); }}
               {...dragHandlers}>
               <td colSpan={5} style={{ padding: '0 16px ' + rowPad, borderBottom: `1px solid ${T.borderSoft}` }}>
@@ -404,7 +406,6 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   const currentDisplayMonth = toDisplayMonth(currentYM);
   const [server, setServer] = useState<PlanMonthAPI | null>(null);
   const [localPlanned, setLocalPlanned] = useState<Record<string, number> | null>(null);
-  const [expectedIncome, setExpectedIncome] = useState(0);
   const [mode, setMode] = useState<'category' | 'flex'>('category');
   const [flexBudget, setFlexBudget] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -455,7 +456,6 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     fetchPlan(currentYM)
       .then(data => {
         setServer(data);
-        setExpectedIncome(data.expected_income);
         setFlexBudget(data.flex_budget);
         setLocalPlanned(null);
         setBudgetError(null);
@@ -469,11 +469,9 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
 
   const state: PlanState = useMemo(() => computePlan({
     groups: server?.category_groups ?? [],
-    expectedIncome,
-    rate,
     localPlanned,
     nameById,
-  }), [server, expectedIncome, rate, localPlanned, nameById]);
+  }), [server, localPlanned, nameById]);
 
   const catCurrencies = useMemo<Record<string, string>>(() => {
     const out: Record<string, string> = {};
@@ -540,7 +538,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   const handleCopyPrevious = useCallback(() => {
     copyPreviousPlan(currentYM)
       .then(() => fetchPlan(currentYM))
-      .then(data => { setServer(data); setExpectedIncome(data.expected_income); setFlexBudget(data.flex_budget); setLocalPlanned(null); })
+      .then(data => { setServer(data); setFlexBudget(data.flex_budget); setLocalPlanned(null); })
       .catch(err => toast.error(err.message));
   }, [currentYM, toast]);
 
@@ -915,7 +913,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
 
         <div style={st.summaryHeader}>
           <HeaderStat label="Expected income">
-            <span style={{ color: T.pos }}>{fmt(expectedIncome)}</span>
+            <span style={{ color: T.pos }}>{fmt(state.expectedIncome)}</span>
           </HeaderStat>
           <HeaderStat label="Planned"><span>{fmt(state.plannedTotalCRC)}</span></HeaderStat>
           <HeaderStat label="Left to budget">
@@ -1009,7 +1007,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
                   </tr>
                 </thead>
                 <tbody>
-                  {groups.map((g, gi) => (
+                  {[...groups].sort((a, b) => (b.is_income ? 1 : 0) - (a.is_income ? 1 : 0)).map((g, gi) => (
                     <GroupBlock key={g.id} group={g} gidx={gi} color={colorFor(g.name, gi)} catState={state.cats}
                       collapsed={!!collapsed[g.id]} onToggle={() => toggleGroup(g.id)} fmt={fmtMonth} onSavePlanned={handleSavePlanned}
                       onOpenInspector={setInspectorCat} inspectorCat={inspectorCat} rowPad={rowPad} editMode={editMode} hidden={hidden} showHidden={showHidden}
