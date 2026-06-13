@@ -8,7 +8,7 @@ import type { SummaryStats } from './BudgetSummaryPane';
 import type { CategoryGroup, PlanMonthAPI } from '../api';
 import type { PlanState, PlanCatState } from '../engine';
 import {
-  fetchPlan, setPlanned as apiSetPlanned, copyPreviousPlan, setExpectedIncome as apiSetIncome,
+  fetchPlan, setPlanned as apiSetPlanned, copyPreviousPlan,
   setFlexBudget as apiSetFlexBudget, fetchBudgetMode, setBudgetMode as apiSetBudgetMode,
   createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate,
   changeCategoryCurrency,
@@ -521,15 +521,6 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     });
   }, [state, categoryIdByName, currentYM, toast, undoPush]);
 
-  const handleSaveIncome = useCallback((value: number) => {
-    const prev = expectedIncome;
-    setExpectedIncome(value);
-    apiSetIncome(currentYM, value).catch(err => toast.error(err.message));
-    undoPush({
-      label: 'Expected income',
-      undo: () => { setExpectedIncome(prev); apiSetIncome(currentYM, prev).catch(() => {}); },
-    });
-  }, [expectedIncome, currentYM, toast, undoPush]);
 
   const handleSaveFlexBudget = useCallback((value: number) => {
     const prev = flexBudget;

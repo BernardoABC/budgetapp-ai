@@ -65,6 +65,7 @@ export interface CategoryGroupAPI {
   sort_order: number;
   hidden: boolean;
   is_system: boolean;
+  is_income: boolean;
   categories: CategoryItemAPI[];
 }
 
