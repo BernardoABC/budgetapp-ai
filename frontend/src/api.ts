@@ -328,6 +328,7 @@ export async function fetchCategoryGroups(): Promise<CategoryGroup[]> {
   return apiGroups.map(g => ({
     id:   g.id,
     name: g.name,
+    is_income: g.is_income,
     categories: g.categories.map(c => c.name),
   }));
 }
@@ -482,12 +483,6 @@ export async function setPlanned(month: string, categoryId: string, amount: numb
   });
 }
 
-export async function setExpectedIncome(month: string, amount: number): Promise<void> {
-  await apiFetch(`/plan/${month}/income`, {
-    method: 'PUT',
-    body: JSON.stringify({ amount: Math.round(amount * 100) }),
-  });
-}
 
 export async function setFlexBudget(month: string, amount: number): Promise<void> {
   await apiFetch(`/plan/${month}/flex-budget`, {
