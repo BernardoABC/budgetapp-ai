@@ -155,6 +155,43 @@ func TestPlanService_NonMonthlyAccumulatesWithoutRolloverFlag(t *testing.T) {
 	}
 }
 
+func TestPlanService_ChangeCategoryCurrency_PreservesPlanned(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	svc := service.NewPlanService(
+		repository.NewBudgetRepo(pool),
+		repository.NewMonthlyPlanRepo(pool),
+		repository.NewCategoryRepo(pool),
+		repository.NewExchangeRateRepo(pool),
+		repository.NewSettingsRepo(pool),
+	)
+	budgetRepo := repository.NewBudgetRepo(pool)
+	ctx := context.Background()
+
+	catID := testutil.SeedCategory(t, pool)
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM budgets WHERE category_id=$1::uuid`, catID)
+	})
+
+	if err := svc.SetPlanned(ctx, catID, "2026-05", 300000); err != nil {
+		t.Fatalf("SetPlanned: %v", err)
+	}
+	if err := svc.ChangeCategoryCurrency(ctx, catID, "USD"); err != nil {
+		t.Fatalf("ChangeCategoryCurrency: %v", err)
+	}
+
+	all, err := budgetRepo.GetAllPlannedUpToMonth(ctx, "2026-05-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := all[catID]["2026-05-01"]
+	if row.Amount != 300000 {
+		t.Errorf("planned amount must be preserved: got %d, want 300000", row.Amount)
+	}
+	if row.Currency != "CRC" {
+		t.Errorf("row currency must stay CRC (original): got %q", row.Currency)
+	}
+}
+
 func TestPlanService_GetMonth_Empty(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	svc := service.NewPlanService(

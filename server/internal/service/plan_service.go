@@ -89,7 +89,8 @@ func (s *PlanService) GetMonth(ctx context.Context, month string) (*model.PlanMo
 		}
 		pg := model.PlanGroup{ID: g.ID, Name: g.Name}
 		for _, c := range g.Categories {
-			planned := plannedByCat[c.ID][firstOfMonth]
+			plannedRow := plannedByCat[c.ID][firstOfMonth]
+			planned := plannedRow.Amount
 			act := activity[c.ID][firstOfMonth]
 			remaining := planned + act
 
@@ -105,7 +106,7 @@ func (s *PlanService) GetMonth(ctx context.Context, month string) (*model.PlanMo
 				RolloverBalance: rollBalance[c.ID], ActivityBreakdown: bd,
 			}
 
-			plannedCRC := toCRC(planned, c.Currency)
+			plannedCRC := toCRC(planned, plannedRow.Currency)
 			actCRC := toCRC(act, c.Currency)
 			pm.PlannedTotal += plannedCRC
 			pg.Planned += plannedCRC
@@ -154,7 +155,8 @@ func (s *PlanService) GetMonth(ctx context.Context, month string) (*model.PlanMo
 // regardless of the rollover flag). Negative balances carry as-is (no clamp).
 func (s *PlanService) computeRolloverBalances(
 	groups []model.CategoryGroup,
-	plannedByCat, activity map[string]map[string]int64,
+	plannedByCat map[string]map[string]repository.PlannedRow,
+	activity map[string]map[string]int64,
 	firstOfMonth string,
 ) map[string]int64 {
 	rollover := map[string]bool{}
@@ -190,7 +192,7 @@ func (s *PlanService) computeRolloverBalances(
 	for catID := range rollover {
 		var acc int64
 		for _, m := range months {
-			acc += plannedByCat[catID][m] + activity[catID][m]
+			acc += plannedByCat[catID][m].Amount + activity[catID][m]
 		}
 		bal[catID] = acc
 	}
@@ -198,7 +200,15 @@ func (s *PlanService) computeRolloverBalances(
 }
 
 func (s *PlanService) SetPlanned(ctx context.Context, catID, month string, planned int64) error {
-	return s.budgetRepo.UpsertPlanned(ctx, catID, month+"-01", planned)
+	currencies, err := s.catRepo.GetCurrencies(ctx, []string{catID})
+	if err != nil {
+		return fmt.Errorf("get category currency: %w", err)
+	}
+	currency := currencies[catID]
+	if currency == "" {
+		currency = "CRC"
+	}
+	return s.budgetRepo.UpsertPlanned(ctx, catID, month+"-01", planned, currency)
 }
 
 func (s *PlanService) SetExpectedIncome(ctx context.Context, month string, amount int64) error {
@@ -221,8 +231,10 @@ func (s *PlanService) CopyPrevious(ctx context.Context, month string) error {
 	prevKey := prev + "-01"
 	var entries []repository.PlannedEntry
 	for catID, mm := range prevPlanned {
-		if v, ok := mm[prevKey]; ok && v > 0 {
-			entries = append(entries, repository.PlannedEntry{CategoryID: catID, Month: month + "-01", Planned: v})
+		if row, ok := mm[prevKey]; ok && row.Amount > 0 {
+			entries = append(entries, repository.PlannedEntry{
+				CategoryID: catID, Month: month + "-01", Planned: row.Amount, Currency: row.Currency,
+			})
 		}
 	}
 	if err := s.budgetRepo.BulkInsertPlannedIfAbsent(ctx, entries); err != nil {
@@ -251,10 +263,7 @@ func (s *PlanService) ChangeCategoryCurrency(ctx context.Context, catID, newCurr
 	if newCurrency != "CRC" && newCurrency != "USD" {
 		return fmt.Errorf("currency must be CRC or USD")
 	}
-	if err := s.catRepo.UpdateCategoryCurrency(ctx, catID, newCurrency); err != nil {
-		return fmt.Errorf("update category currency: %w", err)
-	}
-	return s.budgetRepo.ClearAllPlanned(ctx, catID)
+	return s.catRepo.UpdateCategoryCurrency(ctx, catID, newCurrency)
 }
 
 func lastDay(ym string) string {
