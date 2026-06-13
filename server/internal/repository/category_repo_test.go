@@ -53,6 +53,31 @@ func TestCategoryRepo_CreateCategory_Currency(t *testing.T) {
 	}
 }
 
+func TestCategoryRepo_ListGroups_IncomeFlag(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	repo := repository.NewCategoryRepo(pool)
+	ctx := context.Background()
+
+	gid := testutil.SeedIncomeGroup(t, pool)
+
+	groups, err := repo.ListGroups(ctx)
+	if err != nil {
+		t.Fatalf("ListGroups: %v", err)
+	}
+	var found *model.CategoryGroup
+	for i := range groups {
+		if groups[i].ID == gid {
+			found = &groups[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("income group not found in ListGroups result")
+	}
+	if !found.IsIncome {
+		t.Errorf("IsIncome = false, want true")
+	}
+}
+
 func TestCategoryRepo_UpdateRolloverAndFlexibility(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	repo := repository.NewCategoryRepo(pool)

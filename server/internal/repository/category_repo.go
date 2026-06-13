@@ -15,7 +15,7 @@ func NewCategoryRepo(pool *pgxpool.Pool) *CategoryRepo { return &CategoryRepo{po
 
 func (r *CategoryRepo) ListGroups(ctx context.Context) ([]model.CategoryGroup, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT g.id::text, g.name, g.sort_order, g.hidden, g.is_system,
+		SELECT g.id::text, g.name, g.sort_order, g.hidden, g.is_system, g.is_income,
 		       c.id::text, c.name, c.hidden, c.sort_order, c.is_system, c.currency,
 		       c.rollover, c.flexibility
 		FROM category_groups g
@@ -33,7 +33,7 @@ func (r *CategoryRepo) ListGroups(ctx context.Context) ([]model.CategoryGroup, e
 	for rows.Next() {
 		var gID, gName string
 		var gSort int
-		var gHidden, gSystem bool
+		var gHidden, gSystem, gIncome bool
 		var cID, cName *string
 		var cHidden *bool
 		var cSort *int
@@ -42,14 +42,14 @@ func (r *CategoryRepo) ListGroups(ctx context.Context) ([]model.CategoryGroup, e
 		var cRollover *bool
 		var cFlexibility *string
 
-		if err := rows.Scan(&gID, &gName, &gSort, &gHidden, &gSystem,
+		if err := rows.Scan(&gID, &gName, &gSort, &gHidden, &gSystem, &gIncome,
 			&cID, &cName, &cHidden, &cSort, &cSystem, &cCurrency, &cRollover, &cFlexibility); err != nil {
 			return nil, fmt.Errorf("scan category row: %w", err)
 		}
 
 		if _, ok := groupMap[gID]; !ok {
 			groupMap[gID] = &model.CategoryGroup{
-				ID: gID, Name: gName, SortOrder: gSort, Hidden: gHidden, IsSystem: gSystem,
+				ID: gID, Name: gName, SortOrder: gSort, Hidden: gHidden, IsSystem: gSystem, IsIncome: gIncome,
 			}
 			order = append(order, gID)
 		}
