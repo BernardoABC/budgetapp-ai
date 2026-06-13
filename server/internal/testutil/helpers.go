@@ -285,6 +285,9 @@ func SeedCategoryInGroup(t *testing.T, pool *pgxpool.Pool, groupID string) strin
 	if err != nil {
 		t.Fatalf("SeedCategoryInGroup: %v", err)
 	}
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM categories WHERE id = $1::uuid`, id)
+	})
 	return id
 }
 
