@@ -57,26 +57,6 @@ func (h *PlanHandler) SetPlanned(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"planned": body.Planned})
 }
 
-func (h *PlanHandler) SetIncome(w http.ResponseWriter, r *http.Request) {
-	month := r.PathValue("month")
-	if !monthRe.MatchString(month) {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "month must be YYYY-MM")
-		return
-	}
-	var body struct {
-		Amount int64 `json:"amount"`
-	}
-	if err := readJSON(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
-		return
-	}
-	if err := h.svc.SetExpectedIncome(r.Context(), month, body.Amount); err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"amount": body.Amount})
-}
-
 func (h *PlanHandler) SetFlexBudget(w http.ResponseWriter, r *http.Request) {
 	month := r.PathValue("month")
 	if !monthRe.MatchString(month) {
