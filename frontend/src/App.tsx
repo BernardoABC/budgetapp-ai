@@ -14,7 +14,7 @@ import { CashFlow } from './components/CashFlow';
 import { ToastProvider } from './components/Toast';
 
 
-const TWEAK_DEFAULTS = { accent: 'mint' as AccentKey, density: 'comfortable' };
+const TWEAK_DEFAULTS = { accent: 'mint' as AccentKey, density: 'comfortable', usdBadge: 'indigo' as AccentKey, crcBadge: 'amber' as AccentKey };
 
 applyAccent(TWEAK_DEFAULTS.accent);
 
@@ -29,7 +29,7 @@ function fmt(amount: number, displayCurrency: string, rate: number, txnCurrency 
   return (amount < 0 ? '-' : '') + '₡' + Math.round(crc).toLocaleString('en-US');
 }
 
-interface Tweaks { accent: AccentKey; density: string; }
+interface Tweaks { accent: AccentKey; density: string; usdBadge: AccentKey; crcBadge: AccentKey; }
 
 function TweaksPanel({ tweaks, updateTweak, onClose }: { tweaks: Tweaks; updateTweak: (k: keyof Tweaks, v: string) => void; onClose: () => void }) {
   return (
@@ -58,6 +58,24 @@ function TweaksPanel({ tweaks, updateTweak, onClose }: { tweaks: Tweaks; updateT
             ))}
           </div>
         </div>
+        <div>
+          <div style={twk.label}>USD Badge</div>
+          <div style={{ display: 'flex', gap: 9 }}>
+            {(Object.entries(ACCENTS) as [AccentKey, typeof ACCENTS[AccentKey]][]).map(([k, a]) => (
+              <button key={k} onClick={() => updateTweak('usdBadge', k)} title={k}
+                style={{ width: 26, height: 26, borderRadius: '50%', background: a.c, border: 'none', cursor: 'pointer', boxShadow: tweaks.usdBadge === k ? `0 0 0 2px ${T.surface2}, 0 0 0 4px ${a.c}, 0 0 12px ${a.glow}` : 'none', transition: 'box-shadow 0.15s' }} />
+            ))}
+          </div>
+        </div>
+        <div>
+          <div style={twk.label}>CRC Badge</div>
+          <div style={{ display: 'flex', gap: 9 }}>
+            {(Object.entries(ACCENTS) as [AccentKey, typeof ACCENTS[AccentKey]][]).map(([k, a]) => (
+              <button key={k} onClick={() => updateTweak('crcBadge', k)} title={k}
+                style={{ width: 26, height: 26, borderRadius: '50%', background: a.c, border: 'none', cursor: 'pointer', boxShadow: tweaks.crcBadge === k ? `0 0 0 2px ${T.surface2}, 0 0 0 4px ${a.c}, 0 0 12px ${a.glow}` : 'none', transition: 'box-shadow 0.15s' }} />
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -83,7 +101,7 @@ function App() {
         const idMap: Record<string, string> = {};
         rawGroups.forEach(g => g.categories.forEach(c => { idMap[c.name] = c.id; }));
         setCategoryIdByName(idMap);
-        setCategoryGroups(rawGroups.map(g => ({
+        setCategoryGroups(rawGroups.filter(g => !g.is_system).map(g => ({
           id: g.id,
           name: g.name,
           categories: g.categories.map(c => c.name),
@@ -110,7 +128,7 @@ function App() {
         const idMap: Record<string, string> = {};
         rawGroups.forEach(g => g.categories.forEach(c => { idMap[c.name] = c.id; }));
         setCategoryIdByName(idMap);
-        setCategoryGroups(rawGroups.map(g => ({
+        setCategoryGroups(rawGroups.filter(g => !g.is_system).map(g => ({
           id: g.id,
           name: g.name,
           categories: g.categories.map(c => c.name),
@@ -157,7 +175,7 @@ function App() {
       <Layout currentPage={page} currentAccountId={accountId} onNavigate={navigate} currency={currency} onCurrencyChange={handleCurrencyChange} accounts={accounts} exchangeRate={exchangeRate} exchangeRateDate={exchangeRateDate} fmt={fmtBound} onAddAccount={() => setShowAddAccount(true)}>
         <div key={page + accountId} style={{ animation: 'fadeUp 0.32s cubic-bezier(0.22, 1, 0.36, 1)' }}>
           {page === 'dashboard' && <Dashboard categoryGroups={categoryGroups} fmt={fmtBound} onNavigate={navigate} />}
-          {page === 'budget' && <Budget categoryGroups={categoryGroups} fmt={fmtBound} currency={currency} density={tweaks.density} categoryIdByName={categoryIdByName} onCategoriesChanged={reloadCategories} />}
+          {page === 'budget' && <Budget categoryGroups={categoryGroups} fmt={fmtBound} currency={currency} density={tweaks.density} categoryIdByName={categoryIdByName} onCategoriesChanged={reloadCategories} usdBadge={tweaks.usdBadge} crcBadge={tweaks.crcBadge} />}
           {page === 'accounts' && (
             <Accounts
               accounts={accounts}

@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { T, GROUP_COLORS } from '../theme';
+import { T, GROUP_COLORS, ACCENTS } from '../theme';
+import type { AccentKey } from '../theme';
 import { computePlan, resetAllPlanned } from '../engine';
 import { CategoryInspector } from './BudgetModals';
 import { BudgetSummaryPane } from './BudgetSummaryPane';
@@ -126,13 +127,15 @@ interface GroupBlockProps {
   selectedCats: Set<string>;
   onToggleCatSelection: (name: string) => void;
   onToggleGroupSelection: (catNames: string[]) => void;
+  usdBadge: AccentKey;
+  crcBadge: AccentKey;
 }
 
 function GroupBlock(props: GroupBlockProps) {
   const { group, gidx, color, catState, collapsed, onToggle, fmt, onSavePlanned, onOpenInspector,
     inspectorCat, rowPad, editMode, hidden, showHidden, onRenameCat, onMoveCat, onHideCat, onDeleteCat, onAddCat, onRenameGroup,
     onMoveGroup, onDeleteGroup, onReorderCat, catCurrencies, toDisplay, toRaw,
-    selectedCats, onToggleCatSelection, onToggleGroupSelection } = props;
+    selectedCats, onToggleCatSelection, onToggleGroupSelection, usdBadge, crcBadge } = props;
   const [hovCat, setHovCat] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newCat, setNewCat] = useState('');
@@ -238,7 +241,7 @@ function GroupBlock(props: GroupBlockProps) {
               onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}
               onClick={editMode ? undefined : () => { if (dragHappened.current) { dragHappened.current = false; return; } cellRefs.current[cat]?.startEdit(); }}
               {...dragHandlers}>
-              <td style={{ ...st.checkCell, padding: rowPad + ' 0 5px 8px', borderBottom: 'none', verticalAlign: 'middle' }}>
+              <td style={{ ...st.checkCell, padding: rowPad + ' 0 5px 16px', borderBottom: 'none', verticalAlign: 'middle' }}>
                 <input
                   type="checkbox"
                   checked={selectedCats.has(cat)}
@@ -301,9 +304,15 @@ function GroupBlock(props: GroupBlockProps) {
               <td style={{ ...st.numCell, padding: '0 16px', borderBottom: 'none' }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
                   <BudgetCell ref={el => { cellRefs.current[cat] = el; }} value={c.planned} onSave={v => onSavePlanned(cat, v)} fmt={fmt} toDisplay={toDisplay} toRaw={toRaw} />
-                  <span style={{ fontSize: 9, fontWeight: 700, color: T.textDim, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 3, padding: '1px 4px', letterSpacing: '0.05em', flexShrink: 0 }}>
-                    {(catCurrencies[cat] ?? 'CRC') === 'USD' ? '$' : '₡'}
-                  </span>
+                  {(() => {
+                    const isUSD = (catCurrencies[cat] ?? 'CRC') === 'USD';
+                    const accent = ACCENTS[isUSD ? usdBadge : crcBadge];
+                    return (
+                      <span style={{ fontSize: 9, fontWeight: 800, color: accent.c, background: accent.dim, border: `1px solid ${accent.c}40`, borderRadius: 4, padding: '1px 5px', letterSpacing: '0.06em', flexShrink: 0 }}>
+                        {isUSD ? 'USD' : 'CRC'}
+                      </span>
+                    );
+                  })()}
                 </div>
               </td>
               <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.activity < 0 ? T.neg : T.textDim }}>{fmt(-c.activity)}</td>
@@ -375,9 +384,11 @@ interface Props {
   density: string;
   categoryIdByName: Record<string, string>;
   onCategoriesChanged: () => void;
+  usdBadge: AccentKey;
+  crcBadge: AccentKey;
 }
 
-export function Budget({ categoryGroups, fmt, currency, density, categoryIdByName, onCategoriesChanged }: Props) {
+export function Budget({ categoryGroups, fmt, currency, density, categoryIdByName, onCategoriesChanged, usdBadge, crcBadge }: Props) {
   const [currentYM, setCurrentYM] = useState(() => new Date().toISOString().slice(0, 7));
   const currentDisplayMonth = toDisplayMonth(currentYM);
   const [server, setServer] = useState<PlanMonthAPI | null>(null);
@@ -982,7 +993,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
               <table style={st.table}>
                 <thead>
                   <tr>
-                    <th style={{ ...st.th, width: 28, padding: '12px 4px 12px 12px' }}></th>
+                    <th style={{ ...st.th, width: 36, padding: '12px 4px 12px 16px' }}></th>
                     <th style={{ ...st.th, textAlign: 'left', width: '46%' }}>Category</th>
                     <th style={{ ...st.th, textAlign: 'right' }}>Budgeted</th>
                     <th style={{ ...st.th, textAlign: 'right' }}>Actual</th>
@@ -997,7 +1008,8 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
                       onRenameCat={renameCat} onMoveCat={reorderCat} onHideCat={hideCat} onDeleteCat={deleteCat} onAddCat={addCat}
                       onRenameGroup={renameGroup} onMoveGroup={moveGroup} onDeleteGroup={deleteGroup} onReorderCat={handleReorderCat}
                       catCurrencies={catCurrencies} toDisplay={toDisplayFn} toRaw={toRawFn}
-                      selectedCats={selectedCats} onToggleCatSelection={toggleCatSelection} onToggleGroupSelection={toggleGroupSelection} />
+                      selectedCats={selectedCats} onToggleCatSelection={toggleCatSelection} onToggleGroupSelection={toggleGroupSelection}
+                      usdBadge={usdBadge} crcBadge={crcBadge} />
                   ))}
                 </tbody>
               </table>
@@ -1071,7 +1083,7 @@ const st = {
   miniBtnOn:   { padding: '3px 9px', fontSize: 11, fontWeight: 700, background: 'var(--accent)', color: '#06140d', border: 'none', borderRadius: 6, cursor: 'pointer' },
   addCatBtn:   { background: 'none', border: `1px dashed ${T.border}`, borderRadius: 7, color: T.textDim, cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '6px 12px' },
   dragHandle:  { fontSize: 14, color: T.textDim, cursor: 'grab', transition: 'opacity 0.1s', userSelect: 'none' as const, lineHeight: 1 },
-  checkCell:   { width: 28, padding: '0 4px 0 12px', verticalAlign: 'middle' as const },
+  checkCell:   { width: 36, padding: '0 4px 0 16px', verticalAlign: 'middle' as const },
   check:       { accentColor: 'var(--accent)', width: 13, height: 13, cursor: 'pointer', display: 'block' as const },
   flexSection: { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, boxShadow: T.shadow, padding: '16px 20px', marginBottom: 16 },
   flexSectionHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingBottom: 10, borderBottom: `1px solid ${T.border}` },
