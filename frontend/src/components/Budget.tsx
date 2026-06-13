@@ -507,17 +507,20 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
 
   const handleSavePlanned = useCallback((catName: string, value: number) => {
     const catId = categoryIdByName[catName];
-    const prev = state.cats[catName]?.planned ?? 0;
+    const cat = state.cats[catName];
+    const prev = cat?.planned ?? 0;
+    // value and prev are in CRC (engine guarantee); server expects native-currency major units
+    const toApiValue = (crc: number) => cat?.currency === 'USD' ? crc / rate : crc;
     setLocalPlanned(p => ({ ...(p ?? {}), [catName]: value }));
-    if (catId) apiSetPlanned(currentYM, catId, value).catch(err => toast.error(err.message));
+    if (catId) apiSetPlanned(currentYM, catId, toApiValue(value)).catch(err => toast.error(err.message));
     undoPush({
       label: `Budget ${catName}`,
       undo: () => {
         setLocalPlanned(p => ({ ...(p ?? {}), [catName]: prev }));
-        if (catId) apiSetPlanned(currentYM, catId, prev).catch(err => toast.error(err.message));
+        if (catId) apiSetPlanned(currentYM, catId, toApiValue(prev)).catch(err => toast.error(err.message));
       },
     });
-  }, [state, categoryIdByName, currentYM, toast, undoPush]);
+  }, [state, categoryIdByName, currentYM, toast, undoPush, rate]);
 
 
   const handleSaveFlexBudget = useCallback((value: number) => {
@@ -602,14 +605,14 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     for (const name of sel) {
       const c = state.cats[name];
       if (!c) continue;
-      const k = (n: number) => c.currency === 'USD' ? n * rate : n;
-      planned += k(c.planned);
-      actual += k(-c.activity);
-      remaining += k(c.remaining);
-      if (c.rollover) roll += k(c.rolloverBalance); else allRoll = false;
+      // all PlanCatState amounts are in CRC (engine converts before storing)
+      planned += c.planned;
+      actual += -c.activity;
+      remaining += c.remaining;
+      if (c.rollover) roll += c.rolloverBalance; else allRoll = false;
     }
     return { planned, actual, remaining, rolloverBalance: allRoll ? roll : null };
-  }, [selectedCats, state, rate, incomeCatNames]);
+  }, [selectedCats, state, incomeCatNames]);
 
   const selectionLabel = useMemo(() => {
     const totalCount = Object.keys(state.cats).length;
@@ -753,7 +756,8 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
   const deleteCat = (gid: string, name: string) => {
     const catId = categoryIdByName[name];
     const capturedCurrency = (state.cats[name]?.currency ?? 'CRC');
-    const capturedPlanned = state.cats[name]?.planned ?? 0;
+    const capturedPlannedCRC = state.cats[name]?.planned ?? 0;
+    const capturedPlanned = capturedCurrency === 'USD' ? capturedPlannedCRC / rate : capturedPlannedCRC;
     const capturedYM = currentYM;
     const capturedSortIdx = groups.find(g => g.id === gid)?.categories.indexOf(name) ?? 0;
     setGroups(gs => gs.map(g => g.id === gid ? { ...g, categories: g.categories.filter(c => c !== name) } : g));
@@ -838,12 +842,11 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     const capturedGroupName = grp.name;
     const capturedGroupSortOrder = groups.findIndex(g => g.id === gid);
     const capturedYM = currentYM;
-    const capturedCats = grp.categories.map((name, i) => ({
-      name,
-      currency: (state.cats[name]?.currency ?? 'CRC') as 'CRC' | 'USD',
-      planned: state.cats[name]?.planned ?? 0,
-      sortOrder: i,
-    }));
+    const capturedCats = grp.categories.map((name, i) => {
+      const currency = (state.cats[name]?.currency ?? 'CRC') as 'CRC' | 'USD';
+      const plannedCRC = state.cats[name]?.planned ?? 0;
+      return { name, currency, planned: currency === 'USD' ? plannedCRC / rate : plannedCRC, sortOrder: i };
+    });
     undoPush({
       label: `Delete group '${capturedGroupName}'`,
       undo: async () => {
