@@ -157,7 +157,6 @@ func main() {
 	mux.HandleFunc("GET /api/plan/{month}", budgets.GetMonth)
 	mux.HandleFunc("PUT /api/plan/{month}/categories/{categoryId}", budgets.SetPlanned)
 	mux.HandleFunc("POST /api/plan/{month}/copy-previous", budgets.CopyPrevious)
-	mux.HandleFunc("PUT /api/plan/{month}/income", budgets.SetIncome)
 	mux.HandleFunc("PUT /api/plan/{month}/flex-budget", budgets.SetFlexBudget)
 	mux.HandleFunc("GET /api/settings/budget-mode", settings.GetBudgetMode)
 	mux.HandleFunc("PUT /api/settings/budget-mode", settings.SetBudgetMode)
