@@ -19,6 +19,7 @@ interface InspectorProps {
   fmt: (n: number) => string;
   onClose: () => void;
   onUpdateCategoryMeta: (catId: string, meta: { rollover: boolean; flexibility: Flexibility }) => void;
+  onChangeCurrency: (catId: string, currency: 'CRC' | 'USD') => void;
   onHide: (cat: string) => void;
   onDelete: (cat: string) => void;
 }
@@ -29,9 +30,10 @@ function Stat({ label, value, color: col }: { label: string; value: string; colo
   );
 }
 
-export function CategoryInspector({ cat, color, c, fmt, onClose, onUpdateCategoryMeta, onHide, onDelete }: InspectorProps) {
+export function CategoryInspector({ cat, color, c, fmt, onClose, onUpdateCategoryMeta, onChangeCurrency, onHide, onDelete }: InspectorProps) {
   const [rollover, setRollover] = useState(c.rollover);
   const [flexibility, setFlexibility] = useState<Flexibility>(c.flexibility);
+  const [currency, setCurrency] = useState<'CRC' | 'USD'>(c.currency === 'USD' ? 'USD' : 'CRC');
 
   const commitRollover = (next: boolean) => {
     setRollover(next);
@@ -40,6 +42,10 @@ export function CategoryInspector({ cat, color, c, fmt, onClose, onUpdateCategor
   const commitFlexibility = (next: Flexibility) => {
     setFlexibility(next);
     onUpdateCategoryMeta(c.id, { rollover, flexibility: next });
+  };
+  const commitCurrency = (next: 'CRC' | 'USD') => {
+    setCurrency(next);
+    onChangeCurrency(c.id, next);
   };
 
   const spent = -c.activity;
@@ -92,6 +98,15 @@ export function CategoryInspector({ cat, color, c, fmt, onClose, onUpdateCategor
           </div>
         </div>
 
+        <div style={insp.section}>
+          <div style={insp.sectionTitle}>Currency</div>
+          <div style={insp.typeGrid2}>
+            {(['CRC', 'USD'] as const).map(cur => (
+              <button key={cur} onClick={() => commitCurrency(cur)} style={{ ...insp.typeBtn, ...(currency === cur ? insp.typeOn : {}) }}>{cur}</button>
+            ))}
+          </div>
+        </div>
+
         <div style={insp.actions}>
           <button onClick={() => { onHide(cat); onClose(); }} style={insp.actionBtn}>Hide</button>
           <button onClick={() => { onDelete(cat); onClose(); }} style={{ ...insp.actionBtn, color: T.neg }}>Delete</button>
@@ -122,6 +137,7 @@ const insp = {
   targetFill:  { height: '100%', borderRadius: 4, background: 'var(--accent)', boxShadow: '0 0 10px var(--accent-glow)', transition: 'width 0.4s' },
   targetMeta:  { display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11.5, color: T.textDim, fontFamily: T.mono },
   typeGrid3:   { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 },
+  typeGrid2:   { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 },
   typeBtn:     { padding: '8px 8px', fontSize: 11.5, fontWeight: 600, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, color: T.textMid, cursor: 'pointer', transition: 'all 0.12s' },
   typeOn:      { background: T.accentDim, borderColor: 'var(--accent)', color: 'var(--accent)' },
   actions:     { padding: '16px 20px', display: 'flex', gap: 8, flexWrap: 'wrap' as const },

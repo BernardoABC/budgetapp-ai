@@ -11,6 +11,7 @@ import {
   fetchPlan, setPlanned as apiSetPlanned, copyPreviousPlan, setExpectedIncome as apiSetIncome,
   setFlexBudget as apiSetFlexBudget, fetchBudgetMode, setBudgetMode as apiSetBudgetMode,
   createCategoryGroup, deleteCategoryGroup, createCategory, deleteCategory, updateCategory, fetchNearestRate,
+  changeCategoryCurrency,
 } from '../api';
 import type { ExchangeRate } from '../api';
 import { useToast } from './Toast';
@@ -560,6 +561,12 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       .catch(err => toast.error(err.message));
   }, [nameById, groups, hidden, onCategoriesChanged, toast]);
 
+  const handleChangeCurrency = useCallback((catId: string, newCurrency: 'CRC' | 'USD') => {
+    changeCategoryCurrency(catId, newCurrency)
+      .then(() => { onCategoriesChanged(); setFetchCounter(c => c + 1); })
+      .catch(err => toast.error(err.message));
+  }, [onCategoriesChanged, toast]);
+
   // ── Selection ────────────────────────────────────────────
 
   const toggleCatSelection = useCallback((name: string) => {
@@ -1031,7 +1038,9 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
         return (
           <CategoryInspector cat={inspectorCat} color={colorFor(grpName, grpIdx)} c={state.cats[inspectorCat]}
             fmt={fmtMonth} onClose={() => setInspectorCat(null)}
-            onUpdateCategoryMeta={handleUpdateCategoryMeta} onHide={hideCat}
+            onUpdateCategoryMeta={handleUpdateCategoryMeta}
+            onChangeCurrency={handleChangeCurrency}
+            onHide={hideCat}
             onDelete={cat => { const g = groups.find(x => x.categories.includes(cat)); if (g) deleteCat(g.id, cat); }} />
         );
       })()}
