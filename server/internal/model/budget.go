@@ -10,13 +10,14 @@ type ActivityEntry struct {
 type PlanCategory struct {
 	ID                string
 	Name              string
-	Currency          string
+	Currency          string // current category currency (for new entries)
+	PlannedCurrency   string // currency the displayed month's planned amount was entered in
 	Flexibility       string // fixed | flexible | non_monthly
 	Rollover          bool
-	Planned           int64 // native currency
-	Activity          int64 // native currency (negative = spending)
-	Remaining         int64 // month-scoped: Planned + Activity
-	RolloverBalance   int64 // accumulated Planned+Activity across months (rollover cats)
+	Planned           int64 // CRC
+	Activity          int64 // CRC (negative = spending)
+	Remaining         int64 // CRC: Planned + Activity
+	RolloverBalance   int64 // CRC: accumulated Planned+Activity across months (rollover cats)
 	ActivityBreakdown []ActivityEntry
 }
 

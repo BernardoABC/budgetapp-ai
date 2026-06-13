@@ -306,7 +306,7 @@ function GroupBlock(props: GroupBlockProps) {
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
                   <BudgetCell ref={el => { cellRefs.current[cat] = el; }} value={c.planned} onSave={v => onSavePlanned(cat, v)} fmt={fmt} toDisplay={toDisplay} toRaw={toRaw} />
                   {(() => {
-                    const isUSD = (catCurrencies[cat] ?? 'CRC') === 'USD';
+                    const isUSD = ((catState[cat]?.plannedCurrency ?? catCurrencies[cat] ?? 'CRC')) === 'USD';
                     const accent = ACCENTS[isUSD ? usdBadge : crcBadge];
                     return (
                       <span style={{ fontSize: 9, fontWeight: 800, color: accent.c, background: accent.dim, border: `1px solid ${accent.c}40`, borderRadius: 4, padding: '1px 5px', letterSpacing: '0.06em', flexShrink: 0 }}>

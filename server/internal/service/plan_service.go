@@ -74,7 +74,7 @@ func (s *PlanService) GetMonth(ctx context.Context, month string) (*model.PlanMo
 		return amount
 	}
 
-	rollBalance := s.computeRolloverBalances(groups, plannedByCat, activity, firstOfMonth)
+	rollBalance := s.computeRolloverBalances(groups, plannedByCat, activity, firstOfMonth, rate)
 
 	pm := &model.PlanMonth{
 		Month:          month,
@@ -90,9 +90,9 @@ func (s *PlanService) GetMonth(ctx context.Context, month string) (*model.PlanMo
 		pg := model.PlanGroup{ID: g.ID, Name: g.Name}
 		for _, c := range g.Categories {
 			plannedRow := plannedByCat[c.ID][firstOfMonth]
-			planned := plannedRow.Amount
-			act := activity[c.ID][firstOfMonth]
-			remaining := planned + act
+			plannedCRC := toCRC(plannedRow.Amount, plannedRow.Currency)
+			actCRC := toCRC(activity[c.ID][firstOfMonth], c.Currency)
+			remainingCRC := plannedCRC + actCRC
 
 			var bd []model.ActivityEntry
 			for _, row := range breakdownByCat[c.ID] {
@@ -100,18 +100,16 @@ func (s *PlanService) GetMonth(ctx context.Context, month string) (*model.PlanMo
 			}
 
 			pc := model.PlanCategory{
-				ID: c.ID, Name: c.Name, Currency: c.Currency,
+				ID: c.ID, Name: c.Name, Currency: c.Currency, PlannedCurrency: plannedRow.Currency,
 				Flexibility: c.Flexibility, Rollover: c.Rollover,
-				Planned: planned, Activity: act, Remaining: remaining,
+				Planned: plannedCRC, Activity: actCRC, Remaining: remainingCRC,
 				RolloverBalance: rollBalance[c.ID], ActivityBreakdown: bd,
 			}
 
-			plannedCRC := toCRC(planned, plannedRow.Currency)
-			actCRC := toCRC(act, c.Currency)
 			pm.PlannedTotal += plannedCRC
 			pg.Planned += plannedCRC
 			pg.Activity += actCRC
-			pg.Remaining += toCRC(remaining, c.Currency)
+			pg.Remaining += remainingCRC
 
 			spendingCRC := int64(0)
 			if actCRC < 0 {
@@ -158,13 +156,23 @@ func (s *PlanService) computeRolloverBalances(
 	plannedByCat map[string]map[string]repository.PlannedRow,
 	activity map[string]map[string]int64,
 	firstOfMonth string,
+	rate float64,
 ) map[string]int64 {
+	toCRC := func(amount int64, currency string) int64 {
+		if currency == "USD" {
+			return int64(math.Round(float64(amount) * rate))
+		}
+		return amount
+	}
+
+	catCur := map[string]string{}
 	rollover := map[string]bool{}
 	for _, g := range groups {
 		if g.IsSystem {
 			continue
 		}
 		for _, c := range g.Categories {
+			catCur[c.ID] = c.Currency
 			if c.Rollover || c.Flexibility == "non_monthly" {
 				rollover[c.ID] = true
 			}
@@ -192,7 +200,8 @@ func (s *PlanService) computeRolloverBalances(
 	for catID := range rollover {
 		var acc int64
 		for _, m := range months {
-			acc += plannedByCat[catID][m].Amount + activity[catID][m]
+			row := plannedByCat[catID][m]
+			acc += toCRC(row.Amount, row.Currency) + toCRC(activity[catID][m], catCur[catID])
 		}
 		bal[catID] = acc
 	}

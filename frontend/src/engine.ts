@@ -3,13 +3,14 @@ import type { PlanGroupAPI } from './api';
 export interface PlanCatState {
   cat: string;            // category name (keying matches existing Budget.tsx convention)
   id: string;
-  currency: string;
+  currency: string;       // current category currency (for new entries)
+  plannedCurrency: string; // currency the displayed month's planned amount was entered in
   flexibility: 'fixed' | 'flexible' | 'non_monthly';
   rollover: boolean;
-  planned: number;
-  activity: number;       // negative = spending
-  remaining: number;      // planned + activity
-  rolloverBalance: number; // accumulated balance through this month (rollover cats)
+  planned: number;        // CRC
+  activity: number;       // CRC, negative = spending
+  remaining: number;      // CRC: planned + activity
+  rolloverBalance: number; // CRC: accumulated balance through this month (rollover cats)
 }
 
 export interface PlanState {
@@ -48,11 +49,12 @@ export function computePlan(input: ComputeInput): PlanState {
         ? c.rollover_balance + (planned - c.planned)
         : 0;
       cats[name] = {
-        cat: name, id: c.id, currency: c.currency,
+        cat: name, id: c.id, currency: c.currency, plannedCurrency: c.planned_currency ?? c.currency,
         flexibility: c.flexibility, rollover: c.rollover,
         planned, activity: c.activity, remaining, rolloverBalance,
       };
-      plannedTotalCRC += toCRC(planned, c.currency, rate);
+      // planned is already in CRC (service converts before sending)
+      plannedTotalCRC += planned;
     }
   }
 

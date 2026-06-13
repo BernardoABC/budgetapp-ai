@@ -384,6 +384,7 @@ export interface PlanCategoryAPI {
   id: string;
   name: string;
   currency: string;
+  planned_currency: string;
   flexibility: 'fixed' | 'flexible' | 'non_monthly';
   rollover: boolean;
   planned: number;

@@ -145,7 +145,7 @@ func planMonthToJSON(pm *model.PlanMonth) map[string]any {
 				bd = append(bd, map[string]any{"currency": e.Currency, "amount": e.Amount, "converted_amount": e.ConvertedAmount})
 			}
 			cats = append(cats, map[string]any{
-				"id": c.ID, "name": c.Name, "currency": c.Currency,
+				"id": c.ID, "name": c.Name, "currency": c.Currency, "planned_currency": c.PlannedCurrency,
 				"flexibility": c.Flexibility, "rollover": c.Rollover,
 				"planned": c.Planned, "activity": c.Activity, "remaining": c.Remaining,
 				"rollover_balance": c.RolloverBalance, "activity_breakdown": bd,
