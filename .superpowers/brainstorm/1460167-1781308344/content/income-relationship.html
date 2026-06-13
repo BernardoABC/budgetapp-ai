@@ -1,0 +1,29 @@
+<h2>How should income categories relate to "Expected Income"?</h2>
+<p class="subtitle">The budget header currently has a single "Expected Income" field. With Paychecks / Interest / Other Income added as budget categories, how should they interact?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Independent</h3>
+      <p>Income categories show planned/actual per source. The "Expected Income" header field stays separate — you still type the overall total there manually.</p>
+      <p><em>Two separate concepts: header total vs. per-category breakdown.</em></p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Replace</h3>
+      <p>Income category planned amounts <em>become</em> your expected income. The "Expected Income" input disappears — you budget income by category only.</p>
+      <p><em>Cleaner, but you must always budget each income source explicitly.</em></p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Auto-sum</h3>
+      <p>Income category planned amounts automatically add up into "Expected Income". Budget $3,000 Paychecks + $200 Interest → Expected Income shows $3,200 automatically.</p>
+      <p><em>Most integrated — one source of truth.</em></p>
+    </div>
+  </div>
+</div>

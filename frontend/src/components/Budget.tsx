@@ -314,7 +314,7 @@ function GroupBlock(props: GroupBlockProps) {
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
                   <BudgetCell ref={el => { cellRefs.current[cat] = el; }} value={c.planned} onSave={v => onSavePlanned(cat, v)} fmt={fmt} toDisplay={toDisplay} toRaw={toRaw} />
                   {(() => {
-                    const isUSD = ((catState[cat]?.plannedCurrency ?? catCurrencies[cat] ?? 'CRC')) === 'USD';
+                    const isUSD = (catCurrencies[cat] ?? 'CRC') === 'USD';
                     const accent = ACCENTS[isUSD ? usdBadge : crcBadge];
                     return (
                       <span style={{ fontSize: 9, fontWeight: 800, color: accent.c, background: accent.dim, border: `1px solid ${accent.c}40`, borderRadius: 4, padding: '1px 5px', letterSpacing: '0.06em', flexShrink: 0 }}>
@@ -586,8 +586,17 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
     });
   }, []);
 
+  const incomeCatNames = useMemo(() => {
+    const s = new Set<string>();
+    for (const g of groups) { if (g.is_income) g.categories.forEach(c => s.add(c)); }
+    return s;
+  }, [groups]);
+
   const summaryStats = useMemo<SummaryStats>(() => {
-    const sel = selectedCats.size ? [...selectedCats] : Object.keys(state.cats);
+    const allExpense = Object.keys(state.cats).filter(n => !incomeCatNames.has(n));
+    const sel = selectedCats.size
+      ? [...selectedCats].filter(n => !incomeCatNames.has(n))
+      : allExpense;
     let planned = 0, actual = 0, remaining = 0, roll = 0;
     let allRoll = sel.length > 0;
     for (const name of sel) {
@@ -600,7 +609,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
       if (c.rollover) roll += k(c.rolloverBalance); else allRoll = false;
     }
     return { planned, actual, remaining, rolloverBalance: allRoll ? roll : null };
-  }, [selectedCats, state, rate]);
+  }, [selectedCats, state, rate, incomeCatNames]);
 
   const selectionLabel = useMemo(() => {
     const totalCount = Object.keys(state.cats).length;
@@ -1040,7 +1049,8 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
             onUpdateCategoryMeta={handleUpdateCategoryMeta}
             onChangeCurrency={handleChangeCurrency}
             onHide={hideCat}
-            onDelete={cat => { const g = groups.find(x => x.categories.includes(cat)); if (g) deleteCat(g.id, cat); }} />
+            onDelete={cat => { const g = groups.find(x => x.categories.includes(cat)); if (g) deleteCat(g.id, cat); }}
+            onRename={(oldName, newName) => { const g = groups.find(x => x.categories.includes(oldName)); if (g) { renameCat(g.id, oldName, newName); setInspectorCat(newName); } }} />
         );
       })()}
     </div>

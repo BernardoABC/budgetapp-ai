@@ -1,0 +1,278 @@
+<h2>Three approaches to number-dominant typography</h2>
+<p class="subtitle">All use your existing dark theme, Plus Jakarta Sans + IBM Plex Mono. Pick the scale that feels right.</p>
+
+<style>
+  .budget-demo {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background: #0f141d;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 0;
+  }
+  .demo-header {
+    background: rgba(255,255,255,0.015);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+  }
+  .demo-th {
+    color: #6c7787;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+  .demo-group-row {
+    display: grid;
+    grid-template-columns: 1fr repeat(3, 100px);
+    padding: 10px 16px;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    align-items: center;
+  }
+  .demo-cat-row {
+    display: grid;
+    grid-template-columns: 1fr repeat(3, 100px);
+    padding: 8px 16px 8px 36px;
+    border-bottom: 1px solid rgba(255,255,255,0.045);
+    align-items: center;
+  }
+  .demo-num { font-family: 'IBM Plex Mono', monospace; text-align: right; }
+  .demo-name { color: #a8b2c1; }
+  .demo-group-name { color: #eaeff6; font-weight: 700; }
+  .col-header { text-align: right; }
+
+  /* Header stat bar */
+  .stat-bar {
+    display: flex; gap: 32px; padding: 10px 20px;
+    background: rgba(61,220,151,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .stat-item { display: flex; flex-direction: column; gap: 2px; }
+  .stat-label { color: #6c7787; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  .stat-value { font-family: 'IBM Plex Mono', monospace; font-weight: 700; letter-spacing: -0.02em; color: #eaeff6; }
+
+  /* Variants */
+  /* A: Targeted bump */
+  .a .demo-th { font-size: 9px; }
+  .a .stat-label { font-size: 9px; }
+  .a .stat-value { font-size: 18px; }
+  .a .demo-group-name { font-size: 12px; }
+  .a .demo-num { font-size: 14px; color: #eaeff6; }
+  .a .demo-group .demo-num { font-size: 15px; font-weight: 700; }
+  .a .demo-name { font-size: 12px; }
+
+  /* B: Full Monarch scale */
+  .b .demo-th { font-size: 9px; }
+  .b .stat-label { font-size: 9px; }
+  .b .stat-value { font-size: 24px; }
+  .b .demo-group-name { font-size: 11.5px; }
+  .b .demo-num { font-size: 16px; color: #eaeff6; font-weight: 600; }
+  .b .demo-group .demo-num { font-size: 18px; font-weight: 700; }
+  .b .demo-name { font-size: 11.5px; }
+
+  /* C: Moderate hierarchy */
+  .c .demo-th { font-size: 9px; }
+  .c .stat-label { font-size: 9px; }
+  .c .stat-value { font-size: 21px; }
+  .c .demo-group-name { font-size: 12px; }
+  .c .demo-num { font-size: 15px; color: #eaeff6; font-weight: 500; }
+  .c .demo-group .demo-num { font-size: 16px; font-weight: 700; }
+  .c .demo-name { font-size: 12px; }
+
+  .neg { color: #ff6f7d !important; }
+  .pos { color: #3ddc97 !important; }
+  .dim { color: #6c7787 !important; }
+</style>
+
+<div class="cards" style="grid-template-columns: repeat(3, 1fr);">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 0;">
+      <div class="budget-demo a">
+        <div class="stat-bar">
+          <div class="stat-item">
+            <span class="stat-label">Planned</span>
+            <span class="stat-value pos">$3,200</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Spent</span>
+            <span class="stat-value neg">$1,847</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Left</span>
+            <span class="stat-value">$1,353</span>
+          </div>
+        </div>
+        <div class="demo-header">
+          <span class="demo-th">Category</span>
+          <span class="demo-th col-header">Planned</span>
+          <span class="demo-th col-header">Spent</span>
+          <span class="demo-th col-header">Left</span>
+        </div>
+        <div class="demo-group-row demo-group">
+          <span class="demo-group-name">Housing</span>
+          <span class="demo-num">$1,500</span>
+          <span class="demo-num neg">$1,500</span>
+          <span class="demo-num dim">$0</span>
+        </div>
+        <div class="demo-cat-row">
+          <span class="demo-name">Rent</span>
+          <span class="demo-num">$1,500</span>
+          <span class="demo-num neg">$1,500</span>
+          <span class="demo-num dim">$0</span>
+        </div>
+        <div class="demo-group-row demo-group">
+          <span class="demo-group-name">Food & Dining</span>
+          <span class="demo-num">$600</span>
+          <span class="demo-num neg">$247</span>
+          <span class="demo-num pos">$353</span>
+        </div>
+        <div class="demo-cat-row">
+          <span class="demo-name">Groceries</span>
+          <span class="demo-num">$400</span>
+          <span class="demo-num neg">$189</span>
+          <span class="demo-num pos">$211</span>
+        </div>
+        <div class="demo-cat-row">
+          <span class="demo-name">Restaurants</span>
+          <span class="demo-num">$200</span>
+          <span class="demo-num neg">$58</span>
+          <span class="demo-num pos">$142</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Targeted Bump</h3>
+      <p>Numbers: 14–15px row / 18px header. Labels shrink to 9px. Subtle but clear priority shift.</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 0;">
+      <div class="budget-demo b">
+        <div class="stat-bar">
+          <div class="stat-item">
+            <span class="stat-label">Planned</span>
+            <span class="stat-value pos">$3,200</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Spent</span>
+            <span class="stat-value neg">$1,847</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Left</span>
+            <span class="stat-value">$1,353</span>
+          </div>
+        </div>
+        <div class="demo-header">
+          <span class="demo-th">Category</span>
+          <span class="demo-th col-header">Planned</span>
+          <span class="demo-th col-header">Spent</span>
+          <span class="demo-th col-header">Left</span>
+        </div>
+        <div class="demo-group-row demo-group">
+          <span class="demo-group-name">Housing</span>
+          <span class="demo-num">$1,500</span>
+          <span class="demo-num neg">$1,500</span>
+          <span class="demo-num dim">$0</span>
+        </div>
+        <div class="demo-cat-row">
+          <span class="demo-name">Rent</span>
+          <span class="demo-num">$1,500</span>
+          <span class="demo-num neg">$1,500</span>
+          <span class="demo-num dim">$0</span>
+        </div>
+        <div class="demo-group-row demo-group">
+          <span class="demo-group-name">Food & Dining</span>
+          <span class="demo-num">$600</span>
+          <span class="demo-num neg">$247</span>
+          <span class="demo-num pos">$353</span>
+        </div>
+        <div class="demo-cat-row">
+          <span class="demo-name">Groceries</span>
+          <span class="demo-num">$400</span>
+          <span class="demo-num neg">$189</span>
+          <span class="demo-num pos">$211</span>
+        </div>
+        <div class="demo-cat-row">
+          <span class="demo-name">Restaurants</span>
+          <span class="demo-num">$200</span>
+          <span class="demo-num neg">$58</span>
+          <span class="demo-num pos">$142</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Full Monarch Scale</h3>
+      <p>Numbers: 16–18px row / 24px header. Aggressive hierarchy. Numbers clearly dominate.</p>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 0;">
+      <div class="budget-demo c">
+        <div class="stat-bar">
+          <div class="stat-item">
+            <span class="stat-label">Planned</span>
+            <span class="stat-value pos">$3,200</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Spent</span>
+            <span class="stat-value neg">$1,847</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Left</span>
+            <span class="stat-value">$1,353</span>
+          </div>
+        </div>
+        <div class="demo-header">
+          <span class="demo-th">Category</span>
+          <span class="demo-th col-header">Planned</span>
+          <span class="demo-th col-header">Spent</span>
+          <span class="demo-th col-header">Left</span>
+        </div>
+        <div class="demo-group-row demo-group">
+          <span class="demo-group-name">Housing</span>
+          <span class="demo-num">$1,500</span>
+          <span class="demo-num neg">$1,500</span>
+          <span class="demo-num dim">$0</span>
+        </div>
+        <div class="demo-cat-row">
+          <span class="demo-name">Rent</span>
+          <span class="demo-num">$1,500</span>
+          <span class="demo-num neg">$1,500</span>
+          <span class="demo-num dim">$0</span>
+        </div>
+        <div class="demo-group-row demo-group">
+          <span class="demo-group-name">Food & Dining</span>
+          <span class="demo-num">$600</span>
+          <span class="demo-num neg">$247</span>
+          <span class="demo-num pos">$353</span>
+        </div>
+        <div class="demo-cat-row">
+          <span class="demo-name">Groceries</span>
+          <span class="demo-num">$400</span>
+          <span class="demo-num neg">$189</span>
+          <span class="demo-num pos">$211</span>
+        </div>
+        <div class="demo-cat-row">
+          <span class="demo-name">Restaurants</span>
+          <span class="demo-num">$200</span>
+          <span class="demo-num neg">$58</span>
+          <span class="demo-num pos">$142</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Moderate Hierarchy</h3>
+      <p>Numbers: 15–16px row / 21px header. Balanced middle ground with clear dominance.</p>
+    </div>
+  </div>
+
+</div>

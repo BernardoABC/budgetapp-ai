@@ -1,0 +1,215 @@
+<h2>Design — Dashboard typography</h2>
+<p class="subtitle">Summary cards, transaction list, and spending bars. Same principle: numbers bigger than labels.</p>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+  * { box-sizing: border-box; }
+  .ff-sans { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+  .ff-mono { font-family: 'IBM Plex Mono', monospace; }
+
+  .split-wrap { display: flex; gap: 16px; }
+  .panel { flex: 1; border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; overflow: hidden; }
+  .split-label { text-align: center; padding: 6px 0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6c7787; border-bottom: 1px solid rgba(255,255,255,0.07); }
+
+  .dash { background: #0f141d; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+
+  /* Summary cards */
+  .cards-row { display: flex; gap: 10px; padding: 14px; }
+  .scard { flex: 1; background: #141a25; border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 14px 16px; }
+  .neg { color: #ff6f7d; }
+  .pos { color: #3ddc97; }
+  .dim { color: #6c7787; }
+  .muted { color: #a8b2c1; }
+
+  /* Transaction panel */
+  .txn-panel { margin: 0 14px 14px; background: #141a25; border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; overflow: hidden; }
+  .panel-hdr { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.07); display: flex; justify-content: space-between; align-items: center; }
+  .txn-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 8px 14px; border-bottom: 1px solid rgba(255,255,255,0.045); align-items: center; }
+  .txn-meta { display: flex; flex-direction: column; gap: 2px; }
+
+  /* Spending bars */
+  .bars-panel { margin: 0 14px 14px; background: #141a25; border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; overflow: hidden; }
+  .bar-row { display: flex; align-items: center; gap: 10px; padding: 7px 14px; border-bottom: 1px solid rgba(255,255,255,0.045); }
+  .bar-track { flex: 1; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; }
+  .bar-fill { height: 100%; border-radius: 2px; background: #3ddc97; }
+
+  /* BEFORE */
+  .before .card-lbl  { font-size: 11px; font-weight: 700; color: #6c7787; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
+  .before .card-val  { font-size: 28px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: -0.02em; line-height: 1; }
+  .before .card-sub  { font-size: 12px; margin-top: 6px; }
+  .before .phdr-title { font-size: 13px; font-weight: 700; color: #eaeff6; }
+  .before .phdr-meta  { font-size: 11.5px; font-weight: 500; color: #6c7787; font-family: 'IBM Plex Mono', monospace; }
+  .before .txn-name  { font-size: 13px; color: #eaeff6; font-weight: 500; }
+  .before .txn-date  { font-size: 12px; color: #6c7787; font-family: 'IBM Plex Mono', monospace; }
+  .before .txn-cat   { font-size: 11.5px; color: #6c7787; }
+  .before .txn-amt   { font-size: 13px; font-weight: 500; font-family: 'IBM Plex Mono', monospace; }
+  .before .bar-name  { font-size: 13px; color: #a8b2c1; font-weight: 600; min-width: 90px; }
+  .before .bar-amt   { font-size: 12px; font-family: 'IBM Plex Mono', monospace; min-width: 60px; text-align: right; }
+
+  /* AFTER C */
+  .after .card-lbl  { font-size: 9px; font-weight: 700; color: #6c7787; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
+  .after .card-val  { font-size: 30px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: -0.02em; line-height: 1; }
+  .after .card-sub  { font-size: 11px; margin-top: 6px; }
+  .after .phdr-title { font-size: 12px; font-weight: 700; color: #eaeff6; }
+  .after .phdr-meta  { font-size: 10px; font-weight: 500; color: #6c7787; font-family: 'IBM Plex Mono', monospace; }
+  .after .txn-name  { font-size: 12px; color: #eaeff6; font-weight: 500; }
+  .after .txn-date  { font-size: 11px; color: #6c7787; font-family: 'IBM Plex Mono', monospace; }
+  .after .txn-cat   { font-size: 10.5px; color: #6c7787; }
+  .after .txn-amt   { font-size: 14px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
+  .after .bar-name  { font-size: 12px; color: #a8b2c1; font-weight: 600; min-width: 90px; }
+  .after .bar-amt   { font-size: 13px; font-family: 'IBM Plex Mono', monospace; min-width: 60px; text-align: right; font-weight: 500; }
+</style>
+
+<div class="split-wrap">
+
+  <!-- BEFORE -->
+  <div class="panel">
+    <div class="split-label">Before (current)</div>
+    <div class="dash before">
+      <div class="cards-row">
+        <div class="scard">
+          <div class="card-lbl">Net Income</div>
+          <div class="card-val pos">$4,200</div>
+          <div class="card-sub muted">This month</div>
+        </div>
+        <div class="scard">
+          <div class="card-lbl">Spent</div>
+          <div class="card-val neg">$1,847</div>
+          <div class="card-sub muted">of $3,200 planned</div>
+        </div>
+      </div>
+      <div class="txn-panel">
+        <div class="panel-hdr">
+          <span class="phdr-title">Recent transactions</span>
+          <span class="phdr-meta">Jun 2026</span>
+        </div>
+        <div class="txn-row">
+          <div class="txn-meta">
+            <span class="txn-name">Whole Foods Market</span>
+            <span class="txn-date">06/11 · <span class="txn-cat">Groceries</span></span>
+          </div>
+          <span class="txn-amt neg">−$89.40</span>
+        </div>
+        <div class="txn-row">
+          <div class="txn-meta">
+            <span class="txn-name">Spotify</span>
+            <span class="txn-date">06/10 · <span class="txn-cat">Entertainment</span></span>
+          </div>
+          <span class="txn-amt neg">−$11.99</span>
+        </div>
+        <div class="txn-row">
+          <div class="txn-meta">
+            <span class="txn-name">Paycheck</span>
+            <span class="txn-date">06/01 · <span class="txn-cat">Income</span></span>
+          </div>
+          <span class="txn-amt pos">+$2,100</span>
+        </div>
+      </div>
+      <div class="bars-panel">
+        <div class="panel-hdr"><span class="phdr-title">Spending by category</span></div>
+        <div class="bar-row">
+          <span class="bar-name">Housing</span>
+          <div class="bar-track"><div class="bar-fill" style="width:100%"></div></div>
+          <span class="bar-amt muted">$1,500</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-name">Food</span>
+          <div class="bar-track"><div class="bar-fill" style="width:41%"></div></div>
+          <span class="bar-amt muted">$247</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-name">Transport</span>
+          <div class="bar-track"><div class="bar-fill" style="width:20%; background:#f6c45a"></div></div>
+          <span class="bar-amt muted">$100</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AFTER -->
+  <div class="panel">
+    <div class="split-label">After — Scale C</div>
+    <div class="dash after">
+      <div class="cards-row">
+        <div class="scard">
+          <div class="card-lbl">Net Income</div>
+          <div class="card-val pos">$4,200</div>
+          <div class="card-sub muted">This month</div>
+        </div>
+        <div class="scard">
+          <div class="card-lbl">Spent</div>
+          <div class="card-val neg">$1,847</div>
+          <div class="card-sub muted">of $3,200 planned</div>
+        </div>
+      </div>
+      <div class="txn-panel">
+        <div class="panel-hdr">
+          <span class="phdr-title">Recent transactions</span>
+          <span class="phdr-meta">Jun 2026</span>
+        </div>
+        <div class="txn-row">
+          <div class="txn-meta">
+            <span class="txn-name">Whole Foods Market</span>
+            <span class="txn-date">06/11 · <span class="txn-cat">Groceries</span></span>
+          </div>
+          <span class="txn-amt neg">−$89.40</span>
+        </div>
+        <div class="txn-row">
+          <div class="txn-meta">
+            <span class="txn-name">Spotify</span>
+            <span class="txn-date">06/10 · <span class="txn-cat">Entertainment</span></span>
+          </div>
+          <span class="txn-amt neg">−$11.99</span>
+        </div>
+        <div class="txn-row">
+          <div class="txn-meta">
+            <span class="txn-name">Paycheck</span>
+            <span class="txn-date">06/01 · <span class="txn-cat">Income</span></span>
+          </div>
+          <span class="txn-amt pos">+$2,100</span>
+        </div>
+      </div>
+      <div class="bars-panel">
+        <div class="panel-hdr"><span class="phdr-title">Spending by category</span></div>
+        <div class="bar-row">
+          <span class="bar-name">Housing</span>
+          <div class="bar-track"><div class="bar-fill" style="width:100%"></div></div>
+          <span class="bar-amt muted">$1,500</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-name">Food</span>
+          <div class="bar-track"><div class="bar-fill" style="width:41%"></div></div>
+          <span class="bar-amt muted">$247</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-name">Transport</span>
+          <div class="bar-track"><div class="bar-fill" style="width:20%; background:#f6c45a"></div></div>
+          <span class="bar-amt muted">$100</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 20px;">
+  <h3>What changed in the dashboard</h3>
+  <table style="width:100%; border-collapse: collapse; font-size: 13px;">
+    <thead>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <th style="text-align:left; padding: 6px 12px; color: #6c7787; font-size: 10px; text-transform:uppercase; letter-spacing:0.08em;">Element</th>
+        <th style="text-align:right; padding: 6px 12px; color: #6c7787; font-size: 10px; text-transform:uppercase; letter-spacing:0.08em;">Before</th>
+        <th style="text-align:right; padding: 6px 12px; color: #6c7787; font-size: 10px; text-transform:uppercase; letter-spacing:0.08em;">After</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);"><td style="padding:7px 12px;color:#a8b2c1">Card label</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#6c7787">11px</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#ff6f7d">9px ↓</td></tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);"><td style="padding:7px 12px;color:#a8b2c1">Card value (hero)</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#6c7787">28px</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#3ddc97">30px ↑</td></tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);"><td style="padding:7px 12px;color:#a8b2c1">Panel header title</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#6c7787">13px</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#ff6f7d">12px ↓</td></tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);"><td style="padding:7px 12px;color:#a8b2c1">Transaction name</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#6c7787">13px</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#ff6f7d">12px ↓</td></tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);"><td style="padding:7px 12px;color:#a8b2c1">Transaction amount</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#6c7787">13px</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#3ddc97">14px ↑</td></tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);"><td style="padding:7px 12px;color:#a8b2c1">Bar category name</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#6c7787">13px</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#ff6f7d">12px ↓</td></tr>
+      <tr><td style="padding:7px 12px;color:#a8b2c1">Bar amount</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#6c7787">12px</td><td style="text-align:right;padding:7px 12px;font-family:monospace;color:#3ddc97">13px ↑</td></tr>
+    </tbody>
+  </table>
+</div>

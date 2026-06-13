@@ -1,0 +1,146 @@
+<h2>Income group layout in the budget table</h2>
+<p class="subtitle">Where should it appear, and what should the columns mean for income rows?</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Option A — Income at the top, columns flipped</div>
+    <div class="mockup-body">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;font-family:monospace">
+        <thead>
+          <tr style="border-bottom:1px solid #333;color:#888;font-size:11px">
+            <th style="text-align:left;padding:6px 8px">Category</th>
+            <th style="text-align:right;padding:6px 8px">Budgeted</th>
+            <th style="text-align:right;padding:6px 8px">Received</th>
+            <th style="text-align:right;padding:6px 8px">Remaining</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Income group -->
+          <tr style="background:#1a2a1a">
+            <td colspan="4" style="padding:6px 8px;font-weight:700;color:#4ade80;font-size:11px;letter-spacing:.08em;text-transform:uppercase">▾ Income</td>
+          </tr>
+          <tr style="border-bottom:1px solid #222">
+            <td style="padding:5px 8px 5px 20px;color:#ccc">Paychecks</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$3,000</td>
+            <td style="text-align:right;padding:5px 8px;color:#4ade80">$2,500</td>
+            <td style="text-align:right;padding:5px 8px;color:#facc15">$500</td>
+          </tr>
+          <tr style="border-bottom:1px solid #222">
+            <td style="padding:5px 8px 5px 20px;color:#ccc">Interest</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$200</td>
+            <td style="text-align:right;padding:5px 8px;color:#4ade80">$0</td>
+            <td style="text-align:right;padding:5px 8px;color:#facc15">$200</td>
+          </tr>
+          <tr style="border-bottom:2px solid #333">
+            <td style="padding:5px 8px 5px 20px;color:#ccc">Other Income</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$0</td>
+            <td style="text-align:right;padding:5px 8px;color:#4ade80">$0</td>
+            <td style="text-align:right;padding:5px 8px;color:#888">$0</td>
+          </tr>
+          <!-- Group total -->
+          <tr style="background:#111;border-bottom:2px solid #333">
+            <td style="padding:5px 8px 5px 20px;color:#888;font-size:11px">Total Income</td>
+            <td style="text-align:right;padding:5px 8px;color:#888">$3,200</td>
+            <td style="text-align:right;padding:5px 8px;color:#4ade80">$2,500</td>
+            <td style="text-align:right;padding:5px 8px;color:#facc15">$700</td>
+          </tr>
+          <!-- Gap -->
+          <tr><td colspan="4" style="padding:10px"></td></tr>
+          <!-- Expense group -->
+          <tr style="background:#1a1a2a">
+            <td colspan="4" style="padding:6px 8px;font-weight:700;color:#888;font-size:11px;letter-spacing:.08em;text-transform:uppercase">▾ Immediate Obligations</td>
+          </tr>
+          <tr style="border-bottom:1px solid #222">
+            <td style="padding:5px 8px 5px 20px;color:#ccc">Rent</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$800</td>
+            <td style="text-align:right;padding:5px 8px;color:#f87171">$800</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$0</td>
+          </tr>
+          <tr style="border-bottom:1px solid #222;color:#555;font-style:italic">
+            <td style="padding:5px 8px 5px 20px">...</td>
+            <td></td><td></td><td></td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="margin-top:8px;padding:6px 8px;background:#0d1a0d;border-radius:4px;font-size:11px;color:#888">
+        <strong style="color:#4ade80">Expected Income</strong> = sum of income category planned amounts ($3,200) · read-only
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Option B — Income at the bottom, same columns</div>
+    <div class="mockup-body">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;font-family:monospace">
+        <thead>
+          <tr style="border-bottom:1px solid #333;color:#888;font-size:11px">
+            <th style="text-align:left;padding:6px 8px">Category</th>
+            <th style="text-align:right;padding:6px 8px">Budgeted</th>
+            <th style="text-align:right;padding:6px 8px">Actual</th>
+            <th style="text-align:right;padding:6px 8px">Remaining</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Expense group -->
+          <tr style="background:#1a1a2a">
+            <td colspan="4" style="padding:6px 8px;font-weight:700;color:#888;font-size:11px;letter-spacing:.08em;text-transform:uppercase">▾ Immediate Obligations</td>
+          </tr>
+          <tr style="border-bottom:1px solid #222">
+            <td style="padding:5px 8px 5px 20px;color:#ccc">Rent</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$800</td>
+            <td style="text-align:right;padding:5px 8px;color:#f87171">$800</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$0</td>
+          </tr>
+          <tr style="border-bottom:1px solid #222;color:#555;font-style:italic">
+            <td style="padding:5px 8px 5px 20px">...</td>
+            <td></td><td></td><td></td>
+          </tr>
+          <!-- Gap -->
+          <tr><td colspan="4" style="padding:10px"></td></tr>
+          <!-- Income group at bottom -->
+          <tr style="background:#1a2a1a">
+            <td colspan="4" style="padding:6px 8px;font-weight:700;color:#4ade80;font-size:11px;letter-spacing:.08em;text-transform:uppercase">▾ Income</td>
+          </tr>
+          <tr style="border-bottom:1px solid #222">
+            <td style="padding:5px 8px 5px 20px;color:#ccc">Paychecks</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$3,000</td>
+            <td style="text-align:right;padding:5px 8px;color:#f87171">-$2,500</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$5,500</td>
+          </tr>
+          <tr style="border-bottom:1px solid #222">
+            <td style="padding:5px 8px 5px 20px;color:#ccc">Interest</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$200</td>
+            <td style="text-align:right;padding:5px 8px;color:#888">$0</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$200</td>
+          </tr>
+          <tr style="border-bottom:2px solid #333">
+            <td style="padding:5px 8px 5px 20px;color:#ccc">Other Income</td>
+            <td style="text-align:right;padding:5px 8px;color:#ccc">$0</td>
+            <td style="text-align:right;padding:5px 8px;color:#888">$0</td>
+            <td style="text-align:right;padding:5px 8px;color:#888">$0</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="margin-top:8px;padding:6px 8px;background:#0d0d1a;border-radius:4px;font-size:11px;color:#888">
+        Same columns as expenses — Actual shows negative (income = inflow). Remaining grows oddly.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options" style="margin-top:24px">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Top + flipped columns</h3>
+      <p>Income group at the top, "Actual" renamed "Received", shows positive numbers. Remaining = income still expected. Green accent on income rows.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Bottom + same columns</h3>
+      <p>Income group at the bottom, same Actual/Remaining columns as expenses. Numbers come out confusing (negatives, inflated remaining).</p>
+    </div>
+  </div>
+</div>

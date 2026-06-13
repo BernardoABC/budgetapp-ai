@@ -22,6 +22,7 @@ interface InspectorProps {
   onChangeCurrency: (catId: string, currency: 'CRC' | 'USD') => void;
   onHide: (cat: string) => void;
   onDelete: (cat: string) => void;
+  onRename: (oldName: string, newName: string) => void;
 }
 
 function Stat({ label, value, color: col }: { label: string; value: string; color?: string }) {
@@ -30,10 +31,12 @@ function Stat({ label, value, color: col }: { label: string; value: string; colo
   );
 }
 
-export function CategoryInspector({ cat, color, c, fmt, onClose, onUpdateCategoryMeta, onChangeCurrency, onHide, onDelete }: InspectorProps) {
+export function CategoryInspector({ cat, color, c, fmt, onClose, onUpdateCategoryMeta, onChangeCurrency, onHide, onDelete, onRename }: InspectorProps) {
   const [rollover, setRollover] = useState(c.rollover);
   const [flexibility, setFlexibility] = useState<Flexibility>(c.flexibility);
   const [currency, setCurrency] = useState<'CRC' | 'USD'>(c.currency === 'USD' ? 'USD' : 'CRC');
+  const [nameVal, setNameVal] = useState(cat);
+  const [editingName, setEditingName] = useState(false);
 
   const commitRollover = (next: boolean) => {
     setRollover(next);
@@ -55,9 +58,20 @@ export function CategoryInspector({ cat, color, c, fmt, onClose, onUpdateCategor
     <div style={insp.overlay} onClick={onClose}>
       <div style={insp.panel} onClick={e => e.stopPropagation()}>
         <div style={insp.header}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
-            <span style={insp.title}>{cat}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flex: 1, minWidth: 0 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0 }} />
+            {editingName ? (
+              <input
+                autoFocus
+                value={nameVal}
+                onChange={e => setNameVal(e.target.value)}
+                onBlur={() => { const t = nameVal.trim(); if (t && t !== cat) onRename(cat, t); setEditingName(false); }}
+                onKeyDown={e => { if (e.key === 'Enter') { const t = nameVal.trim(); if (t && t !== cat) onRename(cat, t); setEditingName(false); } if (e.key === 'Escape') { setNameVal(cat); setEditingName(false); } }}
+                style={insp.nameInput}
+              />
+            ) : (
+              <span style={{ ...insp.title, cursor: 'text', borderBottom: `1px dashed transparent` }} title="Click to rename" onClick={() => setEditingName(true)}>{nameVal}</span>
+            )}
           </div>
           <button onClick={onClose} style={insp.close}>✕</button>
         </div>
@@ -117,10 +131,11 @@ export function CategoryInspector({ cat, color, c, fmt, onClose, onUpdateCategor
 }
 
 const insp = {
-  overlay:     { position: 'fixed' as const, inset: 0, background: 'rgba(4,6,10,0.5)', backdropFilter: 'blur(3px)', display: 'flex', justifyContent: 'flex-end', zIndex: 1000 },
-  panel:       { width: 360, maxWidth: 'calc(100vw - 30px)', height: '100%', background: T.surface2, borderLeft: `1px solid ${T.borderHi}`, boxShadow: '-24px 0 60px -20px rgba(0,0,0,0.7)', overflowY: 'auto' as const },
+  overlay:     { position: 'fixed' as const, inset: 0, background: 'rgba(4,6,10,0.5)', backdropFilter: 'blur(3px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
+  panel:       { width: 400, maxWidth: 'calc(100vw - 40px)', maxHeight: 'calc(100vh - 80px)', background: T.surface2, border: `1px solid ${T.borderHi}`, borderRadius: 14, boxShadow: '0 24px 80px -20px rgba(0,0,0,0.8)', overflowY: 'auto' as const },
   header:      { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: `1px solid ${T.border}`, position: 'sticky' as const, top: 0, background: T.surface2, zIndex: 2 },
   title:       { fontSize: 16, fontWeight: 800, color: T.text, letterSpacing: '-0.02em' },
+  nameInput:   { fontSize: 16, fontWeight: 800, color: T.text, letterSpacing: '-0.02em', background: 'transparent', border: `1px solid var(--accent)`, borderRadius: 5, padding: '2px 6px', outline: 'none', width: '100%', boxShadow: '0 0 0 2px var(--accent-dim)' },
   close:       { background: 'none', border: 'none', color: T.textDim, cursor: 'pointer', fontSize: 14, padding: 4 },
   availBlock:  { padding: '20px', borderBottom: `1px solid ${T.border}` },
   availLbl:    { fontSize: 11, fontWeight: 700, color: T.textDim, letterSpacing: '0.08em', textTransform: 'uppercase' as const },

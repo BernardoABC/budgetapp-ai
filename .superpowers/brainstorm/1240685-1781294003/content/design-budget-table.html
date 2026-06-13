@@ -1,0 +1,193 @@
+<h2>Design — Budget table typography</h2>
+<p class="subtitle">Before (left) vs After C (right). Numbers are now clearly larger than their labels.</p>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+  .budget-demo {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background: #0f141d;
+    border-radius: 10px;
+    overflow: hidden;
+    flex: 1;
+  }
+  .demo-stat-bar {
+    display: flex; gap: 28px; padding: 10px 20px;
+    background: rgba(61,220,151,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .demo-stat { display: flex; flex-direction: column; gap: 2px; }
+  .demo-stat-lbl { color: #6c7787; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  .demo-stat-val { font-family: 'IBM Plex Mono', monospace; font-weight: 700; letter-spacing: -0.02em; color: #eaeff6; }
+  .demo-thead {
+    display: grid; grid-template-columns: 1fr repeat(3, 90px);
+    padding: 8px 16px;
+    background: rgba(255,255,255,0.015);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    color: #6c7787; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+  }
+  .demo-thead span { text-align: right; }
+  .demo-thead span:first-child { text-align: left; }
+  .demo-group {
+    display: grid; grid-template-columns: 1fr repeat(3, 90px);
+    padding: 9px 16px;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    align-items: center;
+  }
+  .demo-cat {
+    display: grid; grid-template-columns: 1fr repeat(3, 90px);
+    padding: 8px 16px 8px 34px;
+    border-bottom: 1px solid rgba(255,255,255,0.045);
+    align-items: center;
+  }
+  .num { font-family: 'IBM Plex Mono', monospace; text-align: right; }
+  .neg { color: #ff6f7d; }
+  .pos { color: #3ddc97; }
+  .dim { color: #6c7787; }
+  .muted { color: #a8b2c1; }
+
+  /* BEFORE */
+  .before .demo-stat-lbl { font-size: 10px; }
+  .before .demo-stat-val { font-size: 16px; }
+  .before .demo-thead { font-size: 10.5px; }
+  .before .gname { font-size: 13px; font-weight: 700; color: #eaeff6; }
+  .before .gnum  { font-size: 12.5px; font-weight: 600; color: #eaeff6; }
+  .before .cname { font-size: 13px; font-weight: 500; color: #a8b2c1; }
+  .before .cnum  { font-size: 12.5px; color: #a8b2c1; }
+
+  /* AFTER C */
+  .after .demo-stat-lbl { font-size: 9px; }
+  .after .demo-stat-val { font-size: 21px; }
+  .after .demo-thead { font-size: 9px; }
+  .after .gname { font-size: 12px; font-weight: 700; color: #eaeff6; }
+  .after .gnum  { font-size: 16px; font-weight: 700; color: #eaeff6; }
+  .after .cname { font-size: 12px; font-weight: 500; color: #a8b2c1; }
+  .after .cnum  { font-size: 15px; font-weight: 500; color: #eaeff6; }
+
+  .split-wrap {
+    display: flex; gap: 16px;
+  }
+  .split-label {
+    text-align: center; padding: 6px 0; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; color: #6c7787;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .panel { flex: 1; border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; overflow: hidden; }
+</style>
+
+<div class="split-wrap">
+  <div class="panel">
+    <div class="split-label">Before (current)</div>
+    <div class="budget-demo before">
+      <div class="demo-stat-bar">
+        <div class="demo-stat"><span class="demo-stat-lbl">Planned</span><span class="demo-stat-val pos">$3,200</span></div>
+        <div class="demo-stat"><span class="demo-stat-lbl">Spent</span><span class="demo-stat-val neg">$1,847</span></div>
+        <div class="demo-stat"><span class="demo-stat-lbl">Left</span><span class="demo-stat-val">$1,353</span></div>
+      </div>
+      <div class="demo-thead"><span>Category</span><span>Planned</span><span>Spent</span><span>Left</span></div>
+      <div class="demo-group">
+        <span class="gname">Housing</span>
+        <span class="num gnum">$1,500</span><span class="num gnum neg">$1,500</span><span class="num gnum dim">$0</span>
+      </div>
+      <div class="demo-cat">
+        <span class="cname">Rent</span>
+        <span class="num cnum">$1,500</span><span class="num cnum neg">$1,500</span><span class="num cnum dim">$0</span>
+      </div>
+      <div class="demo-group">
+        <span class="gname">Food & Dining</span>
+        <span class="num gnum">$600</span><span class="num gnum neg">$247</span><span class="num gnum pos">$353</span>
+      </div>
+      <div class="demo-cat">
+        <span class="cname">Groceries</span>
+        <span class="num cnum">$400</span><span class="num cnum neg">$189</span><span class="num cnum pos">$211</span>
+      </div>
+      <div class="demo-cat">
+        <span class="cname">Restaurants</span>
+        <span class="num cnum">$200</span><span class="num cnum neg">$58</span><span class="num cnum pos">$142</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="split-label">After — Scale C</div>
+    <div class="budget-demo after">
+      <div class="demo-stat-bar">
+        <div class="demo-stat"><span class="demo-stat-lbl">Planned</span><span class="demo-stat-val pos">$3,200</span></div>
+        <div class="demo-stat"><span class="demo-stat-lbl">Spent</span><span class="demo-stat-val neg">$1,847</span></div>
+        <div class="demo-stat"><span class="demo-stat-lbl">Left</span><span class="demo-stat-val">$1,353</span></div>
+      </div>
+      <div class="demo-thead"><span>Category</span><span>Planned</span><span>Spent</span><span>Left</span></div>
+      <div class="demo-group">
+        <span class="gname">Housing</span>
+        <span class="num gnum">$1,500</span><span class="num gnum neg">$1,500</span><span class="num gnum dim">$0</span>
+      </div>
+      <div class="demo-cat">
+        <span class="cname">Rent</span>
+        <span class="num cnum">$1,500</span><span class="num cnum neg">$1,500</span><span class="num cnum dim">$0</span>
+      </div>
+      <div class="demo-group">
+        <span class="gname">Food & Dining</span>
+        <span class="num gnum">$600</span><span class="num gnum neg">$247</span><span class="num gnum pos">$353</span>
+      </div>
+      <div class="demo-cat">
+        <span class="cname">Groceries</span>
+        <span class="num cnum">$400</span><span class="num cnum neg">$189</span><span class="num cnum pos">$211</span>
+      </div>
+      <div class="demo-cat">
+        <span class="cname">Restaurants</span>
+        <span class="num cnum">$200</span><span class="num cnum neg">$58</span><span class="num cnum pos">$142</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 20px;">
+  <h3>What changed in the budget table</h3>
+  <table style="width:100%; border-collapse: collapse; font-size: 13px;">
+    <thead>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <th style="text-align:left; padding: 6px 12px; color: #6c7787; font-size: 10px; text-transform:uppercase; letter-spacing:0.08em;">Element</th>
+        <th style="text-align:right; padding: 6px 12px; color: #6c7787; font-size: 10px; text-transform:uppercase; letter-spacing:0.08em;">Before</th>
+        <th style="text-align:right; padding: 6px 12px; color: #6c7787; font-size: 10px; text-transform:uppercase; letter-spacing:0.08em;">After</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <td style="padding: 7px 12px; color: #a8b2c1;">Header stat values</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #6c7787;">16px</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #3ddc97;">21px ↑</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <td style="padding: 7px 12px; color: #a8b2c1;">Header stat labels</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #6c7787;">10px</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #ff6f7d;">9px ↓</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <td style="padding: 7px 12px; color: #a8b2c1;">Column headers (th)</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #6c7787;">10.5px</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #ff6f7d;">9px ↓</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <td style="padding: 7px 12px; color: #a8b2c1;">Group name</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #6c7787;">13px</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #ff6f7d;">12px ↓</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <td style="padding: 7px 12px; color: #a8b2c1;">Group totals</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #6c7787;">12.5px</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #3ddc97;">16px ↑</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <td style="padding: 7px 12px; color: #a8b2c1;">Category name</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #6c7787;">13px</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #ff6f7d;">12px ↓</td>
+      </tr>
+      <tr>
+        <td style="padding: 7px 12px; color: #a8b2c1;">Row numbers (planned/spent/left)</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #6c7787;">12.5px</td>
+        <td style="text-align:right; padding: 7px 12px; font-family: monospace; color: #3ddc97;">15px ↑</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
