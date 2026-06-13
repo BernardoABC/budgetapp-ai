@@ -24,6 +24,7 @@ type PlanCategory struct {
 type PlanGroup struct {
 	ID         string
 	Name       string
+	IsIncome   bool
 	Planned    int64 // CRC
 	Activity   int64 // CRC
 	Remaining  int64 // CRC

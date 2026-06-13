@@ -18,6 +18,7 @@ type CategoryGroup struct {
 	SortOrder  int        `json:"sort_order"`
 	Hidden     bool       `json:"hidden"`
 	IsSystem   bool       `json:"is_system"`
+	IsIncome   bool       `json:"is_income"`
 	Categories []Category `json:"categories"`
 }
 
