@@ -257,6 +257,37 @@ func SeedTransactionWithCurrency(t *testing.T, pool *pgxpool.Pool, accountID, ca
 	return id
 }
 
+// SeedIncomeGroup inserts a category group with is_income=true and returns its ID.
+func SeedIncomeGroup(t *testing.T, pool *pgxpool.Pool) string {
+	t.Helper()
+	var id string
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO category_groups (name, sort_order, is_income) VALUES ($1, -1, true) RETURNING id::text`,
+		fmt.Sprintf("TestIncomeGroup-%d", randomID()),
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("SeedIncomeGroup: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM category_groups WHERE id = $1::uuid`, id)
+	})
+	return id
+}
+
+// SeedCategoryInGroup inserts a category into the given group and returns the category ID.
+func SeedCategoryInGroup(t *testing.T, pool *pgxpool.Pool, groupID string) string {
+	t.Helper()
+	var id string
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO categories (group_id, name, sort_order) VALUES ($1::uuid, $2, 0) RETURNING id::text`,
+		groupID, fmt.Sprintf("TestCat-%d", randomID()),
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("SeedCategoryInGroup: %v", err)
+	}
+	return id
+}
+
 // idCounter starts at wall-clock nanoseconds so concurrently running test
 // binaries (go test ./... runs packages in parallel against the shared test DB)
 // don't generate colliding TestGroup-N names.
