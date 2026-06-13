@@ -22,17 +22,16 @@ export interface PlanState {
 
 interface ComputeInput {
   groups: PlanGroupAPI[];          // server snapshot for the month
-  expectedIncome: number;
-  rate: number;                    // USD→CRC for cross-currency totals
   // local planned overrides keyed by category name (major units)
   localPlanned: Record<string, number> | null;
   nameById: Record<string, string>;
 }
 
 export function computePlan(input: ComputeInput): PlanState {
-  const { groups, expectedIncome, localPlanned, nameById } = input;
+  const { groups, localPlanned, nameById } = input;
   const cats: Record<string, PlanCatState> = {};
   let plannedTotalCRC = 0;
+  let expectedIncome = 0;
 
   for (const g of groups) {
     for (const c of g.categories) {
@@ -51,8 +50,12 @@ export function computePlan(input: ComputeInput): PlanState {
         planned, activity: c.activity, remaining, rolloverBalance,
       };
       // planned is already in CRC (service converts before sending)
-      // income group planned amounts feed ExpectedIncome on the server, not PlannedTotal
-      if (!g.is_income) plannedTotalCRC += planned;
+      // income group planned amounts accumulate into expectedIncome, not plannedTotal
+      if (g.is_income) {
+        expectedIncome += planned;
+      } else {
+        plannedTotalCRC += planned;
+      }
     }
   }
 
