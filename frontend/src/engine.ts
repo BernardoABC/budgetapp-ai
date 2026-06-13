@@ -29,11 +29,8 @@ interface ComputeInput {
   nameById: Record<string, string>;
 }
 
-const toCRC = (amount: number, currency: string, rate: number) =>
-  currency === 'USD' ? amount * rate : amount;
-
 export function computePlan(input: ComputeInput): PlanState {
-  const { groups, expectedIncome, rate, localPlanned, nameById } = input;
+  const { groups, expectedIncome, localPlanned, nameById } = input;
   const cats: Record<string, PlanCatState> = {};
   let plannedTotalCRC = 0;
 
