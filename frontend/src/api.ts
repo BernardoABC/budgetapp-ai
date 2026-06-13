@@ -16,6 +16,7 @@ export interface CategoryGroup {
   id: string;
   name: string;
   categories: string[];
+  is_income?: boolean;
 }
 
 export interface Transaction {
@@ -397,6 +398,7 @@ export interface PlanCategoryAPI {
 export interface PlanGroupAPI {
   id: string;
   name: string;
+  is_income: boolean;
   planned: number;
   activity: number;
   remaining: number;

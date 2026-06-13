@@ -77,17 +77,17 @@ func (s *PlanService) GetMonth(ctx context.Context, month string) (*model.PlanMo
 	rollBalance := s.computeRolloverBalances(groups, plannedByCat, activity, firstOfMonth, rate)
 
 	pm := &model.PlanMonth{
-		Month:          month,
-		Mode:           mode,
-		ExpectedIncome: plan.ExpectedIncome,
-		FlexBudget:     plan.FlexBudget,
+		Month:    month,
+		Mode:     mode,
+		FlexBudget: plan.FlexBudget,
+		// ExpectedIncome is accumulated from income category planned amounts below.
 	}
 
 	for _, g := range groups {
 		if g.IsSystem {
 			continue
 		}
-		pg := model.PlanGroup{ID: g.ID, Name: g.Name}
+		pg := model.PlanGroup{ID: g.ID, Name: g.Name, IsIncome: g.IsIncome}
 		for _, c := range g.Categories {
 			plannedRow := plannedByCat[c.ID][firstOfMonth]
 			plannedCRC := toCRC(plannedRow.Amount, plannedRow.Currency)
@@ -106,27 +106,30 @@ func (s *PlanService) GetMonth(ctx context.Context, month string) (*model.PlanMo
 				RolloverBalance: rollBalance[c.ID], ActivityBreakdown: bd,
 			}
 
-			pm.PlannedTotal += plannedCRC
 			pg.Planned += plannedCRC
 			pg.Activity += actCRC
 			pg.Remaining += remainingCRC
-
-			spendingCRC := int64(0)
-			if actCRC < 0 {
-				spendingCRC = -actCRC
-			}
-			switch c.Flexibility {
-			case "fixed":
-				pm.FixedPlanned += plannedCRC
-				pm.FixedActual += spendingCRC
-			case "non_monthly":
-				pm.NonMonthlyPlanned += plannedCRC
-				pm.NonMonthlyActual += spendingCRC
-			default: // flexible
-				pm.FlexibleActual += spendingCRC
-			}
-
 			pg.Categories = append(pg.Categories, pc)
+
+			if g.IsIncome {
+				pm.ExpectedIncome += plannedCRC
+			} else {
+				pm.PlannedTotal += plannedCRC
+				spendingCRC := int64(0)
+				if actCRC < 0 {
+					spendingCRC = -actCRC
+				}
+				switch c.Flexibility {
+				case "fixed":
+					pm.FixedPlanned += plannedCRC
+					pm.FixedActual += spendingCRC
+				case "non_monthly":
+					pm.NonMonthlyPlanned += plannedCRC
+					pm.NonMonthlyActual += spendingCRC
+				default:
+					pm.FlexibleActual += spendingCRC
+				}
+			}
 		}
 		pm.CategoryGroups = append(pm.CategoryGroups, pg)
 	}

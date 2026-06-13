@@ -105,6 +105,7 @@ function App() {
           id: g.id,
           name: g.name,
           categories: g.categories.map(c => c.name),
+          is_income: g.is_income,
         })));
         setRawCategoryGroups(rawGroups);
       })
@@ -132,6 +133,7 @@ function App() {
           id: g.id,
           name: g.name,
           categories: g.categories.map(c => c.name),
+          is_income: g.is_income,
         })));
         setRawCategoryGroups(rawGroups);
       })

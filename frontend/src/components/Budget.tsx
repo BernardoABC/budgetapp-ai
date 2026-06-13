@@ -198,14 +198,20 @@ function GroupBlock(props: GroupBlockProps) {
           ) : group.name}
         </td>
         <td style={st.groupNum}>{fmt(totPlanned)}</td>
-        <td style={{ ...st.groupNum, color: T.textDim }}>{fmt(-totActivity)}</td>
-        <td style={{ ...st.groupNum, color: totRemaining < 0 ? T.neg : T.text }}>{fmt(totRemaining)}</td>
+        {group.is_income
+          ? <td style={{ ...st.groupNum, color: T.pos }}>{fmt(totActivity)}</td>
+          : <td style={{ ...st.groupNum, color: T.textDim }}>{fmt(-totActivity)}</td>}
+        {group.is_income
+          ? <td style={{ ...st.groupNum, color: totRemaining > 0 ? T.warn : totRemaining < 0 ? T.pos : T.textDim }}>{fmt(totRemaining)}</td>
+          : <td style={{ ...st.groupNum, color: totRemaining < 0 ? T.neg : T.text }}>{fmt(totRemaining)}</td>}
       </tr>
 
       {!collapsed && visibleCats.map(cat => {
-        const c: PlanCatState = catState[cat] ?? { cat, id: '', currency: 'CRC', flexibility: 'flexible', rollover: false, planned: 0, activity: 0, remaining: 0, rolloverBalance: 0 };
-        const over = c.remaining < 0;
-        const spent = Math.abs(Math.min(c.activity, 0));
+        const c: PlanCatState = catState[cat] ?? { cat, id: '', currency: 'CRC', plannedCurrency: 'CRC', flexibility: 'flexible', rollover: false, planned: 0, activity: 0, remaining: 0, rolloverBalance: 0 };
+        const isIncome = !!group.is_income;
+        // For income rows: "over" means income not yet received (remaining > 0); bar shows receipt progress
+        const over = isIncome ? false : c.remaining < 0;
+        const spent = isIncome ? Math.max(c.activity, 0) : Math.abs(Math.min(c.activity, 0));
         const pct = c.planned > 0 ? Math.min((spent / c.planned) * 100, 100) : 0;
         const near = !over && c.planned > 0 && pct > 85;
         const barColor = over ? T.neg : near ? T.warn : color;
@@ -316,8 +322,12 @@ function GroupBlock(props: GroupBlockProps) {
                   })()}
                 </div>
               </td>
-              <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.activity < 0 ? T.neg : T.textDim }}>{fmt(-c.activity)}</td>
-              <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.remaining < 0 ? T.neg : T.text }}>{fmt(c.remaining)}</td>
+              {isIncome
+                ? <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: T.pos }}>{fmt(c.activity)}</td>
+                : <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.activity < 0 ? T.neg : T.textDim }}>{fmt(-c.activity)}</td>}
+              {isIncome
+                ? <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.remaining > 0 ? T.warn : c.remaining < 0 ? T.pos : T.textDim }}>{fmt(c.remaining)}</td>
+                : <td style={{ ...st.numCell, padding: rowPad + ' 16px 5px', borderBottom: 'none', color: c.remaining < 0 ? T.neg : T.text }}>{fmt(c.remaining)}</td>}
             </tr>
             <tr style={{ background: rowBg, cursor: editMode ? 'default' : 'text' }} onMouseEnter={() => setHovCat(cat)} onMouseLeave={() => setHovCat(null)}
               onClick={editMode ? undefined : () => { if (dragHappened.current) { dragHappened.current = false; return; } cellRefs.current[cat]?.startEdit(); }}
@@ -914,7 +924,7 @@ export function Budget({ categoryGroups, fmt, currency, density, categoryIdByNam
 
         <div style={st.summaryHeader}>
           <HeaderStat label="Expected income">
-            <BudgetCell value={expectedIncome} onSave={handleSaveIncome} fmt={fmt} toDisplay={toDisplayFn} toRaw={toRawFn} />
+            <span style={{ color: T.pos }}>{fmt(expectedIncome)}</span>
           </HeaderStat>
           <HeaderStat label="Planned"><span>{fmt(state.plannedTotalCRC)}</span></HeaderStat>
           <HeaderStat label="Left to budget">

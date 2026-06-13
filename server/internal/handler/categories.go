@@ -38,6 +38,7 @@ func (h *CategoryHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 		SortOrder  int       `json:"sort_order"`
 		Hidden     bool      `json:"hidden"`
 		IsSystem   bool      `json:"is_system"`
+		IsIncome   bool      `json:"is_income"`
 		Categories []catResp `json:"categories"`
 	}
 
@@ -47,7 +48,7 @@ func (h *CategoryHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 		for j, c := range g.Categories {
 			cats[j] = catResp{ID: c.ID, Name: c.Name, Currency: c.Currency, Hidden: c.Hidden, SortOrder: c.SortOrder, IsSystem: c.IsSystem, Rollover: c.Rollover, Flexibility: c.Flexibility}
 		}
-		resp[i] = groupResp{ID: g.ID, Name: g.Name, SortOrder: g.SortOrder, Hidden: g.Hidden, IsSystem: g.IsSystem, Categories: cats}
+		resp[i] = groupResp{ID: g.ID, Name: g.Name, SortOrder: g.SortOrder, Hidden: g.Hidden, IsSystem: g.IsSystem, IsIncome: g.IsIncome, Categories: cats}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

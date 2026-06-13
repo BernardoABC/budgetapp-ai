@@ -51,7 +51,8 @@ export function computePlan(input: ComputeInput): PlanState {
         planned, activity: c.activity, remaining, rolloverBalance,
       };
       // planned is already in CRC (service converts before sending)
-      plannedTotalCRC += planned;
+      // income group planned amounts feed ExpectedIncome on the server, not PlannedTotal
+      if (!g.is_income) plannedTotalCRC += planned;
     }
   }
 

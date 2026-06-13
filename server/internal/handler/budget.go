@@ -152,7 +152,7 @@ func planMonthToJSON(pm *model.PlanMonth) map[string]any {
 			})
 		}
 		groups = append(groups, map[string]any{
-			"id": g.ID, "name": g.Name,
+			"id": g.ID, "name": g.Name, "is_income": g.IsIncome,
 			"planned": g.Planned, "activity": g.Activity, "remaining": g.Remaining,
 			"categories": cats,
 		})
