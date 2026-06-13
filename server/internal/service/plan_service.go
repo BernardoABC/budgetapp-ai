@@ -223,10 +223,6 @@ func (s *PlanService) SetPlanned(ctx context.Context, catID, month string, plann
 	return s.budgetRepo.UpsertPlanned(ctx, catID, month+"-01", planned, currency)
 }
 
-func (s *PlanService) SetExpectedIncome(ctx context.Context, month string, amount int64) error {
-	return s.planRepo.SetExpectedIncome(ctx, month+"-01", amount)
-}
-
 func (s *PlanService) SetFlexBudget(ctx context.Context, month string, amount int64) error {
 	return s.planRepo.SetFlexBudget(ctx, month+"-01", amount)
 }
@@ -249,26 +245,7 @@ func (s *PlanService) CopyPrevious(ctx context.Context, month string) error {
 			})
 		}
 	}
-	if err := s.budgetRepo.BulkInsertPlannedIfAbsent(ctx, entries); err != nil {
-		return err
-	}
-
-	cur, err := s.planRepo.Get(ctx, month+"-01")
-	if err != nil {
-		return err
-	}
-	if cur.ExpectedIncome == 0 {
-		prevPlan, err := s.planRepo.Get(ctx, prevKey)
-		if err != nil {
-			return err
-		}
-		if prevPlan.ExpectedIncome > 0 {
-			if err := s.planRepo.SetExpectedIncome(ctx, month+"-01", prevPlan.ExpectedIncome); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return s.budgetRepo.BulkInsertPlannedIfAbsent(ctx, entries)
 }
 
 func (s *PlanService) ChangeCategoryCurrency(ctx context.Context, catID, newCurrency string) error {

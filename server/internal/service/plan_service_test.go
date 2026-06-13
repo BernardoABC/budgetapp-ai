@@ -4,12 +4,13 @@ import (
 	"context"
 	"testing"
 
+	"budgetapp/internal/model"
 	"budgetapp/internal/repository"
 	"budgetapp/internal/service"
 	"budgetapp/internal/testutil"
 )
 
-func TestPlanService_LeftToBudget(t *testing.T) {
+func TestPlanService_LeftToBudget_DerivedFromIncomeCategories(t *testing.T) {
 	pool := testutil.NewTestPool(t)
 	svc := service.NewPlanService(
 		repository.NewBudgetRepo(pool),
@@ -20,17 +21,20 @@ func TestPlanService_LeftToBudget(t *testing.T) {
 	)
 	ctx := context.Background()
 
-	catID := testutil.SeedCategory(t, pool)
+	incomeGroupID := testutil.SeedIncomeGroup(t, pool)
+	incomeCatID := testutil.SeedCategoryInGroup(t, pool, incomeGroupID)
+	expenseCatID := testutil.SeedCategory(t, pool)
+
 	t.Cleanup(func() {
-		pool.Exec(ctx, `DELETE FROM budgets WHERE category_id=$1::uuid`, catID)
-		pool.Exec(ctx, `DELETE FROM monthly_plans WHERE month='2026-05-01'`)
+		pool.Exec(ctx, `DELETE FROM budgets WHERE category_id=$1::uuid`, incomeCatID)
+		pool.Exec(ctx, `DELETE FROM budgets WHERE category_id=$1::uuid`, expenseCatID)
 	})
 
-	if err := svc.SetExpectedIncome(ctx, "2026-05", 1000000); err != nil {
-		t.Fatalf("SetExpectedIncome: %v", err)
+	if err := svc.SetPlanned(ctx, incomeCatID, "2026-05", 1000000); err != nil {
+		t.Fatalf("SetPlanned income: %v", err)
 	}
-	if err := svc.SetPlanned(ctx, catID, "2026-05", 300000); err != nil {
-		t.Fatalf("SetPlanned: %v", err)
+	if err := svc.SetPlanned(ctx, expenseCatID, "2026-05", 300000); err != nil {
+		t.Fatalf("SetPlanned expense: %v", err)
 	}
 
 	pm, err := svc.GetMonth(ctx, "2026-05")
@@ -45,6 +49,52 @@ func TestPlanService_LeftToBudget(t *testing.T) {
 	}
 	if pm.LeftToBudget != 700000 {
 		t.Errorf("LeftToBudget = %d, want 700000", pm.LeftToBudget)
+	}
+}
+
+func TestPlanService_IncomeGroupAppearsInCategoryGroups(t *testing.T) {
+	pool := testutil.NewTestPool(t)
+	svc := service.NewPlanService(
+		repository.NewBudgetRepo(pool),
+		repository.NewMonthlyPlanRepo(pool),
+		repository.NewCategoryRepo(pool),
+		repository.NewExchangeRateRepo(pool),
+		repository.NewSettingsRepo(pool),
+	)
+	ctx := context.Background()
+
+	incomeGroupID := testutil.SeedIncomeGroup(t, pool)
+	incomeCatID := testutil.SeedCategoryInGroup(t, pool, incomeGroupID)
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM budgets WHERE category_id=$1::uuid`, incomeCatID)
+	})
+
+	if err := svc.SetPlanned(ctx, incomeCatID, "2026-06", 500000); err != nil {
+		t.Fatalf("SetPlanned: %v", err)
+	}
+
+	pm, err := svc.GetMonth(ctx, "2026-06")
+	if err != nil {
+		t.Fatalf("GetMonth: %v", err)
+	}
+
+	var incomeGroup *model.PlanGroup
+	for i := range pm.CategoryGroups {
+		if pm.CategoryGroups[i].ID == incomeGroupID {
+			incomeGroup = &pm.CategoryGroups[i]
+		}
+	}
+	if incomeGroup == nil {
+		t.Fatal("income group not found in CategoryGroups")
+	}
+	if !incomeGroup.IsIncome {
+		t.Error("PlanGroup.IsIncome = false, want true")
+	}
+	if pm.PlannedTotal != 0 {
+		t.Errorf("PlannedTotal = %d, want 0 (income excluded)", pm.PlannedTotal)
+	}
+	if pm.ExpectedIncome != 500000 {
+		t.Errorf("ExpectedIncome = %d, want 500000", pm.ExpectedIncome)
 	}
 }
 
